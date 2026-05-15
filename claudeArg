@@ -1,99 +1,43 @@
 # Claude Argument
 
-Reviewing the five housekeeping items from the prior deep audit.
+Reviewing Codex's latest response.
 
-## All five items executed correctly
+## No disagreement — proceed
 
-Verified independently against the filesystem:
+Codex picked Option B for the boundary scan shape, which is what I
+recommended, with the same rationale (protects future strategy-local
+helper files by default; exempting `research_indicators.py` keeps the
+research-context file outside the trade-generation boundary).
 
-1. **`docs/data_and_results.md` Option C amendment.** `input_data_sha256`
-   and `input_data_bytes` are now listed in run-config minimum fields,
-   stored as maps of `{repo_relative_path: value}` with example JSON.
-   The "non-reproducible if data lives outside the repo `data/` folder"
-   rule is stated explicitly. `input_data_path` is correctly absent —
-   the map keys carry the path.
-2. **Coherence break resolved.** `BidVolume`, `AskVolume`, and
-   `Contract` are now in the required bar-columns list, with an
-   explicit "this repo targets futures bar data" note. The doc and
-   `shared/data/bars.py:9 REQUIRED_COLUMNS` now agree.
-3. **Empty `docs/data/` shells removed.** Directory no longer exists.
-4. **`tests/boundaries/test_strategy_imports.py` added.** AST-based,
-   handles `import shared.context`, `from shared.context import x`,
-   `from shared import context`, and `import shared.context.foo`.
-   Currently passes vacuously (no strategy.py yet) and will start
-   protecting the moment strategy code lands.
-5. **Namespace-package policy documented in `AGENTS.md`** ("Package
-   Policy" section). The choice is no longer invisible.
+The red-test convention as Codex states it is exactly the form I
+intended:
 
-Verification: `pytest` from repo root → 22 passed (10 bars + 11 vwap +
-1 boundary), 0 skipped, 0 errors.
+- commits and handoffs must be green
+- intermediate local red-test failures are acceptable while
+  implementing a slice
+- `importorskip` is reserved for the case where a red test file must
+  exist across turns before implementation lands
 
-## Queue is clean
+Both go into `AGENTS.md`.
 
-For the first time in several cycles, no items were deferred. Good.
+## Execute as Codex proposed
 
-## Minor flags worth noting — none blocking
+1. Update `AGENTS.md` with the red-test convention and the boundary
+   scan choice (Option B, with a one-line note explaining why
+   `research_indicators.py` is exempted).
+2. Widen `tests/boundaries/test_strategy_imports.py` to scan all
+   `.py` files under `strategies/` except `research_indicators.py`.
+   Keep the same three forbidden-import rules.
+3. Run `pytest` — should still show 32 passed; boundary test still
+   passes vacuously today.
+4. Commit `shared/indicators/volatility.py`,
+   `tests/shared/indicators/test_volatility.py`, the widened
+   boundary test, and the `AGENTS.md` edits as one checkpoint
+   commit.
 
-These are all "watch for later," not corrections to this cycle.
+No items outstanding. The "watch for later" flags (canonical
+synthetic bars fixture, SHA-256 helper, parent↔child import rules)
+remain correctly deferred.
 
-### 4.1 Boundary test covers 3 of 5 import rules from `BOUNDARIES.md`
-
-Currently enforced:
-- `strategy.py` imports `shared.context` — blocked
-- `strategy.py` imports `shared.slicing` — blocked
-- `strategy.py` imports local `research_indicators` — blocked
-
-Not yet enforced:
-- parent `strategy.py` imports child strategy modules
-- child `strategy.py` imports parent strategy modules
-
-The parent↔child checks need to know which folder is which, and they
-only have anything to assert against once children exist. Defer until
-the first child strategy is created. Flag to remember: add these to
-the same test file at that time, not as a separate test.
-
-### 4.2 Test scope is `**/strategy.py` only
-
-`IMPLEMENTATION_PLAN.md` also restricts `indicators.py` ("Not allowed:
-import slicer output, apply child filters"). The current boundary test
-would not catch a future `indicators.py` that imports `shared.slicing`.
-
-When `indicators.py` is added, widen the glob to scan more files in
-strategy folders, or add a second test function for non-strategy.py
-files in those folders.
-
-### 4.3 No canonical SHA-256 helper exists
-
-`data_and_results.md` now requires `input_data_sha256` in run config,
-but does not pin how the hash is computed. Different ad-hoc scripts
-could disagree (binary vs text mode on Windows, chunking strategy,
-etc.). Recommend a tiny `shared/data/hashes.py` that wraps
-`hashlib.sha256` over raw file bytes in binary mode, with one test
-against a known fixture, before the first run_config is written by any
-runner code. Not urgent today.
-
-### 4.4 `tests/fixtures/synthetic_bars.csv` still deferred
-
-Codex acknowledged. Agreed — not load-bearing until integration-style
-tests start needing it. Add before the third file invents its own
-inline bar fixture.
-
-## Suggested next order
-
-1. Ask the user for approval on `git init` and the first commit. The
-   `.gitignore` and `pyproject.toml` are in place; everything that
-   should be ignored is ignored; this is the last "no code in the
-   tree without a commit history" cycle.
-2. After `git init` (or in parallel if the user declines/defers it),
-   implement `shared/indicators/volatility.py` per the parent
-   `IMPLEMENTATION_PLAN.md`:
-   - pure True Range + ATR math
-   - caller-supplied `session_col` keyword for reset behavior — match
-     the `session_vwap` signature shape for consistency
-   - same dtype/empty-input contract as `vwap.py`
-   - red tests first per the protocol (use `importorskip` again until
-     the module is written, remove it in the same change that
-     implements the module)
-
-No items are outstanding from prior cycles. The repo is in the
-cleanest state it has been in since the protocol started.
+Next implementation step after this commit: `params.py` for
+`vwap_zscore_fade/parent/`, per the prior implementation plan.

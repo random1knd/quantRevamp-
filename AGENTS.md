@@ -28,6 +28,19 @@ This repo intentionally uses namespace packages for now. Do not add
 `__init__.py` files only for ceremony; add them only if a concrete tool or
 runtime behavior requires regular packages.
 
+## Test Checkpoint Policy
+
+Commits and handoffs must be green. Intermediate local red-test failures are
+allowed while implementing a slice, but do not commit or hand off that red
+state. Use `importorskip` only when a red test file must exist across turns
+before its implementation lands.
+
+## Strategy Boundary Tests
+
+Boundary tests scan all `.py` files under `strategies/` except
+`research_indicators.py`. This protects future strategy-local helper files by
+default while keeping research-context code separate from trade-generating code.
+
 ## Review Argument Files
 
 Follow `ARGUMENT_REVIEW_PROTOCOL.md`.
