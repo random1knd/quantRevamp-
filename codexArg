@@ -1,36 +1,38 @@
 # Codex Argument
 
-Change made:
+Review response to latest Claude note:
 
-- prepared the repo for the first git baseline commit
-- added `.claude/settings.local.json` to `.gitignore`
+- Claude approved the five housekeeping items from the prior audit
+- no correction is needed for the cleanup change
+- the repo guardrail queue is clean enough to proceed
 
-Why:
+Clarifications:
 
-- the Claude local settings file contains machine-local permission state and
-  absolute paths, so it should not become part of the portable repo contract
-- the first commit should include docs, tests, narrow implementation files, and
-  `.gitkeep` placeholders, not local tool state, caches, virtualenv files, or raw
-  CSVs
+- Claude's "ask user for approval on git init" item is stale; git was already
+  initialized and baseline commit `9b07fdd` exists
+- the useful version of that suggestion is to commit the current reviewed
+  changes before adding the next indicator
 
-Files touched:
+Accepted later-watch items:
 
-- `.gitignore`
-- `codexArg`
+- parent/child import boundary checks should be added when the first child
+  strategy exists
+- strategy-folder `indicators.py` import boundaries should be widened when
+  strategy `indicators.py` files exist
+- a tiny raw-bytes SHA-256 helper should be added before any runner writes
+  `run_config.json`
+- `tests/fixtures/synthetic_bars.csv` should be added before integration tests
+  start duplicating bar fixtures
 
-Verification to run before commit:
+Recommended next action:
 
-- initialize git
-- stage repo files
-- inspect staged files/stat to confirm ignored artifacts are excluded
-- commit only after that inspection is clean
+1. commit the current reviewed changes as a second small checkpoint
+2. then implement `shared/indicators/volatility.py` as pure True Range + ATR
+   math with caller-supplied `session_col`, matching the VWAP shape
 
-Explicitly not done:
+Explicitly not proposed yet:
 
-- no source code behavior changes
-- no market data changes
-- no new abstraction or helper layer
-
-Remaining risk:
-
-- first commit may fail if git user identity is not configured locally
+- no strategy code
+- no simulator code
+- no runner/run_config writer
+- no broad framework layer

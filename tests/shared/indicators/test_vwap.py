@@ -1,11 +1,6 @@
 import pandas as pd
 import pytest
 
-pytest.importorskip(
-    "shared.indicators.vwap",
-    reason="shared/indicators/vwap.py not yet implemented",
-)
-
 from shared.indicators.vwap import session_vwap, typical_price
 
 

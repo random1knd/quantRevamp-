@@ -1,57 +1,99 @@
 # Claude Argument
 
-Reviewing the CSV move from `docs/data/bars/` to `data/bars/`.
+Reviewing the five housekeeping items from the prior deep audit.
 
-## The move is correct
+## All five items executed correctly
 
-Verified independently:
+Verified independently against the filesystem:
 
-- six CSVs now live at `data/bars/1min/{NQ,ES,6E}_all_1min.csv` and
-  `data/bars/5min/{NQ,ES,6E}_all_5min.csv`
-- byte sizes match the originals exactly (no truncation)
-- total volume under `data/bars/` is ~1.31 GB
-- it was a move, not a copy — `docs/data/bars/1min/` and
-  `docs/data/bars/5min/` no longer exist
-- `data/bars/.gitkeep` is preserved
-- `pytest` from repo root still reports 10 passed, 1 skipped
+1. **`docs/data_and_results.md` Option C amendment.** `input_data_sha256`
+   and `input_data_bytes` are now listed in run-config minimum fields,
+   stored as maps of `{repo_relative_path: value}` with example JSON.
+   The "non-reproducible if data lives outside the repo `data/` folder"
+   rule is stated explicitly. `input_data_path` is correctly absent —
+   the map keys carry the path.
+2. **Coherence break resolved.** `BidVolume`, `AskVolume`, and
+   `Contract` are now in the required bar-columns list, with an
+   explicit "this repo targets futures bar data" note. The doc and
+   `shared/data/bars.py:9 REQUIRED_COLUMNS` now agree.
+3. **Empty `docs/data/` shells removed.** Directory no longer exists.
+4. **`tests/boundaries/test_strategy_imports.py` added.** AST-based,
+   handles `import shared.context`, `from shared.context import x`,
+   `from shared import context`, and `import shared.context.foo`.
+   Currently passes vacuously (no strategy.py yet) and will start
+   protecting the moment strategy code lands.
+5. **Namespace-package policy documented in `AGENTS.md`** ("Package
+   Policy" section). The choice is no longer invisible.
 
-`.gitignore` (`data/bars/**/*.csv`) correctly excludes the new files from
-tracking. Option C is intact.
+Verification: `pytest` from repo root → 22 passed (10 bars + 11 vwap +
+1 boundary), 0 skipped, 0 errors.
 
-## Two small follow-ups Codex did not address
+## Queue is clean
 
-### 1. Empty directory litter at `docs/data/`
+For the first time in several cycles, no items were deferred. Good.
 
-After the move, `docs/data/bars/` is an empty directory and `docs/data/`
-only contains that empty `bars/` subdir. These leftover shells are
-harmless to git (empty directories are not tracked) but they violate the
-spirit of "one source location for data": someone could see the empty
-`docs/data/bars/` and assume that is still a valid staging location.
+## Minor flags worth noting — none blocking
 
-Action: remove `docs/data/bars/` and `docs/data/` after the move. This is
-a small cleanup and does not need separate approval because the
-directories are empty.
+These are all "watch for later," not corrections to this cycle.
 
-### 2. Order: the doc amendment should come before cache cleanup
+### 4.1 Boundary test covers 3 of 5 import rules from `BOUNDARIES.md`
 
-The agreed order was:
+Currently enforced:
+- `strategy.py` imports `shared.context` — blocked
+- `strategy.py` imports `shared.slicing` — blocked
+- `strategy.py` imports local `research_indicators` — blocked
 
-1. doc amendment for Option C  *(no approval needed — just writing a
-   markdown file)*
-2. CSV move  *(done)*
-3. cache cleanup  *(needs user approval)*
-4. `git init`  *(needs user approval)*
-5. `shared/indicators/vwap.py`
+Not yet enforced:
+- parent `strategy.py` imports child strategy modules
+- child `strategy.py` imports parent strategy modules
 
-Codex's "next action item" jumped past step 1 to step 3. Step 1 needs no
-user approval and should land before any further filesystem mutations.
+The parent↔child checks need to know which folder is which, and they
+only have anything to assert against once children exist. Defer until
+the first child strategy is created. Flag to remember: add these to
+the same test file at that time, not as a separate test.
 
-Action: write the `data_and_results.md` amendment now (`input_data_sha256`
-map, `input_data_bytes` map, paths relative to repo root, note that
-referencing data outside the repo makes a run non-reproducible). Then
-queue the cache cleanup for user approval.
+### 4.2 Test scope is `**/strategy.py` only
 
-## Nothing else outstanding for the move itself
+`IMPLEMENTATION_PLAN.md` also restricts `indicators.py` ("Not allowed:
+import slicer output, apply child filters"). The current boundary test
+would not catch a future `indicators.py` that imports `shared.slicing`.
 
-The move was clean. The two items above are housekeeping, not corrections
-to what Codex did.
+When `indicators.py` is added, widen the glob to scan more files in
+strategy folders, or add a second test function for non-strategy.py
+files in those folders.
+
+### 4.3 No canonical SHA-256 helper exists
+
+`data_and_results.md` now requires `input_data_sha256` in run config,
+but does not pin how the hash is computed. Different ad-hoc scripts
+could disagree (binary vs text mode on Windows, chunking strategy,
+etc.). Recommend a tiny `shared/data/hashes.py` that wraps
+`hashlib.sha256` over raw file bytes in binary mode, with one test
+against a known fixture, before the first run_config is written by any
+runner code. Not urgent today.
+
+### 4.4 `tests/fixtures/synthetic_bars.csv` still deferred
+
+Codex acknowledged. Agreed — not load-bearing until integration-style
+tests start needing it. Add before the third file invents its own
+inline bar fixture.
+
+## Suggested next order
+
+1. Ask the user for approval on `git init` and the first commit. The
+   `.gitignore` and `pyproject.toml` are in place; everything that
+   should be ignored is ignored; this is the last "no code in the
+   tree without a commit history" cycle.
+2. After `git init` (or in parallel if the user declines/defers it),
+   implement `shared/indicators/volatility.py` per the parent
+   `IMPLEMENTATION_PLAN.md`:
+   - pure True Range + ATR math
+   - caller-supplied `session_col` keyword for reset behavior — match
+     the `session_vwap` signature shape for consistency
+   - same dtype/empty-input contract as `vwap.py`
+   - red tests first per the protocol (use `importorskip` again until
+     the module is written, remove it in the same change that
+     implements the module)
+
+No items are outstanding from prior cycles. The repo is in the
+cleanest state it has been in since the protocol started.

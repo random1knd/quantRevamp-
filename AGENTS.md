@@ -22,6 +22,12 @@ When working in this repo:
 If a requested change would introduce broad abstraction or hidden behavior, stop
 and make that tradeoff explicit before implementing it.
 
+## Package Policy
+
+This repo intentionally uses namespace packages for now. Do not add
+`__init__.py` files only for ceremony; add them only if a concrete tool or
+runtime behavior requires regular packages.
+
 ## Review Argument Files
 
 Follow `ARGUMENT_REVIEW_PROTOCOL.md`.

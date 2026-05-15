@@ -4,9 +4,8 @@ This doc defines the first simple data/result contract so the new repo does not
 need a heavy workflow system.
 
 Runtime data should live under the repo-root `data/` folder described in
-`repo_structure.md`. If raw CSVs are temporarily staged under `docs/data/`, do
-not build loaders around that accidental location; move or copy them to the
-root data layout before implementation.
+`repo_structure.md`. Do not build loaders around `docs/` paths or absolute
+local paths.
 
 Raw market data is not versioned in git. Reproducible runs must identify the
 input files by repo-relative path, byte size, and SHA-256 content hash.
@@ -16,7 +15,7 @@ non-reproducible. Absolute local paths are not portable decision evidence.
 
 ## Bar Data
 
-Minimum bar columns:
+Required bar columns for current repo loaders:
 
 - `DateTime`
 - `Open`
@@ -24,14 +23,18 @@ Minimum bar columns:
 - `Low`
 - `Close`
 - `Volume`
-
-Optional order-flow columns:
-
 - `BidVolume`
 - `AskVolume`
+- `Contract`
+
+This repo currently targets futures bar data where order-flow volume fields and
+explicit contract labels are baseline inputs. A non-futures data source needs a
+separate loader or an explicit revision to this contract.
+
+Optional bar columns:
+
 - `Delta`
 - `NumTrades`
-- `Contract`
 
 Required source-data decisions before building loaders:
 
@@ -172,8 +175,8 @@ Minimum run config fields:
 - parameter snapshot
 - random seed
 - code snapshot or git commit/tag, when available
-- input data SHA-256 map
-- input data byte-size map
+- `input_data_sha256`
+- `input_data_bytes`
 - slippage model
 - slippage amount
 - commission/cost model
@@ -185,7 +188,7 @@ permutation or equity-curve resampling, can be reproduced.
 `code snapshot or git commit/tag` is required before using a run as decision
 evidence.
 
-`input data SHA-256 map` is stored as:
+`input_data_sha256` is stored as:
 
 ```json
 {
@@ -193,7 +196,7 @@ evidence.
 }
 ```
 
-`input data byte-size map` is stored as:
+`input_data_bytes` is stored as:
 
 ```json
 {
