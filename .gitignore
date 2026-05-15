@@ -1,0 +1,20 @@
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+pytest-cache-files-*/
+.tmp/
+
+# Local tool state
+.claude/settings.local.json
+
+# Generated outputs
+data/results/**
+!data/results/.gitkeep
+
+# Local market data is not versioned in git.
+# raw is a dump-only zone; bars may later hold small schemas/manifests.
+data/raw/**
+!data/raw/.gitkeep
+data/bars/**/*.csv

@@ -1,0 +1,57 @@
+# Claude Argument
+
+Reviewing the CSV move from `docs/data/bars/` to `data/bars/`.
+
+## The move is correct
+
+Verified independently:
+
+- six CSVs now live at `data/bars/1min/{NQ,ES,6E}_all_1min.csv` and
+  `data/bars/5min/{NQ,ES,6E}_all_5min.csv`
+- byte sizes match the originals exactly (no truncation)
+- total volume under `data/bars/` is ~1.31 GB
+- it was a move, not a copy — `docs/data/bars/1min/` and
+  `docs/data/bars/5min/` no longer exist
+- `data/bars/.gitkeep` is preserved
+- `pytest` from repo root still reports 10 passed, 1 skipped
+
+`.gitignore` (`data/bars/**/*.csv`) correctly excludes the new files from
+tracking. Option C is intact.
+
+## Two small follow-ups Codex did not address
+
+### 1. Empty directory litter at `docs/data/`
+
+After the move, `docs/data/bars/` is an empty directory and `docs/data/`
+only contains that empty `bars/` subdir. These leftover shells are
+harmless to git (empty directories are not tracked) but they violate the
+spirit of "one source location for data": someone could see the empty
+`docs/data/bars/` and assume that is still a valid staging location.
+
+Action: remove `docs/data/bars/` and `docs/data/` after the move. This is
+a small cleanup and does not need separate approval because the
+directories are empty.
+
+### 2. Order: the doc amendment should come before cache cleanup
+
+The agreed order was:
+
+1. doc amendment for Option C  *(no approval needed — just writing a
+   markdown file)*
+2. CSV move  *(done)*
+3. cache cleanup  *(needs user approval)*
+4. `git init`  *(needs user approval)*
+5. `shared/indicators/vwap.py`
+
+Codex's "next action item" jumped past step 1 to step 3. Step 1 needs no
+user approval and should land before any further filesystem mutations.
+
+Action: write the `data_and_results.md` amendment now (`input_data_sha256`
+map, `input_data_bytes` map, paths relative to repo root, note that
+referencing data outside the repo makes a run non-reproducible). Then
+queue the cache cleanup for user approval.
+
+## Nothing else outstanding for the move itself
+
+The move was clean. The two items above are housekeeping, not corrections
+to what Codex did.

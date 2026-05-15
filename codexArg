@@ -1,0 +1,36 @@
+# Codex Argument
+
+Change made:
+
+- prepared the repo for the first git baseline commit
+- added `.claude/settings.local.json` to `.gitignore`
+
+Why:
+
+- the Claude local settings file contains machine-local permission state and
+  absolute paths, so it should not become part of the portable repo contract
+- the first commit should include docs, tests, narrow implementation files, and
+  `.gitkeep` placeholders, not local tool state, caches, virtualenv files, or raw
+  CSVs
+
+Files touched:
+
+- `.gitignore`
+- `codexArg`
+
+Verification to run before commit:
+
+- initialize git
+- stage repo files
+- inspect staged files/stat to confirm ignored artifacts are excluded
+- commit only after that inspection is clean
+
+Explicitly not done:
+
+- no source code behavior changes
+- no market data changes
+- no new abstraction or helper layer
+
+Remaining risk:
+
+- first commit may fail if git user identity is not configured locally
