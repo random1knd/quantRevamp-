@@ -80,6 +80,35 @@ def test_chronological_session_splits_clamps_four_sessions_to_one_two_one():
     assert splits["test_end"] == date(2026, 1, 4)
 
 
+@pytest.mark.parametrize(
+    ("session_count", "expected_counts"),
+    [
+        (5, (1, 3, 1)),
+        (7, (2, 3, 2)),
+        (9, (2, 5, 2)),
+    ],
+)
+def test_chronological_session_splits_pins_intermediate_ratio_drift(
+    session_count,
+    expected_counts,
+):
+    sessions = [date(2026, 1, day) for day in range(1, session_count + 1)]
+    bars = make_prepared_bars(sessions)
+
+    splits = chronological_session_splits(bars)
+
+    assert (
+        splits["discovery_session_count"],
+        splits["validation_session_count"],
+        splits["test_session_count"],
+    ) == expected_counts
+    assert splits["discovery_end"] == sessions[expected_counts[0] - 1]
+    assert splits["validation_end"] == sessions[
+        expected_counts[0] + expected_counts[1] - 1
+    ]
+    assert splits["test_end"] == sessions[-1]
+
+
 def test_chronological_session_splits_preserves_first_seen_session_order():
     bars = make_prepared_bars(
         [

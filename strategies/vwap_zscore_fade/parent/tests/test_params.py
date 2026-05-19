@@ -24,3 +24,7 @@ def test_parent_params_match_locked_readme_values():
     assert params.NQ_TICK_SIZE == 0.25
     assert params.NQ_POINT_VALUE == 20.0
     assert params.NQ_TICK_VALUE == 5.0
+
+
+def test_signal_min_bars_covers_entry_z_warmup_window():
+    assert params.SIGNAL_MIN_BARS >= params.Z_WINDOW
