@@ -268,6 +268,11 @@ Every completed trade should record at least:
 
 `RealizedR` is based on initial risk, not a later trailing or target distance.
 
+`ExitTime` records the fill timestamp. For `time_stop`, `session_end`, and
+`end_of_data` exits, that is the close of the exit bar. For stop, target, and
+gap-stop exits on OHLC bars, it is the exit bar's open timestamp because the
+exact intrabar fill time is not observable.
+
 ## Research Context To Record
 
 These fields are for post-trade slicing only. They must not affect parent

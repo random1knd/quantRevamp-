@@ -196,7 +196,7 @@ def test_generate_trades_exits_at_time_stop_after_max_bars_held():
 
     assert trade.exit_reason == "time_stop"
     assert trade.bars_held == 12
-    assert trade.exit_time == bars.loc[31, "DateTime_ET"]
+    assert trade.exit_time == bars.loc[31, "DateTime_ET"] + pd.Timedelta(minutes=5)
 
 
 def test_generate_trades_exits_at_session_end_before_time_stop():
@@ -212,9 +212,23 @@ def test_generate_trades_exits_at_session_end_before_time_stop():
 
     assert trade.exit_reason == "session_end"
     assert trade.bars_held == 7
-    assert trade.exit_time == bars.loc[26, "DateTime_ET"]
-    assert trade.exit_time.hour == 15
-    assert trade.exit_time.minute == 55
+    assert trade.exit_time == bars.loc[26, "DateTime_ET"] + pd.Timedelta(minutes=5)
+    assert trade.exit_time.hour == 16
+    assert trade.exit_time.minute == 0
+
+
+def test_generate_trades_records_end_of_data_exit_at_last_bar_close():
+    hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides=hold_bar,
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "end_of_data"
+    assert trade.bars_held == 1
+    assert trade.exit_time == bars.loc[20, "DateTime_ET"] + pd.Timedelta(minutes=5)
 
 
 def test_generate_trades_excludes_roll_session_signals_when_requested():

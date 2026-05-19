@@ -2,147 +2,59 @@
 
 Change made:
 
-- performed a read-only inspection of the parent smoke output
-- did not change strategy code, parameters, simulator behavior, or artifacts
-- recorded the inspection results below for Claude review
+- fixed parent `ExitTime` semantics for close-based exits
+- documented the parent artifact timestamp rule in the parent README
+- marked the existing dirty smoke output as pilot-only with a local `PILOT.txt`
+- kept the fix inside the parent strategy slice; no runner, registry, split
+  helper, or broad framework was added
 
 Why:
 
-- Claude identified a fork: implementation bug vs. parent hypothesis rejection
-- the next approved slice was inspection only, not new infrastructure or tuning
-- the smoke run has a strongly negative mean R, so the immediate task is to
-  check whether the output shape suggests a mechanical error
+- Claude was right that dirty-tree smoke evidence is a critical provenance
+  problem if it is treated as decision evidence
+- Claude's `ExitTime` objection is also critical for artifact semantics because
+  downstream context recording and validation can misinterpret close exits
+- PnL math was not changed, but the artifact timestamp now matches the declared
+  fill event for `time_stop`, `session_end`, and `end_of_data`
 
 Files touched:
 
+- `strategies/vwap_zscore_fade/parent/strategy.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
+- `strategies/vwap_zscore_fade/parent/README.md`
+- `data/results/vwap_zscore_fade/parent/smoke_20260519T082642Z/PILOT.txt`
+  (ignored local artifact marker)
+- `claudeArg` already contained Claude's latest review and is being kept as the
+  current accepted reviewer input
 - `codexArg`
 
-Smoke output inspected:
+Behavior:
 
-- `data/results/vwap_zscore_fade/parent/smoke_20260519T082642Z/trades.csv`
-- trade count: 11844
-- mean realized R: -0.08551150963565038
-- win rate: 0.41033434650455924
-- max drawdown R: 1062.2470357582797
+- `time_stop`, `session_end`, and `end_of_data` exits now record `ExitTime` as
+  `DateTime_ET + BAR_INTERVAL_MINUTES`
+- stop, target, and gap-stop exits still record the exit bar open timestamp
+  because exact intrabar fill time is not observable from OHLC bars
+- old smoke output remains unchanged except for the pilot marker
 
-EntryZ absolute distribution:
+Verification so far:
 
-```text
-2.0-2.5    3938
-2.5-3.0    2000
-3.0-4.0    2204
-4.0-5.0    1369
-5.0+       2333
-```
-
-EntryZ signed distribution:
-
-```text
-<=-5          601
--5 to -4      562
--4 to -3     1060
--3 to -2.5    991
--2.5 to -2   1862
-2 to 2.5     2076
-2.5 to 3     1009
-3 to 4       1144
-4 to 5        807
->=5          1732
-```
-
-Realized R by year:
-
-```text
-Year  Trades  MeanR      WinRate
-2014      89  -0.093623  0.393258
-2015    1125  -0.179600  0.386667
-2016    1039  -0.056955  0.430221
-2017    1050  -0.090070  0.417143
-2018    1067  -0.160920  0.379569
-2019    1048  -0.099373  0.422710
-2020    1063  -0.090488  0.396049
-2021    1049  -0.079976  0.408008
-2022    1045  -0.112055  0.393301
-2023    1039  -0.078106  0.404235
-2024    1034  -0.016368  0.428433
-2025    1019   0.014771  0.444553
-2026     177   0.041727  0.457627
-```
-
-Realized R by exit reason:
-
-```text
-ExitReason   Trades  MeanR      WinRate   MinR       MaxR
-stop           5632  -1.022616  0.000000 -1.179487  -1.000801
-time_stop      3548   0.414878  0.676156 -1.057778   4.315569
-target         2109   1.462370  1.000000  0.389548   5.716585
-session_end     443   0.598748  0.742664 -0.948509   4.168800
-gap_stop         71  -1.164099  0.000000 -2.153846  -1.000000
-end_of_data      41   0.191656  0.560976 -1.025641   2.228856
-```
-
-Realized R by side:
-
-```text
-Side   Trades  MeanR      WinRate   MinR       MaxR
-long     5076  -0.049125  0.432624 -2.153846   5.567157
-short    6768  -0.112801  0.393617 -1.671642   5.716585
-```
-
-Same-bar stop/target conflict count:
-
-- stop exits: 5632
-- stops where target was also touched on the same bar: 18
-- share of stop exits: 0.0031960227272727275
-- conclusion: conservative same-bar conflict handling is not a major driver of
-  the negative result
-
-Worst five trade verification:
-
-- all five worst losses are `gap_stop` exits
-- each matched a real exit bar where the bar opened beyond the initial stop
-- examples checked against prepared RTH bars:
-  - 2017-03-02 long: stop 5415.2143, exit bar open 5412.00, low 5408.75
-  - 2016-09-06 short: stop 4865.0446, exit bar open 4866.25, high 4866.50
-  - 2019-06-06 short: stop 7135.7321, exit bar open 7142.25, high 7143.75
-  - 2022-06-03 long: stop 12577.9196, exit bar open 12564.75, low 12564.75
-  - 2016-03-04 short: stop 4369.2411, exit bar open 4371.25, high 4375.50
-
-Inspection read:
-
-- no obvious exit-price or stop-direction bug was found in the worst five
-  losses
-- the negative result is broad across 2014-2024, while 2025-2026 is mildly
-  positive on the available partial sample
-- both sides are negative, with shorts worse than longs
-- stops are frequent enough to overwhelm positive target, time-stop, and
-  session-end exits
-- EntryZ signals are not mostly just threshold grazes; 3702 trades have
-  `abs(EntryZ) >= 5.0`
-
-Verification:
-
-- `python -m pytest`: 61 passed
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`:
+  14 passed
+- `python -m pytest`: 62 passed
 
 Assumptions:
 
-- this inspection is read-only evidence from the existing pilot smoke output
-- no parameter changes should be made based on these tables
-- the next decision should be whether to treat this as an implementation bug
-  needing deeper bar-level audit or as parent v0 hypothesis rejection
+- the correct timestamp for close-based exits is the close of the 5-minute exit
+  bar
+- the dirty `claudeArg` review should be checkpointed rather than discarded,
+  because it is the current reviewer guidance the user asked me to act on
+- generated `data/results` files remain ignored, so the pilot marker is a local
+  annotation rather than versioned source evidence
 
 Remaining risks:
 
-- this inspection did not audit every trade, only aggregates and the five worst
-  losses
-- the smoke run remains pilot evidence because it was generated from a dirty
-  working tree before `smoke_run.py` was committed
-- `ExitTime` still records the exit bar open timestamp for close-based exits,
-  as Claude noted
-
-Next proposed slice:
-
-- pause for Claude review. If Claude agrees this is likely hypothesis
-  rejection, document parent v0 rejection in the parent README and stop working
-  this strategy before any slicing or tuning. If Claude sees an implementation
-  bug candidate, audit that specific mechanism first.
+- a clean smoke rerun still needs to be executed from a clean tracked tree after
+  this checkpoint
+- the new clean smoke output should be inspected only for deterministic
+  equivalence on trade count and headline metrics; it should not trigger tuning
+  or slicing in this same slice

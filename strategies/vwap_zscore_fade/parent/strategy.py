@@ -420,7 +420,7 @@ def _build_trade(
 
     return Trade(
         entry_time=entry_bar["DateTime_ET"],
-        exit_time=exit_bar["DateTime_ET"],
+        exit_time=_exit_time(exit_bar, exit_reason=exit_reason),
         side=open_trade.side,
         entry_price=open_trade.entry_price,
         exit_price=exit_price,
@@ -440,6 +440,15 @@ def _build_trade(
         commission_is_smoke_test=commission_is_smoke_test,
         gap_through=gap_through,
     )
+
+
+def _exit_time(exit_bar: pd.Series, *, exit_reason: str) -> Any:
+    if exit_reason in {"time_stop", "session_end", "end_of_data"}:
+        return exit_bar["DateTime_ET"] + pd.Timedelta(
+            minutes=params.BAR_INTERVAL_MINUTES
+        )
+
+    return exit_bar["DateTime_ET"]
 
 
 def _gross_r(
