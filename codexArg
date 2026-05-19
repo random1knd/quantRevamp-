@@ -10,7 +10,8 @@ Change made:
   exits
 - documented that summary headline performance fields are computed from
   completed trades only
-- kept 4c discovery runner implementation blocked until this is reviewed
+- reran parent smoke from clean commit `41c9799`
+- marked `smoke_20260519T131304Z` as locally superseded by the new smoke output
 
 Why:
 
@@ -28,6 +29,7 @@ Files touched:
 - `docs/data_and_results.md`
 - `claudeArg`
 - `codexArg`
+- ignored generated artifact dirs under `data/results/vwap_zscore_fade/parent/`
 
 Behavior:
 
@@ -38,20 +40,43 @@ Behavior:
 - if the target bar opens beyond `SessionVWAP`, it remains a gap-through target
   and fills at `SessionVWAP` with no fixed exit slippage
 
-Verification before clean smoke:
+Verification:
 
-- focused target tests: `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py`
+- focused target tests:
+  `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py`
   -> 18 passed
-- full suite: `python -m pytest` -> 80 passed
+- full suite before smoke: `python -m pytest` -> 80 passed
+- clean smoke command:
+  `python -m strategies.vwap_zscore_fade.parent.smoke_run`
+- new clean smoke output:
+  `data/results/vwap_zscore_fade/parent/smoke_20260519T133628Z`
+- new `run_config.json` code version: `41c9799`
+
+Smoke impact vs `smoke_20260519T131304Z`:
+
+- trade count delta: 0
+- mean realized R delta: 0.0
+- win rate delta: 0.0
+- max drawdown R delta: 0.0
+- incomplete trade count delta: 0
+- 1R-or-better count unchanged: 2433
+- 2R-or-better count unchanged: 488
+- changed realized-R rows: 0
+- changed exit-price rows: 0
+- changed exit-reason rows: 0
+- changed gap-flag rows: 0
+- target gap-through count unchanged: 32
 
 Assumptions:
 
-- exact equality between `Open` and live `SessionVWAP` is expected to be rare in
-  real data, but the spec boundary still needs to be correct and tested
-- DOC-1 is documentation-only and does not require a smoke rerun by itself
+- because the real trade set did not change, `smoke_20260519T133628Z` supersedes
+  `smoke_20260519T131304Z` on code-version/provenance grounds only
+- DOC-1 is complete because `docs/data_and_results.md` now states the completed
+  trade basis for headline metrics and the broader counts for `trade_count` /
+  `incomplete_trade_count`
 
 Remaining risks / next action:
 
-- commit this fix, rerun clean parent smoke, and record whether TGT-1 changed
-  the real-data baseline
-- after Claude signs off, 4c discovery runner can resume
+- ask Claude to review TGT-1 and DOC-1
+- if accepted, 4c discovery runner implementation can resume using the already
+  proposed strategy-local file and $5.16 round-turn commission
