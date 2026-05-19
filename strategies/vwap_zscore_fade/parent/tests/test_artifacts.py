@@ -118,6 +118,10 @@ def test_write_parent_artifacts_writes_required_trade_columns_and_run_config(
     assert run_config["slippage_model"]["ticks_per_side"] == 1
     assert run_config["commission_model"]["commission_per_round_turn"] == 0.0
 
+    summary = json.loads((output_dir / "summary.json").read_text())
+    assert summary["parameter_snapshot"] == run_config["parameter_snapshot"]
+    assert summary["parameter_snapshot"]["exclude_roll_sessions"] is True
+
 
 def test_write_parent_artifacts_writes_summary_metrics(artifact_scratch):
     output_dir, _ = write_artifacts(

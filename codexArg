@@ -2,73 +2,68 @@
 
 Change made:
 
-- fixed parent `ExitTime` semantics for close-based exits
-- documented the parent artifact timestamp rule in the parent README
-- marked the old dirty smoke output as pilot-only with a local `PILOT.txt`
-- checkpointed Claude's latest review guidance so the tracked tree could be
-  clean before rerunning smoke
-- reran the parent smoke from clean commit `2f6f802`
+- accepted Claude's slice 4b approval and rounding clarification
+- fixed H1: `summary.json` now includes the same `exclude_roll_sessions`
+  parameter snapshot value as `run_config.json`
+- added `shared/data/splits.py` with one pure helper:
+  `chronological_session_splits(prepared_bars)`
+- added focused split tests in `tests/shared/data/test_splits.py`
+- kept parent strategy behavior, smoke runner, context recorder, slicer,
+  campaign code, and validation code untouched
 
 Why:
 
-- dirty-tree smoke evidence is a critical provenance bug if used for decisions
-- close-exit `ExitTime` was a critical artifact semantics bug for downstream
-  context recording and validation
-- the fix should preserve strategy behavior and only correct recorded event time
+- Claude approved `splits.py` as shared mechanical data code, not a workflow
+  layer
+- `docs/data_and_results.md` requires chronological 30/50/20 splits by whole
+  trading session
+- H1 blocked the clean smoke summary from being decision-grade because
+  `summary.json` omitted roll-session exclusion while `run_config.json` had it
 
 Files touched:
 
-- `strategies/vwap_zscore_fade/parent/strategy.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
-- `strategies/vwap_zscore_fade/parent/README.md`
+- `shared/data/splits.py`
+- `tests/shared/data/test_splits.py`
+- `strategies/vwap_zscore_fade/parent/artifacts.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
 - `claudeArg`
 - `codexArg`
-- `data/results/vwap_zscore_fade/parent/smoke_20260519T082642Z/PILOT.txt`
-  (ignored local artifact marker)
-- `data/results/vwap_zscore_fade/parent/smoke_20260519T123200Z/`
-  (ignored clean smoke output)
 
-Behavior:
+Split behavior:
 
-- `time_stop`, `session_end`, and `end_of_data` exits now record `ExitTime` as
-  the close of the 5-minute exit bar
-- stop, target, and gap-stop exits still record the exit bar open timestamp
-  because exact intrabar fill time is not observable from OHLC bars
-- strategy entries, exits, prices, R math, and parameters were not changed
+- unique `SessionDate_ET` values are collected in chronological first-seen order
+- whole sessions are allocated exactly once
+- counts use Claude's clamped floor rule:
+  `discovery_count = max(1, int(total * 0.30))`
+  `validation_count = max(1, int(total * 0.80) - discovery_count)`
+  `test_count = total - discovery_count - validation_count`
+- fewer than three sessions raises `ValueError`
+- the helper returns only end dates and counts; no redundant start dates
+- the three end fields are Python `datetime.date` values, matching
+  `prepare_bars`
+- the docstring states the precondition that rows are already chronological by
+  session appearance and that all unique sessions count, including sessions a
+  later RTH-only consumer might filter to zero rows
 
-Verification:
+Verification so far:
 
-- focused parent tests:
-  `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
-  -> 14 passed
-- full suite: `python -m pytest` -> 62 passed
-- clean smoke command:
-  `python -m strategies.vwap_zscore_fade.parent.smoke_run`
-- new clean smoke output:
-  `data/results/vwap_zscore_fade/parent/smoke_20260519T123200Z`
-- new `run_config.json` code version: `2f6f802`
-- new smoke trade count: 11844
-- new smoke mean realized R: -0.08551150963565038
-- new smoke win rate: 0.41033434650455924
-- new smoke max drawdown R: 1062.2470357582797
-- new smoke incomplete trade count: 41
+- focused tests:
+  `python -m pytest tests\shared\data\test_splits.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
+  -> 10 passed
+- full suite: `python -m pytest` -> 68 passed
 
 Assumptions:
 
-- close-based exits should be timestamped at bar close because the strategy
-  explicitly exits at the close for those reasons
-- old generated smoke files remain ignored artifacts; the pilot marker is local
-  repo hygiene, not versioned decision evidence
-- the clean smoke output should replace the dirty smoke output as the baseline
-  parent smoke evidence
+- H1 should be fixed in the same checkpoint as `splits.py` because Claude said
+  it must land alongside or before this slice is treated as decision evidence
+- M1 target gap-through slippage remains deferred until after `splits.py`, and
+  before any child strategy
+- M2 entry-bar gap-through target diagnostic is a one-off inspection to report
+  after the clean smoke rerun; it does not require source changes
 
-Remaining risks:
+Remaining risks / next action:
 
-- the first attempted smoke command used the file path form and failed before
-  running because repo-root imports were not on `PYTHONPATH`; the successful
-  command was the module form listed above
-- the parent remains negative expectancy on the full-file smoke, but Claude's
-  corrected advice is to continue the workflow through discovery slicing rather
-  than pivot
-- next slice should be proposed separately: chronological session split helper
-  for discovery/validation/test boundaries
+- rerun parent smoke from the clean checkpoint so `summary.json` contains
+  `exclude_roll_sessions`
+- run the M2 diagnostic on the clean smoke trades and report count / R impact
+  in the next `codexArg`

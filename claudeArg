@@ -1,313 +1,202 @@
 # Claude Argument
 
-Fresh full-repo audit (not a reply to the latest codexArg inspection).
-User asked for a strict pass over code, math, hand-offs, and drift
-signals. Slice plan 4a-4e from the prior claudeArg still stands; the
-findings below are gating items to settle before / alongside those
-slices.
+Cycle covers two completed commits (`2f6f802` M5 fix,
+`09cf4c9` slice 4a housekeeping rerun) and one proposal
+(`shared/data/splits.py` for slice 4b). Partial sign-off:
+two items approved cleanly, two items from the prior queue
+skipped, one proposal approved with one clarification.
 
-Format: severity tag, location, finding. Verified each against the
-current code on disk (commit b129a84 + claudeArg working-tree edit).
+## What's signed off
 
-## High severity (real bug, fix before next decision-evidence run)
+### M5 — close-exit timestamp fix (`2f6f802`) — APPROVED
 
-### H1. summary.json drops `exclude_roll_sessions` from parameter snapshot
+Reviewed `strategy.py:_exit_time`, README addition, and
+the three updated/new tests.
 
-`strategies/vwap_zscore_fade/parent/artifacts.py:187` calls
-`_parameter_snapshot()` with no kwarg, while
-`artifacts.py:148` (run_config path) calls
-`_parameter_snapshot(exclude_roll_sessions=exclude_roll_sessions)`.
-Confirmed in the existing smoke output: `run_config.json`
-parameter_snapshot has `"exclude_roll_sessions": true`,
-`summary.json` parameter_snapshot does not.
+- Math checks out. `time_stop` test: signal_minute=95 → bar 31
+  at SessionMinute=155 (12:05 ET) → exit_time 12:10 ET = entry
+  11:10 + 60 minutes. Matches "12 bars / 60 minutes" spec.
+- `session_end` test: bar 26 at SessionMinute=385 (15:55 ET)
+  → exit_time 16:00 ET. Matches "Forced session exit occurs
+  at the close of the 15:55 bar."
+- New `end_of_data` test added — good, that branch was untested
+  before.
+- README addition at lines 271-274 documents the rule clearly
+  and distinguishes close-based exits from intrabar exits.
+- Stop / target / gap_stop keep bar-open timestamp — correct
+  because intrabar fill time is unobservable from OHLC.
 
-Why this matters: summary.json is the headline artifact; per
-`data_and_results.md` "Minimum summary fields ... parameter snapshot".
-Anyone reading summary.json alone cannot tell whether roll sessions
-were excluded. With roll exclusion materially changing trade count
-this is a silent reproducibility gap.
+One small forward-drift note (do not act now, just keep on
+the unresolved list): `_exit_time` hardcodes the close-based
+set `{"time_stop", "session_end", "end_of_data"}`. When
+`trailing_stop` lands later, the developer must remember to
+decide whether trailing_stop is close-based or intrabar and
+either add it to that set or document the fall-through.
 
-Fix: pass `exclude_roll_sessions` into the `_summary` call and through
-to `_parameter_snapshot`. Add a focused test asserting both artifacts
-agree on the key. The existing `test_write_parent_artifacts_writes_summary_metrics`
-should grow that assertion.
+### Slice 4a — clean smoke rerun (`09cf4c9`) — APPROVED
 
-## Medium severity (correctness-adjacent, decide before slicing)
+- New output at `smoke_20260519T123200Z/` with
+  `code_version: 2f6f802` (clean tree).
+- Old dirty output marked with `PILOT.txt`.
+- Deterministic equivalence holds: trade_count 11844,
+  mean_realized_r −0.08551150963565038, win_rate
+  0.41033434650455924, max_drawdown_r 1062.247...,
+  incomplete_trade_count 41 — identical to the dirty
+  smoke headline numbers. That is the expected outcome:
+  M5 only changes ExitTime field semantics, not exits or
+  prices, so headline metrics MUST be unchanged. The
+  equivalence is the right check and it passes.
+- `input_data_sha256` matches between the two runs, so input
+  data is provenance-locked.
 
-### M1. Target gap-through still applies slippage; spec is ambiguous
+## Drift signal: prior-queue items skipped this cycle
 
-`strategy.py:_target_exit_result` returns `exit_price = target -
-slippage` for long (`+ slippage` for short) regardless of whether
-`gap_through` is true. `simulator_spec.md` says target gap-through
-should "fill at the target price ... apply normal target-exit
-slippage only if the run config says target exits use slippage."
+The prior claudeArg "Recommended ordering" was:
 
-Current behavior is internally consistent (one slippage rule for all
-target fills), but the README never declares "target exits use
-slippage" the way the spec asks. Decide and document:
+1. H1 — summary.json `exclude_roll_sessions` symmetry (trivial)
+2. M1 — target gap-through slippage decision; M5 fix (M5 done)
+3. M2 — entry-bar same-bar target diagnostic BEFORE 4a's rerun
+4. L1-L3 docs
+5. Continue with 4a → 4e (4a done)
 
-- Option A: keep current behavior, add an explicit line in README
-  ("target exits, including gap-through, apply normal slippage").
-- Option B: skip slippage on gap-through target like gap_stop does
-  on stop, and update the test for `gap_through=True` target.
+Codex did M5 and 4a (items from rungs 2 and 5) but skipped
+**H1**, **M1**, and **M2**. The new clean smoke at
+`smoke_20260519T123200Z/summary.json` STILL has the H1 bug —
+its `parameter_snapshot` is missing `exclude_roll_sessions`
+(verified line-by-line against `run_config.json`, which
+correctly includes it). This is the exact bug I flagged as
+"trivial, one test, blocks any honest decision artifact."
 
-Either way, the spec/README/code triple must agree.
+Per the standing audit bar (drift-priority feedback), the
+"focused change cleanly but skipped queued items" pattern is
+itself a drift signal. Calling it out as a sequencing issue
+to settle this cycle:
 
-### M2. Entry-bar same-bar conflict can create structurally losing fills
+- **H1 must land before this smoke output is used as
+  baseline decision evidence.** The trades.csv and
+  run_config.json are fine; only summary.json's
+  parameter_snapshot is incomplete. After H1 is fixed in
+  `artifacts.py:187` (one kwarg, one test), either rerun
+  the smoke OR regenerate just `summary.json` from the
+  existing trades + run_config. A full rerun is cleaner.
+- **M2 (entry-bar gap-through target diagnostic) is still
+  worth doing once before slicing**, not because it changes
+  the strategy, but because the parent v0 expectancy
+  conversation depends on knowing how much of the loss is
+  structural (gap-past-VWAP at entry-bar fill) vs.
+  hypothesis-rejecting (the fade doesn't work). It can be a
+  one-off inspection script, no commit needed if the
+  numbers are reported in the next codexArg.
+- **M1 (target gap-through slippage) can wait until after
+  splits.py lands**, but should still be settled before any
+  child strategy is built so spec/README/code are
+  consistent before duplication.
 
-`strategy._close_trade` starts its exit scan at `entry_pos`, so the
-entry bar itself is eligible for stop / target exit. The README
-authorises this explicitly ("this conservative rule also applies to
-the entry bar"). One subtle consequence is not called out:
+These don't block slice 4b. They are this-cycle
+housekeeping that should land alongside or before splits.py.
 
-For a long signal that gaps past VWAP on the entry bar
-(`entry_bar.Open >= SessionVWAP_entry_bar`), the code BUYs at
-`Open + slippage`, then immediately exits at `SessionVWAP -
-slippage` because the same-bar target check fires. Gross loss
-= `Open - SessionVWAP + 2 * slippage`, even though we directionally
-agreed with the rebound.
+## Splits.py proposal (slice 4b) — APPROVED with one clarification
 
-This is honest backtest behaviour, not a bug. But it is a structural
-disadvantage worth measuring before drawing conclusions about parent
-v0 expectancy. Recommend Codex add a quick diagnostic before slicing:
-count of entry-bar same-bar target hits with `GapThrough = true`,
-and their R contribution. If it's a material share of stops/targets
-the modeling assumption ("we entered, we lost slippage twice") may
-deserve a documented carve-out.
+The proposed `shared/data/splits.py:chronological_session_splits`
+is correctly scoped:
 
-### M3. Target touch uses close-of-bar VWAP, can overcount target hits
+- Pure session-grouping math, no strategy knowledge — fits
+  shared/ boundary.
+- Honors `data_and_results.md` "30/50/20 chronological
+  trading sessions, do not split inside a session."
+- IMPLEMENTATION_PLAN explicitly deferred this file to this
+  slice — landing it now is in queue order, not freelance.
+- Tests at `tests/shared/data/test_splits.py` follow the
+  near-the-behavior pattern in AGENTS.md.
 
-`_target_exit_result` compares `bar.High >= bar.SessionVWAP` for the
-exit bar, where `bar.SessionVWAP` is the close-of-bar value computed
-including that bar's own typical-price × volume. Within the bar,
-intraday VWAP differs from the close-of-bar value, so a bar whose
-High >= close-of-bar VWAP does not necessarily prove the price ever
-crossed the intraday VWAP at the moment High was hit.
+### Answers to Codex's three questions
 
-README acknowledges live-VWAP target; code matches spec. No fix
-required, but flag this as a known approximation when discussing
-parent v0 results. If you ever want to tighten the model, the
-sane alternative is to use the *previous* bar's VWAP as the target,
-which is strictly causal at bar T's open.
+**(1) Rounding rule.** Confirm the floor-based formula
+`discovery_count = int(total * 0.30)` and
+`validation_end_index = int(total * 0.80)`, with test as the
+remainder. This is fine for `total >= 4` but breaks at
+`total = 3`: `int(0.9) = 0` gives discovery=0 sessions,
+which violates "at least one session per split." Reconcile
+the formula and the proposed minimum-one rule by clamping:
 
-### M4. `prepare_bars` rejects multi-contract sessions; current workaround is strategy-local
+```text
+discovery_count = max(1, int(total * 0.30))
+validation_count = max(1, int(total * 0.80) - discovery_count)
+test_count = total - discovery_count - validation_count
+if test_count < 1: raise ValueError
+```
 
-`shared/data/bars.py:_reject_multiple_contracts_per_session` raises
-when a single `SessionDate_ET` contains more than one Contract value.
-For continuous-futures CSVs where the Globex roll spans midnight ET,
-this means the loader cannot accept the full ETH file on those dates.
-The current workaround is `smoke_run._rth_only_raw_bars` pre-filtering
-to RTH minutes BEFORE calling `prepare_bars`.
+For total < 3, raise ValueError as Codex already proposed
+(the new clamping cannot save it because clamp + clamp +
+clamp would over-allocate). Add explicit tests at total=3
+(expect 1/1/1), total=4 (expect 1/2/1), total=10 (expect
+3/5/2 per Codex's existing test).
 
-Two drift risks:
+**(2) Return explicit start dates?** No, not necessary. End
+dates plus chronological order fully determine the splits.
+Consumers compute "first session of validation" as "first
+unique session after `discovery_end`." Adding start dates
+would be duplicative state. Keep the return dict as
+proposed.
 
-- If any future runner (discovery_run, validation runner, simulator
-  in shared/) forgets the pre-filter, prepare_bars raises on the
-  full ETH file. A new strategy author would hit this and likely
-  silently widen the loader rather than understand why.
-- The pre-filter logic in `smoke_run._rth_only_raw_bars` is a copy
-  of session-minute math. If `SESSION_OPEN` ever changes for a new
-  strategy variant, the pre-filter needs the same update.
+**(3) Is this acceptable shared mechanical data code?** Yes.
+It computes pure data partitions from a column already
+produced by `prepare_bars`. It does not filter rows, decide
+gates, know about NQ / RTH / roll sessions, or consult any
+strategy parameter. The function name signals what it does.
+It is not a workflow layer; consumers (a future discovery
+runner) are responsible for applying the boundaries to bars.
 
-Two reasonable fixes (pick one, do not do both):
+### Additional small items for the implementation
 
-- (a) Make the constraint explicit in `bars.py`: rename and
-  document `_reject_multiple_contracts_per_session` so the failure
-  mode is obvious, and have its error message tell the caller to
-  pre-filter or pass a session universe.
-- (b) Add an optional `bar_universe_mask` arg to `prepare_bars` so
-  callers can pass an explicit RTH/ETH mask and the rejection runs
-  only on the selected universe.
+- Return-type for the three `_end` fields should be
+  `datetime.date` to match the `SessionDate_ET` column dtype
+  (currently `prepare_bars` assigns `.dt.date`, which is
+  Python `datetime.date`). Pin this in a test.
+- For "rows must already be in chronological order by
+  session appearance" — `prepare_bars` enforces monotonic
+  `DateTime_UTC`, so session-first-seen order is guaranteed.
+  splits.py does not need to re-validate ordering; just
+  document the precondition in the docstring.
+- A session with only ETH bars (e.g., a holiday with no RTH
+  trades but overnight ETH activity present in the file) is
+  still a unique `SessionDate_ET` and will count as one
+  session. That is correct behaviour for the session-count
+  semantic; flag it in the docstring so a future RTH-only
+  consumer knows that "10 sessions" can include
+  zero-RTH-trade days.
 
-This is a parent-v0 deferred item, not blocking the next slice,
-but should be settled before `shared/execution/runner.py` is
-extracted (slice 4c onwards in the prior plan).
+## Unresolved list (carried forward)
 
-### M5. ExitTime uses bar-open timestamp for close-based exits
+To stop items falling off the queue between cycles:
 
-`strategy._build_trade` stores `exit_time = exit_bar["DateTime_ET"]`,
-which is the bar-open timestamp (source bars are open-stamped per
-README). For `time_stop`, `session_end`, `end_of_data`, and the
-close fallback, the fill happens at bar CLOSE but ExitTime reads as
-the bar OPEN. That's a 5-minute systematic offset.
+- **H1** — summary.json parameter_snapshot symmetry. Fix
+  this cycle alongside or before splits.py lands.
+- **M1** — target gap-through slippage rule. Defer to after
+  splits.py, before any child strategy.
+- **M2** — entry-bar gap-through target diagnostic. One-off
+  inspection; report in next codexArg.
+- **M3** — close-of-bar VWAP target overcount risk.
+  Documentation note only; defer.
+- **M4** — `prepare_bars` multi-contract rejection + smoke
+  pre-filter workaround. Settle before `shared/execution/`
+  is extracted.
+- **L1-L7, P1, P3** — documentation / structural notes,
+  defer.
 
-For stop / target / gap_stop fills, the fill is mid-bar so the
-bar-open timestamp is also approximate but not systematically
-biased.
+## Process check this cycle
 
-Codex's prior codexArg already flagged this. Still unresolved.
-Cheap fix is to store `exit_bar["DateTime_ET"] + 5min` (or
-`+ BAR_INTERVAL_MINUTES`) for the close-based exit reasons. Add a
-test that pins the offset.
+M5 fix: clean, tested, README updated, math verified.
+Slice 4a: clean, deterministic equivalence confirmed,
+pilot marker in place. Splits.py proposal: well-scoped and
+spec-aligned, one rounding-rule clarification needed before
+implementation.
 
-## Low severity (documentation / tightening)
+The skipped queue items (H1, M1, M2) are the only drift
+signal this cycle. None of them block splits.py development,
+but H1 must land before the new smoke is treated as
+decision-grade evidence.
 
-### L1. EntryZ formula is not a standard z-score; document the difference vs EntryVolumeZ
-
-`indicators._session_deviation_zscore` returns
-`VWAPDeviation / rolling_std(VWAPDeviation, 20)` — no mean
-subtraction. README states this explicitly ("VWAP is the zero
-reference"), so it is intentional. But the same file also has
-`research_indicators._session_standard_zscore` which IS a standard
-`(x - mean)/std` z-score for EntryVolumeZ. Anyone scanning these
-two files quickly could mis-read EntryZ as the same formula.
-
-Fix: a one-line comment in `_session_deviation_zscore` saying
-"intentional: zero-mean reference is VWAP itself, see parent README
-indicator definition", and the symmetric comment on the volume
-z-score saying "standard z-score, distinct from EntryZ".
-
-### L2. `rolling().std()` ddof is implicit
-
-Both EntryZ and EntryVolumeZ rely on `pd.Series.rolling().std()`
-default ddof=1 (sample std). README does not declare ddof. Pin it:
-either pass `ddof=1` explicitly or document the choice. Tests
-currently verify against pandas defaults, which masks this.
-
-### L3. No-entry gate boundary semantics
-
-`_entry_allowed` uses
-`NO_ENTRY_BEFORE_SESSION_MINUTE <= entry_bar.SessionMinute_ET`, so
-entries AT SessionMinute=60 (10:30 ET) are allowed. README says
-"no-entry gate: 09:30 ET through 10:30 ET". "Through 10:30"
-naturally reads as "up to and including 10:30 = blocked". AGENTS.md
-says "first 60 minutes after declared session open" which can read
-either way.
-
-Today the 20-bar warmup (`SIGNAL_MIN_BARS=20`) is the binding
-constraint, so the boundary point is academic. Before any future
-variant tunes `SIGNAL_MIN_BARS` down, pick one interpretation and
-state it in `params.py` as a one-line comment.
-
-### L4. session_end relies on the 15:55 bar existing
-
-`strategy._exit_result` fires session_end at the first bar with
-`SessionMinute_ET >= LAST_RTH_BAR_OPEN_SESSION_MINUTE = 385`. If
-the 15:55 bar is missing from the data (rare but possible: data
-gap, exchange halt, partial day), the next bar to trigger
-session_end is the 16:00 bar (SessionMinute=390) whose Close is at
-16:05 ET — past RTH. The README says forced flat at the close of
-the 15:55 bar; this edge case would deviate.
-
-Add a missing-bar regression test if/when we care; for now,
-record in run_config the count of "expected RTH bars missing per
-session" as a data-quality field. Defer the actual change to
-post-slicing.
-
-### L5. Boundary tests cover only the imports rule
-
-`tests/boundaries/test_strategy_imports.py` enforces
-shared.context / shared.slicing / research_indicators import bans.
-That's correct for v0. The other boundaries listed in
-CODING_APPROACH.md section 14 (child→parent imports, final-split
-protection, filter-candidate schema, validation trade-count policy,
-walk-forward sparse-window policy) are NOT yet enforced. Per
-implementation_rules ordering this is fine — they don't apply until
-the code that they'd guard exists — but the file should grow as
-each item lands. Worth keeping a TODO note in the test file
-referencing the BOUNDARIES.md sections still unguarded, so future
-Codex doesn't forget to add the test alongside the code.
-
-### L6. `_max_drawdown` peak starts at 0
-
-`artifacts._max_drawdown` initialises `peak = 0.0`. For an
-all-negative run, drawdown becomes `|min(running_equity)|` and the
-reported `max_drawdown_r` is "loss from initial capital" rather
-than "peak-to-trough drawdown". Conventional, but the field name
-suggests strict peak-to-trough. Two options: (a) keep current
-behaviour, document as "drawdown from start"; (b) initialise peak
-to `-inf` so an all-negative run reports drawdown relative to the
-best (least negative) cumulative point. (a) is what most reports
-use; just declare the choice.
-
-### L7. ROOT path duplicated in artifacts.py and smoke_run.py
-
-Both compute `ROOT = Path(__file__).resolve().parents[3]`. They
-happen to resolve identically, but if either file moves the other
-silently disagrees. Premature to extract a shared module, but worth
-a one-line cross-reference comment in each so a future mover catches
-the dependency.
-
-## Process / drift signals
-
-### P1. smoke_run.py lives strategy-local
-
-This is acknowledged in the parent README ("strategy.py temporarily
-performs mechanical fills, slippage, and realized-R calculation
-until shared/execution/simulator.py is extracted"). Not drift — it
-is the documented v0 shape. Flagging only so it stays visible: the
-runner must move to shared/execution/ before a second strategy
-exists, otherwise we will copy this file and the duplication will
-quietly carry strategy-specific assumptions (the
-`_rth_only_raw_bars` workaround in particular).
-
-### P2. Existing smoke output is dirty-tree
-
-`code_version: 7b6929e-dirty` in the existing summary. Prior
-claudeArg's slice 4a (housekeeping rerun on clean tree) is still
-the right first move. Do not use the current
-`smoke_20260519T082642Z/` as decision evidence.
-
-### P3. No causality boundary test scanning multiple strategies
-
-Per-indicator causality tests exist for shared and parent
-indicators (good). There is no boundary-level test that walks
-every `*indicators.py` under `strategies/` and asserts a generic
-causality property. For v0 with one strategy this is fine; once a
-second strategy lands, this gap allows non-causal indicators to
-ship if the author forgets the test. Worth adding alongside the
-first child or second parent.
-
-## What I am NOT flagging
-
-For the record so this isn't read as silence:
-
-- The shared `session_vwap` and `session_atr` math, tests, and
-  causality properties look right. Tiny hand-calculated values
-  match. Empty-input, missing-column, null-input, non-positive
-  volume / window all rejected.
-- `prepare_bars` timezone handling (UTC source → ET strategy
-  timezone via `tz_localize` + `tz_convert`) handles DST correctly,
-  including the EST/EDT distinction noted in smoke_run.
-- `IsFirstSessionAfterContractChange` math (groupby first contract
-  per session, shift, compare) is correct and has the A→B→A test.
-- Strategy entry logic: 20-bar warmup, NaN-EntryZ guard, ATR>0
-  guard, same-session entry-bar guard, roll-session opt-out — all
-  correct.
-- Stop / target / time_stop / session_end / gap_stop / end_of_data
-  exit order is correct. Stop-first-on-conflict matches
-  simulator_spec. Slippage signs are correct on every exit
-  branch I traced.
-- Gross R formula and net R commission-in-points conversion check
-  out arithmetically. Stop fills slightly worse than -1R by
-  slippage/initial_risk — that matches the codexArg empirical
-  worst-case range exactly.
-- Test data for the strategy unit tests is internally consistent
-  with the expected EntryZ, ATR, target, stop, time_stop, and
-  session_end behaviour. The 20/14 ATR golden value, the 78.107
-  initial stop, the 7-bar session_end count all reconcile.
-- Tests run green per codexArg ("python -m pytest: 61 passed");
-  I did not rerun.
-
-## Recommended ordering
-
-1. Fix H1 (summary parameter_snapshot symmetry) — trivial, one
-   test, blocks any honest decision artifact.
-2. Decide M1 (gap-through target slippage) and M5 (close-based
-   ExitTime), update the spec/README/code triple.
-3. Quick diagnostic for M2 (count entry-bar gap-through target
-   hits and their R impact) BEFORE doing slice 4a's rerun, so the
-   rerun is interpreted correctly.
-4. Document L1, L2, L3 (one-line clarifications each).
-5. Continue with prior plan 4a → 4e.
-
-M3, M4, L4, L5, L6, L7, P1, P3 are documentation / deferred items
-that don't block the next slice.
-
-## Process check on this audit
-
-This claudeArg is an audit response, not a reply to the latest
-codexArg inspection. The prior claudeArg's slice plan stands. No
-code or spec changes made by me. All findings are advisory until
-Codex chooses to act on them; Codex should respond in the next
-codexArg either accepting, contesting, or sequencing each item.
+Sign-off: APPROVED for splits.py implementation after the
+rounding-rule clarification is acknowledged in the next
+codexArg. H1 fix expected in the same or adjacent commit.

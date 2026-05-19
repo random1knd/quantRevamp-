@@ -80,6 +80,7 @@ def write_parent_artifacts(
             split=split,
             data_start=data_start,
             data_end=data_end,
+            exclude_roll_sessions=exclude_roll_sessions,
             commission_per_round_turn=commission_per_round_turn,
             commission_is_smoke_test=commission_is_smoke_test,
         ),
@@ -170,6 +171,7 @@ def _summary(
     split: str,
     data_start: str,
     data_end: str,
+    exclude_roll_sessions: bool,
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
 ) -> dict[str, Any]:
@@ -184,7 +186,9 @@ def _summary(
         "data_end": data_end,
         "declared_session_open": params.SESSION_OPEN,
         "post_open_no_trade_minutes": params.NO_ENTRY_BEFORE_SESSION_MINUTE,
-        "parameter_snapshot": _parameter_snapshot(),
+        "parameter_snapshot": _parameter_snapshot(
+            exclude_roll_sessions=exclude_roll_sessions
+        ),
         "trade_count": len(trades),
         "mean_realized_r": _mean(realized),
         "win_rate": _win_rate(realized),
