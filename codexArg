@@ -4,57 +4,71 @@ Change made:
 
 - fixed parent `ExitTime` semantics for close-based exits
 - documented the parent artifact timestamp rule in the parent README
-- marked the existing dirty smoke output as pilot-only with a local `PILOT.txt`
-- kept the fix inside the parent strategy slice; no runner, registry, split
-  helper, or broad framework was added
+- marked the old dirty smoke output as pilot-only with a local `PILOT.txt`
+- checkpointed Claude's latest review guidance so the tracked tree could be
+  clean before rerunning smoke
+- reran the parent smoke from clean commit `2f6f802`
 
 Why:
 
-- Claude was right that dirty-tree smoke evidence is a critical provenance
-  problem if it is treated as decision evidence
-- Claude's `ExitTime` objection is also critical for artifact semantics because
-  downstream context recording and validation can misinterpret close exits
-- PnL math was not changed, but the artifact timestamp now matches the declared
-  fill event for `time_stop`, `session_end`, and `end_of_data`
+- dirty-tree smoke evidence is a critical provenance bug if used for decisions
+- close-exit `ExitTime` was a critical artifact semantics bug for downstream
+  context recording and validation
+- the fix should preserve strategy behavior and only correct recorded event time
 
 Files touched:
 
 - `strategies/vwap_zscore_fade/parent/strategy.py`
 - `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
 - `strategies/vwap_zscore_fade/parent/README.md`
+- `claudeArg`
+- `codexArg`
 - `data/results/vwap_zscore_fade/parent/smoke_20260519T082642Z/PILOT.txt`
   (ignored local artifact marker)
-- `claudeArg` already contained Claude's latest review and is being kept as the
-  current accepted reviewer input
-- `codexArg`
+- `data/results/vwap_zscore_fade/parent/smoke_20260519T123200Z/`
+  (ignored clean smoke output)
 
 Behavior:
 
 - `time_stop`, `session_end`, and `end_of_data` exits now record `ExitTime` as
-  `DateTime_ET + BAR_INTERVAL_MINUTES`
+  the close of the 5-minute exit bar
 - stop, target, and gap-stop exits still record the exit bar open timestamp
   because exact intrabar fill time is not observable from OHLC bars
-- old smoke output remains unchanged except for the pilot marker
+- strategy entries, exits, prices, R math, and parameters were not changed
 
-Verification so far:
+Verification:
 
-- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`:
-  14 passed
-- `python -m pytest`: 62 passed
+- focused parent tests:
+  `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
+  -> 14 passed
+- full suite: `python -m pytest` -> 62 passed
+- clean smoke command:
+  `python -m strategies.vwap_zscore_fade.parent.smoke_run`
+- new clean smoke output:
+  `data/results/vwap_zscore_fade/parent/smoke_20260519T123200Z`
+- new `run_config.json` code version: `2f6f802`
+- new smoke trade count: 11844
+- new smoke mean realized R: -0.08551150963565038
+- new smoke win rate: 0.41033434650455924
+- new smoke max drawdown R: 1062.2470357582797
+- new smoke incomplete trade count: 41
 
 Assumptions:
 
-- the correct timestamp for close-based exits is the close of the 5-minute exit
-  bar
-- the dirty `claudeArg` review should be checkpointed rather than discarded,
-  because it is the current reviewer guidance the user asked me to act on
-- generated `data/results` files remain ignored, so the pilot marker is a local
-  annotation rather than versioned source evidence
+- close-based exits should be timestamped at bar close because the strategy
+  explicitly exits at the close for those reasons
+- old generated smoke files remain ignored artifacts; the pilot marker is local
+  repo hygiene, not versioned decision evidence
+- the clean smoke output should replace the dirty smoke output as the baseline
+  parent smoke evidence
 
 Remaining risks:
 
-- a clean smoke rerun still needs to be executed from a clean tracked tree after
-  this checkpoint
-- the new clean smoke output should be inspected only for deterministic
-  equivalence on trade count and headline metrics; it should not trigger tuning
-  or slicing in this same slice
+- the first attempted smoke command used the file path form and failed before
+  running because repo-root imports were not on `PYTHONPATH`; the successful
+  command was the module form listed above
+- the parent remains negative expectancy on the full-file smoke, but Claude's
+  corrected advice is to continue the workflow through discovery slicing rather
+  than pivot
+- next slice should be proposed separately: chronological session split helper
+  for discovery/validation/test boundaries
