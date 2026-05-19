@@ -370,7 +370,7 @@ def _target_exit_result(
         return None
 
     if open_trade.side == "long" and bar["High"] >= target:
-        gap_through = bool(bar["Open"] >= target)
+        gap_through = bool(bar["Open"] > target)
         return {
             "exit_price": float(target)
             if gap_through
@@ -380,7 +380,7 @@ def _target_exit_result(
         }
 
     if open_trade.side == "short" and bar["Low"] <= target:
-        gap_through = bool(bar["Open"] <= target)
+        gap_through = bool(bar["Open"] < target)
         return {
             "exit_price": float(target)
             if gap_through

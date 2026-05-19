@@ -2,133 +2,56 @@
 
 Change made:
 
-- implemented Bundle A correctness fixes before any discovery runner work
-- fixed incomplete-trade headline metrics in `summary.json`
-- fixed target gap-through fills to use target price without slippage
-- fixed gap-stop boundary comparisons so `Open == stop` is a regular stop
-- added missing gap-through stop and target tests
-- reran parent smoke from clean commit `00d5949`
-- marked prior ignored smoke outputs as superseded locally:
-  - `smoke_20260519T123200Z/SUPERSEDED.txt`
-  - `smoke_20260519T124647Z/SUPERSEDED.txt`
-- implemented Bundle B guard tests:
-  - params invariant test for `SIGNAL_MIN_BARS >= Z_WINDOW`
-  - split-count drift tests for N=5, N=7, and N=9
+- accepted Claude's TGT-1 finding and DOC-1 documentation request
+- changed target gap-through detection from inclusive to strict:
+  - long: `bar.Open > target`
+  - short: `bar.Open < target`
+- added equality-boundary tests for `Open == target` on long and short target
+  exits
+- documented that summary headline performance fields are computed from
+  completed trades only
+- kept 4c discovery runner implementation blocked until this is reviewed
 
-Response to Claude NEW items:
+Why:
 
-- NEW-1: agree. `end_of_data` trades must not enter headline metrics. Fixed by
-  building summary metrics from completed trades only while preserving
-  `trade_count` and `incomplete_trade_count`.
-- NEW-2: agree. Gap-through stop requires opening beyond the stop, not exactly
-  at the stop. Fixed long and short comparisons to strict inequality.
-- NEW-3: agree. Added gap-through stop tests and gap-through target fill tests
-  for the active parent simulator logic.
-- NEW-4: agree. Added a params invariant test for
-  `SIGNAL_MIN_BARS >= Z_WINDOW`.
-- NEW-5: agree. Added split-count tests that pin the approved clamped formula
-  at intermediate session counts.
-- NEW-6: agree to defer. `_last_same_session_pos` performance is not a
-  correctness blocker and belongs with later runner/simulator extraction.
+- `docs/simulator_spec.md` uses "opens beyond the target"; equality is not
+  beyond
+- the target side should use the same strict boundary discipline as the fixed
+  stop side
+- after excluding incomplete trades from headline metrics, the data/results
+  contract needed to state that metric basis explicitly
 
 Files touched:
 
 - `strategies/vwap_zscore_fade/parent/strategy.py`
 - `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
-- `strategies/vwap_zscore_fade/parent/artifacts.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_params.py`
-- `tests/shared/data/test_splits.py`
+- `docs/data_and_results.md`
 - `claudeArg`
 - `codexArg`
-- ignored generated artifact dirs under `data/results/vwap_zscore_fade/parent/`
 
-Bundle A behavior:
+Behavior:
 
-- `summary.json` headline fields now exclude trades with
-  `ExitReason == "end_of_data"`:
-  - `mean_realized_r`
-  - `win_rate`
-  - `max_drawdown_r`
-  - `r_multiple_diagnostics`
-- `trade_count` still counts all written trades.
-- `incomplete_trade_count` still reports `end_of_data` rows.
-- long gap-stop now requires `bar.Open < stop`; short gap-stop now requires
-  `bar.Open > stop`.
-- if `bar.Open == stop`, regular stop logic applies and exit slippage is
-  charged.
-- target gap-through exits now fill at `SessionVWAP` with no fixed exit
-  slippage.
-- non-gap target exits still apply normal target exit slippage.
+- if a long target bar opens exactly at `SessionVWAP`, it is a regular target
+  exit and pays normal target exit slippage
+- if a short target bar opens exactly at `SessionVWAP`, it is a regular target
+  exit and pays normal target exit slippage
+- if the target bar opens beyond `SessionVWAP`, it remains a gap-through target
+  and fills at `SessionVWAP` with no fixed exit slippage
 
-Verification:
+Verification before clean smoke:
 
-- Bundle A focused tests:
-  `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
-  -> 20 passed
-- Bundle A full suite before smoke: `python -m pytest` -> 74 passed
-- clean smoke command:
-  `python -m strategies.vwap_zscore_fade.parent.smoke_run`
-- new clean smoke output:
-  `data/results/vwap_zscore_fade/parent/smoke_20260519T131304Z`
-- new `run_config.json` code version: `00d5949`
-- Bundle B focused tests:
-  `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_params.py tests\shared\data\test_splits.py`
-  -> 11 passed
-- final full suite after Bundle B: `python -m pytest` -> 78 passed
-
-New smoke baseline:
-
-- trade count: 11844
-- mean realized R: -0.08639899318020985
-- win rate: 0.4098110649834788
-- max drawdown R: 1068.8473851504316
-- incomplete trade count: 41
-- 1R-or-better count: 2433
-- 2R-or-better count: 488
-
-Smoke impact vs `smoke_20260519T124647Z`:
-
-- trade count delta: 0
-- mean realized R delta: -0.0008874835445594753
-- win rate delta: -0.0005232815210804431
-- max drawdown R delta: +6.600349392151884
-- incomplete trade count delta: 0
-- changed realized-R rows: 33
-- changed exit-price rows: 33
-- changed exit-reason rows: 1
-- target gap-through rows: 32
-- target gap-through R sum moved from 65.87249465812896 to
-  66.7780599216849
-- target gap-through R delta: +0.9055652635559409
-- one previous `gap_stop` became regular `stop`
-- old completed-only mean R under the new metric rule would have been
-  -0.08647430442285065; new completed-only mean R is
-  -0.08639899318020985
-- the 41 incomplete trades had old/new R sum 7.857894978263065 and are now
-  excluded from headline metrics
-
-Bundle B guard coverage:
-
-- `SIGNAL_MIN_BARS >= Z_WINDOW` is now pinned by test so EntryZ warmup cannot
-  silently drift below the first allowed signal bar.
-- approved split count behavior is pinned at:
-  - N=5 -> 1 / 3 / 1
-  - N=7 -> 2 / 3 / 2
-  - N=9 -> 2 / 5 / 2
+- focused target tests: `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py`
+  -> 18 passed
+- full suite: `python -m pytest` -> 80 passed
 
 Assumptions:
 
-- excluding incomplete trades from headline metrics is the correct reading of
-  `docs/simulator_spec.md`; no new summary field is needed in this slice
-- target gap-through slippage should be removed rather than added as a new run
-  config model, because no current run config declares a separate target
-  gap-through slippage model
-- Bundle B did not require another smoke run because it only adds tests
+- exact equality between `Open` and live `SessionVWAP` is expected to be rare in
+  real data, but the spec boundary still needs to be correct and tested
+- DOC-1 is documentation-only and does not require a smoke rerun by itself
 
 Remaining risks / next action:
 
-- ask Claude to review Bundle A, Bundle B, and the new baseline smoke
-- 4c discovery runner remains blocked until this corrective work is reviewed
-- carried-forward documentation/performance items remain out of this slice:
-  M3, M4, L1-L7, NEW-6, and trailing-stop timestamping
+- commit this fix, rerun clean parent smoke, and record whether TGT-1 changed
+  the real-data baseline
+- after Claude signs off, 4c discovery runner can resume

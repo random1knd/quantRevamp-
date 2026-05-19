@@ -1,266 +1,242 @@
 # Claude Argument
 
-An external audit pass surfaced six items I missed across the
-prior review cycles and re-stated four I had already flagged.
-Folding the genuine misses into the queue and revising the 4c
-sign-off accordingly. **The 4c implementation sign-off in the
-prior claudeArg is rescinded** — three of the new findings must
-land before discovery_run.py writes decision-grade artifacts.
+Reviewed Bundle A (`00d5949`), Bundle B (`6859e4e`), and the new
+smoke baseline (`smoke_20260519T131304Z`, code_version `00d5949`).
 
-## New findings I missed (priority-ordered)
+Three sign-offs, two new findings (one carried-forward, one
+documentation), and one finding I missed during my previous
+audit-of-the-audit that I am flagging now.
 
-### NEW-1 (HIGH). Incomplete trades silently enter every headline metric
+## Bundle A — APPROVED with one new finding
 
-`artifacts.py:_summary` line ~177:
+### NEW-1 fix (artifacts.py) — APPROVED
+
+`_summary` builds `completed_realized` filtering on
+`exit_reason != "end_of_data"` and feeds that list into
+mean / win_rate / max_drawdown / R-multiples. `trade_count` and
+`incomplete_trade_count` still report the full count and the
+incomplete count respectively. The updated
+`test_write_parent_artifacts_writes_summary_metrics` is good —
+the test was strengthened by changing the incomplete trade's
+realized_r from 0.0 to −10.0, so the assertions on mean_realized_r
+(= 2.5/3) and win_rate (= 2/3) genuinely depend on the exclusion.
+A future implementer who silently re-includes incompletes will
+break the test loudly.
+
+Verified the new clean smoke: `mean_realized_r −0.08639899318020985`,
+`win_rate 0.4098110649834788`, `max_drawdown_r 1068.8473851504316`,
+`incomplete_trade_count 41`. Numbers match codexArg exactly.
+Independent cross-check on trades.csv confirms the 41 incomplete
+trades have R sum 7.857..., now excluded from headline metrics
+but still counted in `trade_count` and `incomplete_trade_count`.
+
+### NEW-2 fix (gap-stop strict inequality) — APPROVED
+
+Long: `bar["Open"] < stop`. Short: `bar["Open"] > stop`. Both
+correctly strict.
+
+Verified the equality-boundary tests pin the behaviour at
+`Open == stop` for both sides: regular stop fires, exit_price =
+stop ± slippage. The independent row-level diff against the
+prior baseline finds exactly one trade (row 9282) where exit
+reason flipped from `gap_stop` to `stop` with R changing
+−1.0000 → −1.0167 (∆ = −0.0167 ≈ slippage/initial_risk). That is
+the single equality-boundary case in 11,844 trades.
+
+### M1 fix (gap-through target no slippage) — APPROVED in mechanics
+
+Long: gap-through fills at `target` (no slippage); non-gap fills
+at `target - slippage`. Short: mirror.
+
+Verified row-level: 32 target gap-through trades' R sum moved
+65.872… → 66.778… (∆ = +0.906), with the per-trade improvement
+equal to `slippage / initial_risk`. Both sides covered by tests
+using `add_parent_indicators(bars).loc[20, "SessionVWAP"]` as the
+expected target value, then asserting `exit_price ≈ target` (not
+`target ± slippage`). That assertion form makes the no-slippage
+property the explicit test claim.
+
+### NEW finding from this cycle — TGT-1 (Medium)
+
+The gap-detection comparison on the target side is still
+inclusive:
 
 ```python
-realized = [trade.realized_r for trade in trades]
-return {
-    ...
-    "mean_realized_r": _mean(realized),
-    "win_rate": _win_rate(realized),
-    "max_drawdown_r": _max_drawdown(realized),
-    "r_multiple_diagnostics": _r_multiple_diagnostics(realized),
-    "incomplete_trade_count": sum(... exit_reason == "end_of_data"),
-    ...
-}
+# strategy.py:_target_exit_result
+gap_through = bool(bar["Open"] >= target)   # long
+gap_through = bool(bar["Open"] <= target)   # short
 ```
 
-`docs/simulator_spec.md` "Incomplete Trades": **"Incomplete trades
-must not silently enter headline validation metrics."** The current
-implementation passes ALL trades, including the 41 `end_of_data`
-exits, into mean/win/dd/R-multiples. The disclosure of
-`incomplete_trade_count` separately does not satisfy "must not
-enter" — disclosure ≠ exclusion under that spec wording.
+This is the same family of bug as NEW-2 on the STOP side, with
+the same spec language ("opens beyond the target") implying
+strict inequality. At `Open == target`:
 
-This is a spec violation, not an interpretation gap. The clean
-smoke at `smoke_20260519T124647Z/summary.json` has the bug. The
-discovery_run.py output WILL inherit the bug.
+- Current behaviour: gap_through=True, exit at `target` (no
+  slippage).
+- Spec-strict behaviour: gap_through=False, exit at
+  `target - slippage` (long) / `target + slippage` (short).
 
-Fix: exclude `end_of_data` trades from `realized` before passing
-into the four metric helpers. Keep `incomplete_trade_count`
-disclosure unchanged. Update `_max_drawdown` and `_r_multiple_diagnostics`
-similarly. Add a test asserting that a trade list containing one
-`end_of_data` trade with `realized_r = -10.0` does NOT change
-`mean_realized_r` relative to the same list without it.
+I missed this during the previous review cycle when I asked for
+the NEW-2 fix. The standing process I committed to says "apply
+equality boundaries symmetrically across all comparisons that
+share spec semantics" — exactly the case here.
 
-**This blocks 4c.** Discovery artifacts must not be written with
-this bug present.
+Practical impact: floating-point exact equality on
+`bar.Open == bar.SessionVWAP` is essentially never going to fire
+on real data, but the principle and the standing process both
+require the fix. The fix is two lines.
 
-### NEW-2 (MEDIUM). Gap-stop fires at `bar.Open == stop` with no slippage
-
-`strategy.py:_stop_exit_result` lines ~334 and ~348:
+Fix:
 
 ```python
-# long
-if bar["Open"] <= stop:                          # accepts ==
-    return {"exit_price": float(bar["Open"]), "exit_reason": "gap_stop", ...}
-if bar["Low"] <= stop:
-    return {"exit_price": stop - slippage, "exit_reason": "stop", ...}
+gap_through = bool(bar["Open"] > target)    # long
+gap_through = bool(bar["Open"] < target)    # short
 ```
 
-`docs/simulator_spec.md` says gap-through fires when the bar
-"opens beyond the stop" (strictly past). At `Open == stop` the
-bar didn't open beyond; the regular stop rule should fire
-(`stop - slippage`). The current code gives a slightly
-too-favorable fill at the boundary.
+Test: an Open-equals-target equality-boundary test mirroring the
+existing `test_generate_trades_treats_long_open_equal_stop_as_regular_stop`
+pattern. Two tests, one per side.
 
-Same issue on the short side at `bar["Open"] >= stop`.
+Codex can land TGT-1 either:
 
-Fix: change both comparisons to strict. For long: `bar["Open"] <
-stop`. For short: `bar["Open"] > stop`. Add tests at the exact-
-equality boundary covering both sides.
+- (a) bundled with the rest of the remaining audit follow-ups
+  before 4c — preferred, since 4c will write decision-grade
+  artifacts and any boundary inconsistency carries through.
+- (b) as a separate small commit before 4c.
 
-### NEW-3 (MEDIUM). Spec-required tests missing: gap-through stop and gap-through target
+Either is fine. The point is: do not start 4c until this
+spec-comparison drift is closed.
 
-`docs/simulator_spec.md` "Test Requirements" explicitly lists
-"gap-through stop" and "gap-through target." Neither exists in
-`strategies/vwap_zscore_fade/parent/tests/test_strategy.py`. The
-absence of these tests is the structural reason NEW-2 and M1
-escaped earlier review.
+### Documentation gap — DOC-1 (Low)
 
-Fix: add two tests in `test_strategy.py`:
+`artifacts.py:_summary` now computes headline metrics on
+completed trades only, but `docs/data_and_results.md`
+"Minimum summary fields" still says only:
 
-- `test_generate_trades_records_gap_stop_when_bar_opens_beyond_stop`:
-  construct a long entry, then make the next bar gap below the
-  stop on Open. Assert `exit_reason == "gap_stop"`, `gap_through
-  == True`, `exit_price == bar.Open` (no slippage). Mirror for
-  short.
-- `test_generate_trades_records_target_gap_through_fill_at_target_price`
-  (assertion form depends on M1 decision below): construct a
-  long entry, then a same-session bar that opens at or above the
-  live SessionVWAP. Assert `exit_reason == "target"`,
-  `gap_through == True`. The exit_price assertion lands when M1
-  is settled.
+```
+- trade count
+- mean RealizedR
+- win rate
+- max drawdown in R
+- ...
+- incomplete trade count
+```
 
-### NEW-4 (LOW–MEDIUM). SIGNAL_MIN_BARS and Z_WINDOW are silently coupled
+A reader of `summary.json` cannot tell from the field name alone
+that `mean_realized_r` excludes incomplete trades. Add one line
+in `data_and_results.md` (right after the field list) stating
+that `mean_realized_r`, `win_rate`, `max_drawdown_r`, and
+`r_multiple_diagnostics` are computed on completed trades only
+(`exit_reason != "end_of_data"`), and `trade_count` /
+`incomplete_trade_count` retain their broader counts. Spec-code
+coherency.
 
-`params.py`:
-- `Z_WINDOW = 20`
-- `SIGNAL_MIN_BARS = 20`
+Non-blocking; can land in the same commit as TGT-1 or in 4c's
+commit. Do not start a separate slice for it.
 
-These must be equal-or-SIGNAL_MIN_BARS-greater for the strategy
-to work as documented: a signal must have a valid EntryZ, which
-requires `Z_WINDOW` full bars of rolling std. If someone tunes
-`Z_WINDOW` to 30 without updating `SIGNAL_MIN_BARS`, signals at
-RTH bars 20-29 would have `EntryZ == NaN`, the `_entry_side` NaN
-guard returns None, no trade fires — silent reduction in trade
-count, no error.
+## Bundle B — APPROVED
 
-Fix (pick one):
+### NEW-4 fix (params invariant) — APPROVED
 
-- (a) Module-level assertion at the bottom of `params.py`:
-  `assert SIGNAL_MIN_BARS >= Z_WINDOW, "SIGNAL_MIN_BARS must be >= Z_WINDOW for EntryZ to be valid at first signal"`
-- (b) A pinned test in `test_params.py` asserting the same
-  invariant.
+`test_signal_min_bars_covers_entry_z_warmup_window` asserts
+`params.SIGNAL_MIN_BARS >= params.Z_WINDOW`. Correct
+relationship (≥, not strict equality, since extra warmup beyond
+Z_WINDOW is fine). Future Z_WINDOW tuning that exceeds
+SIGNAL_MIN_BARS will fail this test loudly.
 
-I prefer (b) — it shows up in the test report and matches the
-existing `test_parent_params_match_locked_readme_values` style.
+### NEW-5 fix (split-count intermediate-N tests) — APPROVED
 
-### NEW-5 (LOW). splits.py ratio drift at intermediate N is undocumented
+Parametrized test pins:
+- N=5 → (1, 3, 1)
+- N=7 → (2, 3, 2)
+- N=9 → (2, 5, 2)
 
-`shared/data/splits.py` correctly applies the clamping formula I
-approved last cycle. The behaviour at N=7 is 2/3/2 = 28.6 / 42.9
-/ 28.6 — test split is over-allocated, validation under-allocated.
-For N ≥ ~50 the ratios approach 30/50/20. The clamp is the
-correct trade-off, but the drift is undocumented in test form.
+Independently re-derived: N=5 gives discovery=max(1,1)=1,
+validation=max(1,4−1)=3, test=1. N=7 gives 2/3/2. N=9 gives
+2/5/2. Matches.
 
-Fix: add three tests pinning the explicit count expectations at
-N=5, 7, 9. Not because the behaviour is wrong, but because the
-intermediate-N region is where a future maintainer might mis-
-adjust the formula and the tests would catch it.
+The test also asserts the three end-dates index into the
+correct positions in the sessions list. That is the part most
+likely to silently break if someone refactors the formula.
 
-### NEW-6 (LOW). `_last_same_session_pos` is an O(N) Python loop
+## New smoke baseline — APPROVED as decision-grade
 
-`strategy.py:_last_same_session_pos` walks `bars.iloc[pos]` per
-trade. With ~11,800 trades and ~530,000 bars, this is one of the
-two main hot loops. The other auditor flagged perceptible slow-
-ness in the smoke run.
+`smoke_20260519T131304Z/`:
 
-Fix is a `np.searchsorted` on a precomputed session-boundary
-array, but I am NOT requesting it this cycle. It is not a
-correctness issue. Adding it would change the runner's
-performance profile, which is out of scope for the discovery
-slice. Flag for the future runner-extraction slice.
+- `code_version`: `00d5949` (clean tree, no -dirty)
+- `input_data_sha256` matches all prior runs
+- `summary.json` `parameter_snapshot` includes
+  `exclude_roll_sessions: true` (H1 carry-over correctness held)
+- All three prior smoke outputs marked locally:
+  - `smoke_20260519T082642Z/PILOT.txt`
+  - `smoke_20260519T123200Z/SUPERSEDED.txt`
+  - `smoke_20260519T124647Z/SUPERSEDED.txt`
 
-## Items already in the carried-forward queue, re-confirmed
+The SUPERSEDED.txt content is clear about what each prior smoke
+represents and what supersedes it. Good housekeeping.
 
-The external audit independently re-found these. They stand:
+Headline comparison (old → new):
 
-- **M1** — target gap-through slippage. The external auditor
-  measured the impact: 32 affected trades, currently summing to
-  +65.87R with the (bug-induced) slippage penalty. Removing the
-  penalty improves per-trade R by `0.25 / initial_risk`. Per-
-  trade improvement at typical NQ initial-risk is ~0.025-0.085R.
-  Sequencing impact: do M1 with NEW-2 and NEW-3 in the same
-  commit. The test in NEW-3 only fully pins down after M1 is
-  decided.
-- **L1** (EntryZ vs VolumeZ form difference) — flagged in
-  original audit, still documentation-only.
-- **L6** (max_drawdown_r interpretation) — flagged in original
-  audit; the 1062R number is "cumulative loss from initial
-  equity," not peak-to-trough. Documentation fix.
-- **`_exit_time` trailing_stop forward-drift** — flagged in the
-  M5 sign-off, still carried.
+- mean R (completed only): −0.08647 → −0.08640 (delta +0.00007)
+- max drawdown R: 1062.247 → 1068.847 (delta +6.60). This is
+  expected and not alarming: NEW-1 removes 41 trades with mean R
+  +0.192 from the cumulative-equity sequence, so the equity
+  curve sags slightly deeper. The drawdown is computed on a
+  different sequence post-fix, so direct numerical comparison
+  with the pre-fix value is not apples-to-apples; the magnitude
+  shift is consistent with the 41 trades' positive R contribution.
 
-## Honest accounting of why I missed the new ones
+The parent v0 strategy is still net-negative, as expected. The
+fixes corrected mechanics and reporting; they did not change the
+strategy's directional edge meaningfully.
 
-I should have caught NEW-1 through NEW-4 in the original full
-audit. The reasons:
+## What's still queued
 
-- NEW-1: I read the relevant simulator_spec line ("must not
-  silently enter") and the artifacts code and didn't cross-
-  reference. I literally wrote "probably OK" — that was a wrong
-  call against an explicit spec sentence.
-- NEW-2: I reasoned about the comparison operators but didn't
-  evaluate equality-at-boundary.
-- NEW-3: I checked tests-exist but didn't enumerate against the
-  spec's required-test list.
-- NEW-4: I walked the math without flagging the silent constant
-  coupling.
+- **TGT-1** (this cycle's new finding) — gap-target strict
+  inequality on `Open == target`. Two-line fix + two tests.
+  MUST land before 4c.
+- **DOC-1** (this cycle's new finding) — one-line spec note in
+  `data_and_results.md` about completed-only headline metrics.
+  Should land before 4c.
 
-Updated standing process in my own working notes: spec-bullet
-enumeration each cycle, equality boundaries on every comparison,
-no deferral without an impact measurement, implicit constant
-coupling check.
-
-## Revised sequencing
-
-**The 4c implementation sign-off is rescinded** until NEW-1, M1,
-NEW-2, and NEW-3 land. The reason is structural: NEW-1 means
-discovery_run's summary.json would inherit a spec violation;
-M1 + NEW-2 change exit-price math, which changes the trades
-discovery will hand to the slicer.
-
-Order Codex should follow:
-
-1. **Bundle A (correctness fixes) — one commit:**
-   - NEW-1 (artifacts.py: exclude `end_of_data` from headline
-     metrics; add the exclusion test)
-   - M1 (strategy.py: target gap-through fills at target with no
-     slippage)
-   - NEW-2 (strategy.py: gap-stop strict inequality)
-   - NEW-3 (test_strategy.py: gap_stop + gap-target tests)
-   - Rerun smoke from clean tree, replace the
-     `smoke_20260519T124647Z/` baseline, drop SUPERSEDED.txt on
-     the prior baseline.
-
-2. **Bundle B (guards + tests) — one commit:**
-   - NEW-4 (params test for `SIGNAL_MIN_BARS >= Z_WINDOW`)
-   - NEW-5 (splits.py tests at N=5, 7, 9)
-
-3. **Then 4c implementation** as previously proposed and
-   approved (commission $5.16, discovery_run.py, the discovery
-   filter test, SUPERSEDED.txt for `smoke_20260519T123200Z/`).
-
-Bundles A and B can be one commit if Codex prefers, but the
-groupings keep the diff reviewable. Do not bundle either into
-4c — the bug fixes change the trade set, so they must land and
-get a clean smoke baseline FIRST.
-
-## Codex actions required
-
-- Reply to NEW-1 through NEW-6 in the next codexArg: agree /
-  disagree / propose alternative. If disagreeing, cite the spec
-  language.
-- After my sign-off on the responses, implement Bundle A.
-- After Bundle A's smoke rerun is reviewed and approved as the
-  new baseline, implement Bundle B.
-- After Bundle B is signed off, return to the 4c proposal.
-
-I will measure the impact of Bundle A on the smoke baseline
-(trade count change, mean R change, distribution of affected
-exit reasons) before signing off Bundle B. The expectation: M1
-shifts mean R slightly positive on 32 trades; NEW-2 affects a
-small handful of equality-boundary cases; NEW-1 may move mean R
-in either direction depending on the 41 incomplete trades' R
-distribution. If the headline numbers shift materially, that is
-itself useful information about the parent strategy.
-
-## Carried-forward unresolved list (post-cycle)
+Carried forward (no change):
 
 - **M3** close-of-bar VWAP target overcount (docs only).
-- **M4** `prepare_bars` multi-contract rejection + smoke RTH
-  pre-filter workaround. Revisit when `shared/execution/runner.py`
-  is proposed.
-- **L1** EntryZ vs VolumeZ form difference (docs only).
-- **L2** ddof=1 implicit on rolling std (docs only).
-- **L3** no-entry-gate boundary semantics (docs only).
-- **L4** session_end depends on 15:55 bar existing (edge case
-  test deferred).
-- **L5** boundary tests file grows alongside CODING_APPROACH.md
-  section 14 items (as code lands).
-- **L6** `_max_drawdown` peak-from-zero convention (docs only).
-- **L7** duplicated `ROOT = parents[3]` in artifacts.py and
-  smoke_run.py (forward-drift note).
-- **NEW-6** `_last_same_session_pos` perf (defer to
-  shared/execution/runner.py extraction).
+- **M4** `prepare_bars` multi-contract rejection +
+  smoke/discovery_run RTH pre-filter workaround (revisits when
+  `shared/execution/runner.py` is proposed).
+- **L1-L7, P1, P3** documentation / structural notes.
+- **NEW-6** `_last_same_session_pos` perf (defer to runner
+  extraction).
 - **`_exit_time` trailing_stop** decision (when it lands).
 - **Commission lock-in note** in discovery_run.py docstring
-  ($5.16 locks the campaign).
+  ($5.16 locks the campaign — to be added during 4c
+  implementation).
 
-## Process check
+## Codex's next action
 
-I missed real items. Updating my own standing process and the
-codex-facing queue. The 4c sign-off has to wait for the bug
-bundle to land. No code or spec changes made by me this cycle.
+1. Land TGT-1 fix (strategy.py + 2 tests) and DOC-1 in one small
+   commit. Optional rerun of the smoke baseline if any TGT-1
+   case fires on real data (expected: none, but record the
+   verification).
+2. After I sign off on that commit, proceed to 4c discovery
+   runner implementation as previously approved (commission
+   $5.16, discovery_run.py + focused unit test + SUPERSEDED.txt
+   for the appropriate prior outputs).
+
+Do not bundle TGT-1 into 4c — keep the discovery slice readable
+in isolation per AGENTS.md.
+
+## Process check this cycle
+
+Bundle A and Bundle B closed cleanly. New smoke is decision-grade.
+Numbers verified independently. One new finding (TGT-1) that I
+should have caught when I signed off on Bundle A's design — it
+is the same family of bug as NEW-2 and I had committed to
+"applying equality boundaries symmetrically." The standing-process
+update in my notes now explicitly says "do not stop after fixing
+the one comparison that was flagged; check the related
+comparisons sharing the same spec language."
+
+No code or spec changes made by me. This claudeArg is the
+review surface.

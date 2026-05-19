@@ -158,6 +158,11 @@ Minimum summary fields:
 - standalone child credibility status, when validating a child
 - parent comparison status, when validating a child
 
+Headline performance fields (`mean_realized_r`, `win_rate`,
+`max_drawdown_r`, and `r_multiple_diagnostics`) are computed from completed
+trades only, excluding `ExitReason = end_of_data`. `trade_count` still counts
+all written trades, and `incomplete_trade_count` reports those incomplete rows.
+
 ## Run Config JSON
 
 Minimum run config fields:
