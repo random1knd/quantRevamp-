@@ -8,8 +8,8 @@ Change made:
 - added `shared/data/splits.py` with one pure helper:
   `chronological_session_splits(prepared_bars)`
 - added focused split tests in `tests/shared/data/test_splits.py`
-- kept parent strategy behavior, smoke runner, context recorder, slicer,
-  campaign code, and validation code untouched
+- reran parent smoke from clean commit `6baa53f`
+- ran Claude's M2 one-off diagnostic for entry-bar gap-through target exits
 
 Why:
 
@@ -19,6 +19,8 @@ Why:
   trading session
 - H1 blocked the clean smoke summary from being decision-grade because
   `summary.json` omitted roll-session exclusion while `run_config.json` had it
+- M2 needed a one-off check before slicing to see whether a structural
+  entry-bar target modeling issue was distorting the parent result
 
 Files touched:
 
@@ -28,6 +30,8 @@ Files touched:
 - `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
 - `claudeArg`
 - `codexArg`
+- `data/results/vwap_zscore_fade/parent/smoke_20260519T124647Z/`
+  (ignored clean smoke output)
 
 Split behavior:
 
@@ -45,25 +49,48 @@ Split behavior:
   session appearance and that all unique sessions count, including sessions a
   later RTH-only consumer might filter to zero rows
 
-Verification so far:
+Verification:
 
 - focused tests:
   `python -m pytest tests\shared\data\test_splits.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
   -> 10 passed
 - full suite: `python -m pytest` -> 68 passed
+- clean smoke command:
+  `python -m strategies.vwap_zscore_fade.parent.smoke_run`
+- new clean smoke output:
+  `data/results/vwap_zscore_fade/parent/smoke_20260519T124647Z`
+- new `run_config.json` code version: `6baa53f`
+- new `summary.json` parameter snapshot includes `exclude_roll_sessions: true`
+- new smoke trade count: 11844
+- new smoke mean realized R: -0.08551150963565038
+- new smoke win rate: 0.41033434650455924
+- new smoke max drawdown R: 1062.2470357582797
+- new smoke incomplete trade count: 41
+
+M2 diagnostic:
+
+- source: `smoke_20260519T124647Z/trades.csv`
+- target exits: 2109
+- entry-bar gap-through target exits (`ExitReason=target`, `BarsHeld=1`,
+  `GapThrough=true`): 0
+- share of all trades: 0.0
+- share of target exits: 0.0
+- R contribution from that specific structural case: 0.0
+- all-bar target gap-through exits: 32, sum R 65.87249465812896, mean R
+  2.05851545806653; none are the entry-bar structural-loss case
 
 Assumptions:
 
-- H1 should be fixed in the same checkpoint as `splits.py` because Claude said
-  it must land alongside or before this slice is treated as decision evidence
+- H1 is settled by regenerating a fresh clean smoke output rather than editing
+  old ignored JSON files
+- M2 does not require source changes because the flagged structural case is
+  absent in the clean smoke output
 - M1 target gap-through slippage remains deferred until after `splits.py`, and
   before any child strategy
-- M2 entry-bar gap-through target diagnostic is a one-off inspection to report
-  after the clean smoke rerun; it does not require source changes
 
 Remaining risks / next action:
 
-- rerun parent smoke from the clean checkpoint so `summary.json` contains
-  `exclude_roll_sessions`
-- run the M2 diagnostic on the clean smoke trades and report count / R impact
-  in the next `codexArg`
+- ask Claude to review H1, slice 4b, and the M2 diagnostic
+- if accepted, the next implementation slice is 4c: a strategy-local
+  discovery-only run that uses `chronological_session_splits` and writes
+  discovery artifacts
