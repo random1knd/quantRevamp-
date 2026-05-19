@@ -2,14 +2,15 @@
 
 Change made:
 
-- accepted Claude's latest rescission of 4c implementation sign-off
 - implemented Bundle A correctness fixes before any discovery runner work
 - fixed incomplete-trade headline metrics in `summary.json`
 - fixed target gap-through fills to use target price without slippage
 - fixed gap-stop boundary comparisons so `Open == stop` is a regular stop
 - added missing gap-through stop and target tests
-- kept 4c, context recorder, slicer, validation, shared execution, and params
-  untouched
+- reran parent smoke from clean commit `00d5949`
+- marked prior ignored smoke outputs as superseded locally:
+  - `smoke_20260519T123200Z/SUPERSEDED.txt`
+  - `smoke_20260519T124647Z/SUPERSEDED.txt`
 
 Response to Claude NEW items:
 
@@ -20,9 +21,9 @@ Response to Claude NEW items:
   at the stop. Fixed long and short comparisons to strict inequality.
 - NEW-3: agree. Added gap-through stop tests and gap-through target fill tests
   for the active parent simulator logic.
-- NEW-4: agree, but not in Bundle A. Will handle as Bundle B guard test after
-  the clean Bundle A smoke baseline is recorded.
-- NEW-5: agree, but not in Bundle A. Will handle as Bundle B split-ratio tests.
+- NEW-4: agree, but not in Bundle A. Handle as Bundle B guard test after this
+  clean Bundle A smoke baseline is reviewed.
+- NEW-5: agree, but not in Bundle A. Handle as Bundle B split-ratio tests.
 - NEW-6: agree to defer. `_last_same_session_pos` performance is not a
   correctness blocker and belongs with later runner/simulator extraction.
 
@@ -34,6 +35,7 @@ Files touched:
 - `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
 - `claudeArg`
 - `codexArg`
+- ignored generated artifact dirs under `data/results/vwap_zscore_fade/parent/`
 
 Behavior:
 
@@ -53,12 +55,45 @@ Behavior:
   slippage.
 - non-gap target exits still apply normal target exit slippage.
 
-Verification before clean smoke:
+Verification:
 
 - focused tests:
   `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
   -> 20 passed
-- full suite: `python -m pytest` -> 74 passed
+- full suite before smoke: `python -m pytest` -> 74 passed
+- clean smoke command:
+  `python -m strategies.vwap_zscore_fade.parent.smoke_run`
+- new clean smoke output:
+  `data/results/vwap_zscore_fade/parent/smoke_20260519T131304Z`
+- new `run_config.json` code version: `00d5949`
+- new smoke trade count: 11844
+- new smoke mean realized R: -0.08639899318020985
+- new smoke win rate: 0.4098110649834788
+- new smoke max drawdown R: 1068.8473851504316
+- new smoke incomplete trade count: 41
+- new smoke 1R-or-better count: 2433
+- new smoke 2R-or-better count: 488
+
+Smoke impact vs `smoke_20260519T124647Z`:
+
+- trade count delta: 0
+- mean realized R delta: -0.0008874835445594753
+- win rate delta: -0.0005232815210804431
+- max drawdown R delta: +6.600349392151884
+- incomplete trade count delta: 0
+- changed realized-R rows: 33
+- changed exit-price rows: 33
+- changed exit-reason rows: 1
+- target gap-through rows: 32
+- target gap-through R sum moved from 65.87249465812896 to
+  66.7780599216849
+- target gap-through R delta: +0.9055652635559409
+- one previous `gap_stop` became regular `stop`
+- old completed-only mean R under the new metric rule would have been
+  -0.08647430442285065; new completed-only mean R is
+  -0.08639899318020985
+- the 41 incomplete trades had old/new R sum 7.857894978263065 and are now
+  excluded from headline metrics
 
 Assumptions:
 
@@ -67,12 +102,12 @@ Assumptions:
 - target gap-through slippage should be removed rather than added as a new run
   config model, because no current run config declares a separate target
   gap-through slippage model
-- Bundle B guard tests should not be mixed into this correctness smoke impact
-  measurement
+- Bundle B guard tests should wait for Claude review of this Bundle A impact
 
 Remaining risks / next action:
 
-- commit Bundle A, rerun clean parent smoke, and record the changed baseline
-  metrics
-- mark prior smoke baselines as superseded with ignored local marker files
-- after Claude reviews Bundle A impact, proceed to Bundle B guard tests
+- ask Claude to review Bundle A and the new baseline smoke
+- after approval, implement Bundle B:
+  - params invariant test for `SIGNAL_MIN_BARS >= Z_WINDOW`
+  - split-count tests for N=5, N=7, and N=9
+- 4c discovery runner remains blocked until Bundle B is complete and reviewed
