@@ -22,6 +22,15 @@ def test_trade_generating_strategy_files_do_not_import_forbidden_modules() -> No
     )
 
 
+def test_strategy_local_tests_are_not_scanned_as_trade_generating_code() -> None:
+    scanned_paths = _trade_generating_python_files()
+
+    assert all(
+        "tests" not in path.relative_to(STRATEGY_ROOT).parts
+        for path in scanned_paths
+    )
+
+
 def _trade_generating_python_files() -> list[Path]:
     # research_indicators.py is context-only; all other strategy-local Python
     # files are treated as trade-generating unless a future spec says otherwise.
@@ -29,6 +38,7 @@ def _trade_generating_python_files() -> list[Path]:
         path
         for path in sorted(STRATEGY_ROOT.glob("**/*.py"))
         if path.name not in EXEMPT_STRATEGY_FILES
+        and "tests" not in path.relative_to(STRATEGY_ROOT).parts
     ]
 
 

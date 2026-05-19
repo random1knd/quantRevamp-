@@ -2,58 +2,62 @@
 
 Change made:
 
-- added shared indicator causality tests for `session_vwap` and `session_atr`
-- added `strategies/vwap_zscore_fade/parent/params.py` as constants only
-- added a local params test under the parent strategy folder
-- updated pytest collection so strategy-local tests run in the normal suite
-- added small regression tests for timezone-aware bar inputs, A-B-A contract
-  roll marking, and direct `true_range` null OHLC validation
+- added parent-local `indicators.py` for the VWAP z-score fade parent
+- added focused parent indicator tests
+- changed the strategy import boundary scan to skip strategy-local `tests/`
+- updated `IMPLEMENTATION_PLAN.md` to use
+  `LAST_RTH_BAR_OPEN_SESSION_MINUTE`
 
 Why:
 
-- causality must be pinned before parent trade-driving indicators depend on
-  shared math
-- parent README constants should be explicit before indicator and strategy code
-  is implemented
-- strategy-local tests should be included in `python -m pytest`
-- the added regression tests close small review gaps without changing behavior
+- Claude approved moving to parent indicators and asked for the boundary-scan
+  and plan-name fixes in the same slice
+- parent indicator behavior belongs in the strategy folder because it applies
+  this strategy's RTH scoping and window choices
+- shared indicator functions are still only used for pure VWAP and ATR math
 
 Files touched:
 
-- `pyproject.toml`
-- `strategies/vwap_zscore_fade/parent/params.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_params.py`
-- `tests/shared/data/test_bars.py`
-- `tests/shared/indicators/test_vwap.py`
-- `tests/shared/indicators/test_volatility.py`
+- `strategies/vwap_zscore_fade/parent/indicators.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_indicators.py`
+- `strategies/vwap_zscore_fade/parent/IMPLEMENTATION_PLAN.md`
+- `tests/boundaries/test_strategy_imports.py`
 - `codexArg`
+
+Behavior added:
+
+- computes `TypicalPrice`, `SessionVWAP`, `VWAPDeviation`, `EntryZ`, `ATR`,
+  `EntryVolumeZ`, `EntryDelta`, and `EntryDeltaPct`
+- scopes indicator calculations to RTH bar-open minutes 0 through 385
+- leaves non-RTH rows present but with indicator columns missing
+- resets rolling calculations by `SessionDate_ET`
+- uses full windows only for z-scores and ATR
 
 Verification:
 
-- `python -m pytest tests\shared\indicators\test_vwap.py`: 12 passed
-- `python -m pytest tests\shared\indicators\test_volatility.py`: 12 passed
-- `python -m pytest tests\shared\data\test_bars.py`: 12 passed
-- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_params.py`: 1 passed
-- `python -m pytest tests\boundaries\test_strategy_imports.py`: 1 passed
-- `python -m pytest`: 38 passed
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_indicators.py`: 4 passed
+- `python -m pytest tests\boundaries\test_strategy_imports.py`: 2 passed
+- `python -m pytest`: 43 passed
 
 Assumptions:
 
-- simple constants in `params.py` do not need dynamic loading or a config object
-- commission is intentionally not defaulted in `params.py`; run costs must be
-  declared in run configuration later
-- collecting `strategies/` with pytest is consistent with the repo's
-  strategy-local test plan
+- `ATR` is the indicator column name; later trade rows can record the selected
+  signal-bar value as `SignalATR`
+- `EntryZ` follows the README rule of dividing VWAP deviation by rolling
+  standard deviation without subtracting a rolling mean
+- strategy-local tests may import context or research modules later without
+  being treated as trade-generating code
 
 Remaining risks:
 
-- parent indicator integration is still unimplemented
-- `prepare_bars` still uses ET calendar dates as sessions, acceptable for RTH
-  v0 but not enough for future ETH or overnight work
-- child parent-import boundary tests remain deferred until child strategies
-  exist
+- parent `strategy.py` is still unimplemented
+- same-bar stop/target handling and realized-R accounting remain deferred until
+  simulator or strategy trade objects exist
+- `SessionDate_ET` remains an RTH-v0 calendar-date session key, not a full
+  futures overnight session model
 
 Next proposed slice:
 
-- after review, add parent-local `indicators.py` for RTH-scoped VWAP, VWAP
-  deviation z-score, ATR, and volume z-score with focused tests
+- add parent `strategy.py` and focused tests for one long signal and one short
+  signal, keeping entry/exit/stop rules local and avoiding runner or simulator
+  abstractions
