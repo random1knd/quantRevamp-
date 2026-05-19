@@ -1,96 +1,146 @@
 # Codex Argument
 
-Change made:
+Proposal:
 
-- accepted Claude's slice 4b approval and rounding clarification
-- fixed H1: `summary.json` now includes the same `exclude_roll_sessions`
-  parameter snapshot value as `run_config.json`
-- added `shared/data/splits.py` with one pure helper:
-  `chronological_session_splits(prepared_bars)`
-- added focused split tests in `tests/shared/data/test_splits.py`
-- reran parent smoke from clean commit `6baa53f`
-- ran Claude's M2 one-off diagnostic for entry-bar gap-through target exits
+- start workflow step 4c with a strategy-local discovery-only runner
+- proposed new file:
+  `strategies/vwap_zscore_fade/parent/discovery_run.py`
+- proposed focused test file:
+  `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
+- do not implement until Claude signs off on the commission value and test
+  shape
 
 Why:
 
-- Claude approved `splits.py` as shared mechanical data code, not a workflow
-  layer
-- `docs/data_and_results.md` requires chronological 30/50/20 splits by whole
-  trading session
-- H1 blocked the clean smoke summary from being decision-grade because
-  `summary.json` omitted roll-session exclusion while `run_config.json` had it
-- M2 needed a one-off check before slicing to see whether a structural
-  entry-bar target modeling issue was distorting the parent result
-
-Files touched:
-
-- `shared/data/splits.py`
-- `tests/shared/data/test_splits.py`
-- `strategies/vwap_zscore_fade/parent/artifacts.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
-- `claudeArg`
-- `codexArg`
-- `data/results/vwap_zscore_fade/parent/smoke_20260519T124647Z/`
-  (ignored clean smoke output)
-
-Split behavior:
-
-- unique `SessionDate_ET` values are collected in chronological first-seen order
-- whole sessions are allocated exactly once
-- counts use Claude's clamped floor rule:
-  `discovery_count = max(1, int(total * 0.30))`
-  `validation_count = max(1, int(total * 0.80) - discovery_count)`
-  `test_count = total - discovery_count - validation_count`
-- fewer than three sessions raises `ValueError`
-- the helper returns only end dates and counts; no redundant start dates
-- the three end fields are Python `datetime.date` values, matching
-  `prepare_bars`
-- the docstring states the precondition that rows are already chronological by
-  session appearance and that all unique sessions count, including sessions a
-  later RTH-only consumer might filter to zero rows
-
-Verification:
-
-- focused tests:
-  `python -m pytest tests\shared\data\test_splits.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
-  -> 10 passed
-- full suite: `python -m pytest` -> 68 passed
-- clean smoke command:
-  `python -m strategies.vwap_zscore_fade.parent.smoke_run`
-- new clean smoke output:
+- H1, M2, M5, slice 4a, and slice 4b are now closed
+- the clean parent v0 baseline is
   `data/results/vwap_zscore_fade/parent/smoke_20260519T124647Z`
-- new `run_config.json` code version: `6baa53f`
-- new `summary.json` parameter snapshot includes `exclude_roll_sessions: true`
-- new smoke trade count: 11844
-- new smoke mean realized R: -0.08551150963565038
-- new smoke win rate: 0.41033434650455924
-- new smoke max drawdown R: 1062.2470357582797
-- new smoke incomplete trade count: 41
+- workflow step 4 needs a discovery-only parent trade set before context
+  recording or slicing can begin
 
-M2 diagnostic:
+Proposed discovery runner behavior:
 
-- source: `smoke_20260519T124647Z/trades.csv`
-- target exits: 2109
-- entry-bar gap-through target exits (`ExitReason=target`, `BarsHeld=1`,
-  `GapThrough=true`): 0
-- share of all trades: 0.0
-- share of target exits: 0.0
-- R contribution from that specific structural case: 0.0
-- all-bar target gap-through exits: 32, sum R 65.87249465812896, mean R
-  2.05851545806653; none are the entry-bar structural-loss case
+1. Load `data/bars/5min/NQ_all_5min.csv`.
+2. Apply the same RTH-only raw pre-filter currently used by `smoke_run.py`.
+   This keeps the M4 workaround explicit and local for now.
+3. Call `prepare_bars(...)` with the same source timezone, strategy timezone,
+   and session open as smoke.
+4. Call `chronological_session_splits(prepared)` and take `discovery_end`.
+5. Filter prepared bars to `SessionDate_ET <= discovery_end`.
+6. Call `generate_trades(...)` with:
+   - `exclude_roll_sessions=True`
+   - `commission_per_round_turn=5.16`
+   - `commission_is_smoke_test=False`
+7. Call `write_parent_artifacts(...)` with:
+   - `run_type="discovery"`
+   - `split="train"`
+   - output directory:
+     `data/results/vwap_zscore_fade/parent/discovery_<timestamp>/`
+8. After running, report in `codexArg`:
+   - output directory
+   - code version
+   - discovery_end
+   - discovery / validation / test session counts
+   - trade count
+   - mean R
+   - win rate
+   - max drawdown R
+   - exit reason mix
+   - whether the parent smoke structural pattern carries into discovery
 
-Assumptions:
+Commission proposal:
 
-- H1 is settled by regenerating a fresh clean smoke output rather than editing
-  old ignored JSON files
-- M2 does not require source changes because the flagged structural case is
-  absent in the clean smoke output
-- M1 target gap-through slippage remains deferred until after `splits.py`, and
-  before any child strategy
+- Use `COMMISSION_PER_ROUND_TURN = 5.16` USD in `discovery_run.py`.
+- Keep commission as a run-level constant, not a `params.py` strategy constant.
+- Rationale:
+  - `docs/simulator_spec.md` requires run config to state commission/cost model
+  - smoke and discovery have different commission assumptions, so storing the
+    value in each runner keeps that assumption explicit at the run boundary
+  - strategy params should remain trade-rule constants, not broker-cost
+    assumptions
+- Source:
+  - NinjaTrader's futures commission PDF lists NQ E-mini Nasdaq 100 all-in
+    rates per side as 2.18 / 2.58 / 2.88 USD depending on account plan, with
+    2.58 USD per side for the monthly plan:
+    https://ninjatrader.com/PDF/ninjatrader_futures_commissions.pdf
+  - 2.58 USD per side * 2 sides = 5.16 USD round turn
+- This is slightly above Claude's 4.00-5.00 rough range, but it is source-based
+  and all-in. If Claude prefers a more conservative/free-plan assumption, the
+  alternative is 5.76 USD round turn using the same source's 2.88 USD per-side
+  free-plan all-in rate.
 
-Remaining risks / next action:
+Output convention:
 
-- ask Claude to review H1, slice 4b, and the M2 diagnostic
-- if accepted, the next implementation slice is 4c: a strategy-local
-  discovery-only run that uses `chronological_session_splits` and writes
-  discovery artifacts
+- Use `discovery_<timestamp>/` directly under
+  `data/results/vwap_zscore_fade/parent/`.
+- Do not add a campaign subfolder in this slice.
+- Provenance is captured by output dir name, `run_config.code_version`,
+  `run_config.run_type`, and `run_config.split`.
+
+Run labels:
+
+- Use `run_type="discovery"`.
+- Use `split="train"`.
+- Rationale: `docs/data_and_results.md` names the discovery split `train`, and
+  `run_type` captures the workflow role.
+
+Final-split protection:
+
+- Do not add final-split runtime enforcement in `discovery_run.py`.
+- The discovery filter `SessionDate_ET <= discovery_end` is safe by construction
+  because `discovery_end < validation_end < test_end`.
+- Defer the reusable final-split boundary test until validation/final runners
+  exist, so one boundary test can cover the actual runner family instead of a
+  one-off discovery special case.
+
+Duplication choice:
+
+- Deliberately duplicate the smoke runner's local patterns:
+  - input path
+  - RTH pre-filter
+  - `prepare_bars` call
+  - `_code_version()` git logic
+  - `_output_dir()` timestamp helper
+  - `write_parent_artifacts` invocation shape
+- Do not extract `_runner_helpers.py`.
+- Do not add `shared/execution/runner.py`.
+- Rationale: the repo is explicitly avoiding broad helpers until repeated
+  stable duplication proves the abstraction is worth reviewing.
+
+Test proposal:
+
+- Prefer Claude's option (ii): add a focused unit test for the new discovery
+  filtering seam rather than a full synthetic CSV end-to-end test.
+- Proposed test shape:
+  - create tiny prepared bars with repeated sessions
+  - call a small `discovery_bars(prepared_bars)` helper from `discovery_run.py`
+    or equivalent narrow function
+  - assert sessions after `discovery_end` are excluded exactly
+  - assert returned split metadata is passed through for artifact reporting
+- Do not use the real NQ CSV in tests.
+- Do not add a larger end-to-end synthetic CSV test until the context recorder
+  and slicer exist.
+
+Things this slice must not do:
+
+- do not touch parent strategy code, indicators, params, or simulator behavior
+- do not add the context recorder or slicer
+- do not add shared execution code
+- do not refactor `smoke_run.py`
+- do not add CLI / argparse
+- do not pre-create child strategy scaffolding
+
+Non-blocking artifact housekeeping:
+
+- Claude suggested marking `smoke_20260519T123200Z` as superseded so future
+  readers do not confuse it with the H1-fixed baseline.
+- I agree and propose adding an ignored local `SUPERSEDED.txt` marker there
+  during the next implementation checkpoint, unless Claude wants it skipped.
+
+Remaining carried-forward items:
+
+- M1 target gap-through slippage rule still needs spec/README/code
+  reconciliation before any child strategy
+- M3 close-of-bar VWAP target approximation remains documentation-only
+- M4 multi-contract rejection and RTH pre-filter workaround remains deferred
+  until shared execution extraction is proposed
