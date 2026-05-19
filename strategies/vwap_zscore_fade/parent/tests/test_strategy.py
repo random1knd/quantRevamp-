@@ -1,81 +1,99 @@
+from datetime import date
+
 import pandas as pd
 import pytest
 
 from strategies.vwap_zscore_fade.parent.strategy import generate_trades
 
 
-def make_target_exit_setup(*, side: str, roll_session: bool = False) -> pd.DataFrame:
+SESSION_DATE = date(2026, 1, 2)
+
+
+def make_signal_setup(
+    *,
+    side: str,
+    roll_session: bool = False,
+    signal_minute: int = 95,
+    entry_overrides: dict[str, float] | None = None,
+    following_overrides: list[dict[str, float]] | None = None,
+) -> pd.DataFrame:
     if side == "long":
-        signal_open = signal_high = 81.0
-        signal_low = signal_close = 80.0
-        entry_open = 80.0
-        entry_high = 100.0
-        entry_low = 79.0
-        entry_close = 90.0
+        signal_values = {"Open": 81.0, "High": 81.0, "Low": 80.0, "Close": 80.0}
+        entry_values = {"Open": 80.0, "High": 100.0, "Low": 79.0, "Close": 90.0}
     elif side == "short":
-        signal_open = signal_low = 119.0
-        signal_high = signal_close = 120.0
-        entry_open = 120.0
-        entry_high = 121.0
-        entry_low = 100.0
-        entry_close = 110.0
+        signal_values = {"Open": 119.0, "High": 120.0, "Low": 119.0, "Close": 120.0}
+        entry_values = {"Open": 120.0, "High": 121.0, "Low": 100.0, "Close": 110.0}
     else:
         raise ValueError(f"unsupported side: {side}")
 
+    if entry_overrides:
+        entry_values.update(entry_overrides)
+
     rows = []
-    start = pd.Timestamp("2026-01-02 09:30:00", tz="America/New_York")
+    first_minute = signal_minute - 95
     for index in range(19):
         rows.append(
-            {
-                "DateTime_ET": start + pd.Timedelta(minutes=index * 5),
-                "SessionDate_ET": "2026-01-02",
-                "SessionMinute_ET": index * 5,
-                "Open": 100.0,
-                "High": 100.0,
-                "Low": 100.0,
-                "Close": 100.0,
-                "Volume": 100.0,
-                "BidVolume": 40.0,
-                "AskVolume": 60.0,
-                "Contract": "NQH26",
-                "IsFirstSessionAfterContractChange": roll_session,
-            }
+            make_bar(
+                minute=first_minute + index * 5,
+                roll_session=roll_session,
+                Open=100.0,
+                High=100.0,
+                Low=100.0,
+                Close=100.0,
+            )
         )
 
     rows.append(
-        {
-            "DateTime_ET": start + pd.Timedelta(minutes=95),
-            "SessionDate_ET": "2026-01-02",
-            "SessionMinute_ET": 95,
-            "Open": signal_open,
-            "High": signal_high,
-            "Low": signal_low,
-            "Close": signal_close,
-            "Volume": 100.0,
-            "BidVolume": 40.0,
-            "AskVolume": 60.0,
-            "Contract": "NQH26",
-            "IsFirstSessionAfterContractChange": roll_session,
-        }
+        make_bar(
+            minute=signal_minute,
+            roll_session=roll_session,
+            **signal_values,
+        )
     )
     rows.append(
-        {
-            "DateTime_ET": start + pd.Timedelta(minutes=100),
-            "SessionDate_ET": "2026-01-02",
-            "SessionMinute_ET": 100,
-            "Open": entry_open,
-            "High": entry_high,
-            "Low": entry_low,
-            "Close": entry_close,
-            "Volume": 100.0,
-            "BidVolume": 40.0,
-            "AskVolume": 60.0,
-            "Contract": "NQH26",
-            "IsFirstSessionAfterContractChange": roll_session,
-        }
+        make_bar(
+            minute=signal_minute + 5,
+            roll_session=roll_session,
+            **entry_values,
+        )
     )
 
+    for offset, overrides in enumerate(following_overrides or [], start=2):
+        rows.append(
+            make_bar(
+                minute=signal_minute + offset * 5,
+                roll_session=roll_session,
+                **overrides,
+            )
+        )
+
     return pd.DataFrame(rows)
+
+
+def make_bar(
+    *,
+    minute: int,
+    roll_session: bool,
+    Open: float,
+    High: float,
+    Low: float,
+    Close: float,
+) -> dict[str, object]:
+    start = pd.Timestamp("2026-01-02 09:30:00", tz="America/New_York")
+    return {
+        "DateTime_ET": start + pd.Timedelta(minutes=minute),
+        "SessionDate_ET": SESSION_DATE,
+        "SessionMinute_ET": minute,
+        "Open": Open,
+        "High": High,
+        "Low": Low,
+        "Close": Close,
+        "Volume": 100.0,
+        "BidVolume": 40.0,
+        "AskVolume": 60.0,
+        "Contract": "NQH26",
+        "IsFirstSessionAfterContractChange": roll_session,
+    }
 
 
 def generate_smoke_trades(bars: pd.DataFrame, *, exclude_roll_sessions: bool = True):
@@ -88,7 +106,7 @@ def generate_smoke_trades(bars: pd.DataFrame, *, exclude_roll_sessions: bool = T
 
 
 def test_generate_trades_enters_long_after_negative_zscore_and_exits_at_vwap_target():
-    bars = make_target_exit_setup(side="long")
+    bars = make_signal_setup(side="long")
 
     trades = generate_smoke_trades(bars)
 
@@ -109,7 +127,7 @@ def test_generate_trades_enters_long_after_negative_zscore_and_exits_at_vwap_tar
 
 
 def test_generate_trades_enters_short_after_positive_zscore_and_exits_at_vwap_target():
-    bars = make_target_exit_setup(side="short")
+    bars = make_signal_setup(side="short")
 
     trades = generate_smoke_trades(bars)
 
@@ -128,8 +146,79 @@ def test_generate_trades_enters_short_after_positive_zscore_and_exits_at_vwap_ta
     assert trade.realized_r > 0.0
 
 
+def test_generate_trades_exits_long_at_stop():
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides={"High": 81.0, "Low": 78.0, "Close": 79.0},
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "stop"
+    assert trade.exit_price == pytest.approx(trade.initial_stop_price - 0.25)
+    assert trade.realized_r < 0.0
+
+
+def test_generate_trades_exits_short_at_stop():
+    bars = make_signal_setup(
+        side="short",
+        entry_overrides={"High": 122.0, "Low": 119.0, "Close": 121.0},
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "stop"
+    assert trade.exit_price == pytest.approx(trade.initial_stop_price + 0.25)
+    assert trade.realized_r < 0.0
+
+
+def test_generate_trades_uses_stop_before_target_on_same_bar_conflict():
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides={"High": 100.0, "Low": 78.0, "Close": 90.0},
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "stop"
+    assert trade.exit_price == pytest.approx(trade.initial_stop_price - 0.25)
+
+
+def test_generate_trades_exits_at_time_stop_after_max_bars_held():
+    hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides=hold_bar,
+        following_overrides=[hold_bar] * 11,
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "time_stop"
+    assert trade.bars_held == 12
+    assert trade.exit_time == bars.loc[31, "DateTime_ET"]
+
+
+def test_generate_trades_exits_at_session_end_before_time_stop():
+    hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
+    bars = make_signal_setup(
+        side="long",
+        signal_minute=350,
+        entry_overrides=hold_bar,
+        following_overrides=[hold_bar] * 6,
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "session_end"
+    assert trade.bars_held == 7
+    assert trade.exit_time == bars.loc[26, "DateTime_ET"]
+    assert trade.exit_time.hour == 15
+    assert trade.exit_time.minute == 55
+
+
 def test_generate_trades_excludes_roll_session_signals_when_requested():
-    bars = make_target_exit_setup(side="long", roll_session=True)
+    bars = make_signal_setup(side="long", roll_session=True)
 
     excluded = generate_smoke_trades(bars, exclude_roll_sessions=True)
     included = generate_smoke_trades(bars, exclude_roll_sessions=False)
@@ -139,7 +228,7 @@ def test_generate_trades_excludes_roll_session_signals_when_requested():
 
 
 def test_generate_trades_requires_smoke_label_for_zero_commission():
-    bars = make_target_exit_setup(side="long")
+    bars = make_signal_setup(side="long")
 
     with pytest.raises(ValueError, match="zero commission requires smoke-test label"):
         generate_trades(

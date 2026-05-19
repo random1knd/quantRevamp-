@@ -14,8 +14,6 @@ REQUIRED_COLUMNS = (
     "Low",
     "Close",
     "Volume",
-    "BidVolume",
-    "AskVolume",
 )
 
 INDICATOR_COLUMNS = (
@@ -24,14 +22,11 @@ INDICATOR_COLUMNS = (
     "VWAPDeviation",
     "EntryZ",
     "ATR",
-    "EntryVolumeZ",
-    "EntryDelta",
-    "EntryDeltaPct",
 )
 
 
 def add_parent_indicators(bars: pd.DataFrame) -> pd.DataFrame:
-    """Add v0 parent trading and declared research-context indicators."""
+    """Add v0 parent trade-driving indicators."""
 
     _validate_required_columns(bars)
 
@@ -69,13 +64,6 @@ def add_parent_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         session_col="SessionDate_ET",
         window=params.ATR_WINDOW,
     )
-    rth["EntryVolumeZ"] = _session_standard_zscore(
-        rth["Volume"],
-        session=rth["SessionDate_ET"],
-        window=params.VOLUME_Z_WINDOW,
-    )
-    rth["EntryDelta"] = rth["AskVolume"] - rth["BidVolume"]
-    rth["EntryDeltaPct"] = rth["EntryDelta"] / rth["Volume"]
 
     result.loc[rth.index, INDICATOR_COLUMNS] = rth.loc[:, INDICATOR_COLUMNS]
     return result
@@ -102,19 +90,6 @@ def _session_deviation_zscore(
 ) -> pd.Series:
     rolling_std = _session_rolling_std(values, session=session, window=window)
     return values / rolling_std.mask(rolling_std == 0.0)
-
-
-def _session_standard_zscore(
-    values: pd.Series,
-    *,
-    session: pd.Series,
-    window: int,
-) -> pd.Series:
-    rolling_mean = values.groupby(session, sort=False).transform(
-        lambda group: group.rolling(window=window, min_periods=window).mean()
-    )
-    rolling_std = _session_rolling_std(values, session=session, window=window)
-    return (values - rolling_mean) / rolling_std.mask(rolling_std == 0.0)
 
 
 def _session_rolling_std(

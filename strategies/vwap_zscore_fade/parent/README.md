@@ -222,6 +222,13 @@ Default slippage:
 
 - 1 tick per side
 
+Current v0 implementation note:
+
+- `strategy.py` temporarily performs mechanical fills, slippage, and
+  realized-R calculation until `shared/execution/simulator.py` is extracted
+  behind focused simulator-spec tests. At that point, the slippage model must
+  move from parent params into explicit run configuration.
+
 NQ contract values:
 
 - tick size: 0.25

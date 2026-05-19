@@ -2,62 +2,60 @@
 
 Change made:
 
-- added parent `strategy.py` for the VWAP z-score fade parent
-- added focused strategy behavior tests for one long target exit, one short
-  target exit, roll-session exclusion, and zero-commission smoke labeling
+- moved context-only fields out of parent `indicators.py`
+- added parent `research_indicators.py` for `EntryVolumeZ`, `EntryDelta`, and
+  `EntryDeltaPct`
+- added focused research-indicator tests
+- expanded parent strategy tests for long stop, short stop, same-bar
+  stop-before-target, time stop, and session-end exits
+- added the parent README note that `strategy.py` temporarily performs fills,
+  slippage, and realized-R until a tested simulator is extracted
 
 Why:
 
-- the parent README and implementation plan call for strategy-local entry,
-  stop, target, time/session exit, and one-open-trade behavior before runner or
-  simulator code exists
-- this keeps strategy meaning inside the strategy folder and avoids a shared
-  setup/trigger/filter framework
+- Claude flagged that research-context columns in `indicators.py` weaken the
+  structural boundary that keeps slicing context out of parent trade decisions
+- missing exit-path tests should be in place before artifact writing or runner
+  work
+- the temporary fill-accounting shortcut needs to be visible in the strategy
+  README while the simulator is still deferred
 
 Files touched:
 
-- `strategies/vwap_zscore_fade/parent/strategy.py`
+- `strategies/vwap_zscore_fade/parent/README.md`
+- `strategies/vwap_zscore_fade/parent/indicators.py`
+- `strategies/vwap_zscore_fade/parent/research_indicators.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_indicators.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_research_indicators.py`
 - `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
 - `codexArg`
 
-Behavior added:
-
-- evaluates signals on closed bars and enters on the next bar open
-- requires full 20-bar signal warmup, valid ATR, same-session entry, and entry
-  fill minutes from 10:30 ET through before 15:30 ET
-- supports explicit `exclude_roll_sessions`
-- applies 1-tick entry and exit slippage from parent params
-- places initial stops at 1.5x signal-bar ATR
-- exits on stop before target when both are possible, then tracking VWAP target,
-  then 12-bar time stop, then session-end close, then end-of-data
-- records realized R from initial risk and requires smoke-test labeling when
-  commission is zero
-
 Verification:
 
-- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py`: 4 passed
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_indicators.py`: 4 passed
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_research_indicators.py`: 5 passed
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py`: 9 passed
 - `python -m pytest tests\boundaries\test_strategy_imports.py`: 2 passed
-- `python -m pytest`: 47 passed
+- `python -m pytest`: 57 passed
 
 Assumptions:
 
-- this first strategy slice can perform its own mechanical trade closure until
-  a later simulator surface is approved and tested
-- `commission_per_round_turn` is explicit run input; no commission default was
-  added to params
-- target exits use the current bar's tracking VWAP and apply the parent default
-  one-tick exit slippage
+- parent `strategy.py` must not import or read `research_indicators.py`; the
+  existing boundary test protects that
+- `research_indicators.py` can duplicate small rolling z-score math locally for
+  now rather than introduce a shared z-score module before repeated need
+- the strategy exit tests use smoke-test zero commission only because the
+  current slice is behavior-focused, not run-comparison evidence
 
 Remaining risks:
 
-- no CSV writer, summary artifact, or run_config writer exists yet
-- no shared simulator tests exist yet for the full gap-through, same-bar, and
-  incomplete-trade matrix in `docs/simulator_spec.md`
-- strategy behavior currently assumes the RTH session has a 15:55 ET bar for
-  normal session-end exits
+- no trade artifact writer, summary writer, or run_config writer exists yet
+- mechanical fills and realized-R still live in `strategy.py` until a tested
+  simulator surface is approved
+- no real data smoke run has been wired yet
 
 Next proposed slice:
 
-- add a minimal strategy-local smoke runner or artifact writer only after
-  review; otherwise the next safer slice is more focused strategy tests for
-  stop, time-stop, session-end, and same-bar stop-before-target behavior
+- pause for Claude review. If accepted, the next practical slice is a minimal
+  artifact writer for this parent strategy's `Trade` objects, not shared
+  slicing or overfitting infrastructure yet

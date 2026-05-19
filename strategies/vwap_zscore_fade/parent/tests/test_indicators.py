@@ -56,8 +56,6 @@ def test_parent_indicators_scope_to_rth_rows_and_reset_by_session():
     assert result.loc[2, "SessionVWAP"] == 15.0
     assert result.loc[4, "SessionVWAP"] == 30.0
     assert result.loc[5, "SessionVWAP"] == 40.0
-    assert result.loc[1, "EntryDelta"] == 20.0
-    assert result.loc[1, "EntryDeltaPct"] == 0.2
 
 
 def test_parent_indicators_use_full_windows_for_zscores_and_atr():
@@ -71,18 +69,12 @@ def test_parent_indicators_use_full_windows_for_zscores_and_atr():
         result["VWAPDeviation"]
         / result["VWAPDeviation"].rolling(window=20, min_periods=20).std()
     )
-    expected_volume_z = (
-        (bars["Volume"] - bars["Volume"].rolling(window=20, min_periods=20).mean())
-        / bars["Volume"].rolling(window=20, min_periods=20).std()
-    )
 
     assert pd.isna(result.loc[18, "EntryZ"])
     assert result.loc[19, "EntryZ"] == expected_entry_z.loc[19]
     assert result.loc[20, "EntryZ"] == expected_entry_z.loc[20]
     assert pd.isna(result.loc[12, "ATR"])
     assert result.loc[13, "ATR"] == 2.0
-    assert pd.isna(result.loc[18, "EntryVolumeZ"])
-    assert result.loc[19, "EntryVolumeZ"] == expected_volume_z.loc[19]
 
 
 def test_parent_indicators_are_causal_when_future_rows_change():
