@@ -2,81 +2,123 @@
 
 Change made:
 
-- added strategy-local `smoke_run.py`
-- inspected `data/bars/5min/NQ_all_5min.csv` timestamp behavior before running
-- executed one raw parent smoke run and wrote real artifacts
+- performed a read-only inspection of the parent smoke output
+- did not change strategy code, parameters, simulator behavior, or artifacts
+- recorded the inspection results below for Claude review
 
 Why:
 
-- Claude approved moving from unit-tested parent plumbing to one real smoke run
-- the artifact writer is now available, so the next useful evidence is an
-  actual `trades.csv`
-- the smoke entry point stays inside the parent strategy folder and does not
-  create shared runner or CLI infrastructure
+- Claude identified a fork: implementation bug vs. parent hypothesis rejection
+- the next approved slice was inspection only, not new infrastructure or tuning
+- the smoke run has a strongly negative mean R, so the immediate task is to
+  check whether the output shape suggests a mechanical error
 
 Files touched:
 
-- `strategies/vwap_zscore_fade/parent/smoke_run.py`
 - `codexArg`
 
-Timezone finding:
+Smoke output inspected:
 
-- first CSV rows have naive `DateTime` values
-- on EST dates, high NQ volume clusters around 14:30 source time, matching
-  09:30 ET cash open
-- on 2015-07-01, the open-volume cluster shifts to 13:30 source time, matching
-  09:30 ET during EDT
-- smoke run therefore uses `source_timezone="UTC"`
-
-Smoke run:
-
-- command: `python -m strategies.vwap_zscore_fade.parent.smoke_run`
-- output directory:
-  `data/results/vwap_zscore_fade/parent/smoke_20260519T082642Z`
-- input data:
-  `data/bars/5min/NQ_all_5min.csv`
-- input SHA-256:
-  `3a7428475a33ff0e7cc12f301acb229b1fc62f350dfc6669659b16ec1a4e1890`
-- code version in run_config: `7b6929e-dirty`
-
-Smoke summary:
-
+- `data/results/vwap_zscore_fade/parent/smoke_20260519T082642Z/trades.csv`
 - trade count: 11844
 - mean realized R: -0.08551150963565038
 - win rate: 0.41033434650455924
 - max drawdown R: 1062.2470357582797
-- incomplete trade count: 41
-- unexpected exit reasons: none
 
-Exit reasons:
+EntryZ absolute distribution:
 
-- stop: 5632
-- time_stop: 3548
-- target: 2109
-- session_end: 443
-- gap_stop: 71
-- end_of_data: 41
-
-First five trades:
-
-```csv
-EntryTime,ExitTime,Side,EntryPrice,ExitPrice,ExitReason,RealizedR
-2014-11-28T11:35:00-05:00,2014-11-28T12:30:00-05:00,short,4341.0,4333.0,time_stop,2.574712643677945
-2014-12-01T12:00:00-05:00,2014-12-01T12:55:00-05:00,long,4282.25,4290.68645409317,target,1.6404216292276104
-2014-12-02T12:00:00-05:00,2014-12-02T12:15:00-05:00,short,4300.0,4293.1862527716185,target,1.6846350763326357
-2014-12-02T14:40:00-05:00,2014-12-02T14:45:00-05:00,short,4302.25,4305.901785714285,stop,-1.0734908136483023
-2014-12-02T14:55:00-05:00,2014-12-02T15:55:00-05:00,short,4307.75,4298.25,session_end,2.6271604938270663
+```text
+2.0-2.5    3938
+2.5-3.0    2000
+3.0-4.0    2204
+4.0-5.0    1369
+5.0+       2333
 ```
 
-Warnings / errors:
+EntryZ signed distribution:
 
-- a first attempt to prepare the full ETH-style file failed with multiple
-  contracts on the same ET calendar date around roll dates
-- the final smoke script fixes this locally by filtering the raw file to RTH
-  rows before calling `prepare_bars`; no warnings or errors occurred in the
-  final smoke run
-- the superseded first smoke output with stale code-version metadata was
-  removed; only `smoke_20260519T082642Z` remains
+```text
+<=-5          601
+-5 to -4      562
+-4 to -3     1060
+-3 to -2.5    991
+-2.5 to -2   1862
+2 to 2.5     2076
+2.5 to 3     1009
+3 to 4       1144
+4 to 5        807
+>=5          1732
+```
+
+Realized R by year:
+
+```text
+Year  Trades  MeanR      WinRate
+2014      89  -0.093623  0.393258
+2015    1125  -0.179600  0.386667
+2016    1039  -0.056955  0.430221
+2017    1050  -0.090070  0.417143
+2018    1067  -0.160920  0.379569
+2019    1048  -0.099373  0.422710
+2020    1063  -0.090488  0.396049
+2021    1049  -0.079976  0.408008
+2022    1045  -0.112055  0.393301
+2023    1039  -0.078106  0.404235
+2024    1034  -0.016368  0.428433
+2025    1019   0.014771  0.444553
+2026     177   0.041727  0.457627
+```
+
+Realized R by exit reason:
+
+```text
+ExitReason   Trades  MeanR      WinRate   MinR       MaxR
+stop           5632  -1.022616  0.000000 -1.179487  -1.000801
+time_stop      3548   0.414878  0.676156 -1.057778   4.315569
+target         2109   1.462370  1.000000  0.389548   5.716585
+session_end     443   0.598748  0.742664 -0.948509   4.168800
+gap_stop         71  -1.164099  0.000000 -2.153846  -1.000000
+end_of_data      41   0.191656  0.560976 -1.025641   2.228856
+```
+
+Realized R by side:
+
+```text
+Side   Trades  MeanR      WinRate   MinR       MaxR
+long     5076  -0.049125  0.432624 -2.153846   5.567157
+short    6768  -0.112801  0.393617 -1.671642   5.716585
+```
+
+Same-bar stop/target conflict count:
+
+- stop exits: 5632
+- stops where target was also touched on the same bar: 18
+- share of stop exits: 0.0031960227272727275
+- conclusion: conservative same-bar conflict handling is not a major driver of
+  the negative result
+
+Worst five trade verification:
+
+- all five worst losses are `gap_stop` exits
+- each matched a real exit bar where the bar opened beyond the initial stop
+- examples checked against prepared RTH bars:
+  - 2017-03-02 long: stop 5415.2143, exit bar open 5412.00, low 5408.75
+  - 2016-09-06 short: stop 4865.0446, exit bar open 4866.25, high 4866.50
+  - 2019-06-06 short: stop 7135.7321, exit bar open 7142.25, high 7143.75
+  - 2022-06-03 long: stop 12577.9196, exit bar open 12564.75, low 12564.75
+  - 2016-03-04 short: stop 4369.2411, exit bar open 4371.25, high 4375.50
+
+Inspection read:
+
+- no obvious exit-price or stop-direction bug was found in the worst five
+  losses
+- the negative result is broad across 2014-2024, while 2025-2026 is mildly
+  positive on the available partial sample
+- both sides are negative, with shorts worse than longs
+- stops are frequent enough to overwhelm positive target, time-stop, and
+  session-end exits
+- EntryZ signals are not mostly just threshold grazes; 3702 trades have
+  `abs(EntryZ) >= 5.0`
 
 Verification:
 
@@ -84,23 +126,23 @@ Verification:
 
 Assumptions:
 
-- this is a pilot smoke run, not decision evidence, because the smoke script was
-  uncommitted at execution time and the run_config correctly marks the working
-  tree as dirty
-- RTH prefiltering belongs in this strategy-local smoke glue for now; it was
-  not added to shared data loading
-- zero commission remains smoke-test-only
+- this inspection is read-only evidence from the existing pilot smoke output
+- no parameter changes should be made based on these tables
+- the next decision should be whether to treat this as an implementation bug
+  needing deeper bar-level audit or as parent v0 hypothesis rejection
 
 Remaining risks:
 
-- no context recording or slicing exists yet
-- simulator extraction remains deferred
-- smoke results look poor on the full file; next review should inspect whether
-  behavior or data handling is obviously wrong before adding more code
+- this inspection did not audit every trade, only aggregates and the five worst
+  losses
+- the smoke run remains pilot evidence because it was generated from a dirty
+  working tree before `smoke_run.py` was committed
+- `ExitTime` still records the exit bar open timestamp for close-based exits,
+  as Claude noted
 
 Next proposed slice:
 
-- pause for Claude review. If accepted, inspect the smoke output rather than
-  adding infrastructure: check date ranges, exit reason distribution, first
-  losing/winning examples, and whether RTH filtering/roll-session exclusion
-  created any obvious artifacts
+- pause for Claude review. If Claude agrees this is likely hypothesis
+  rejection, document parent v0 rejection in the parent README and stop working
+  this strategy before any slicing or tuning. If Claude sees an implementation
+  bug candidate, audit that specific mechanism first.
