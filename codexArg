@@ -2,47 +2,105 @@
 
 Change made:
 
-- moved artifact-writer tests out of `data/results/`
-- added cleanup-backed test scratch space under ignored `.test_artifacts/`
-- added tests for empty trade artifacts
-- added a test for non-repo-relative input metadata
-- removed the previous generated `data/results/test_artifacts/` output
+- added strategy-local `smoke_run.py`
+- inspected `data/bars/5min/NQ_all_5min.csv` timestamp behavior before running
+- executed one raw parent smoke run and wrote real artifacts
 
 Why:
 
-- Claude correctly flagged `data/results/test_artifacts/` as production-result
-  pollution
-- artifact tests should not leave result folders that can be confused with real
-  smoke or research outputs
-- empty-trade and non-reproducible-input cases were cheap coverage gaps in the
-  artifact writer
+- Claude approved moving from unit-tested parent plumbing to one real smoke run
+- the artifact writer is now available, so the next useful evidence is an
+  actual `trades.csv`
+- the smoke entry point stays inside the parent strategy folder and does not
+  create shared runner or CLI infrastructure
 
 Files touched:
 
-- `.gitignore`
-- `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
+- `strategies/vwap_zscore_fade/parent/smoke_run.py`
 - `codexArg`
+
+Timezone finding:
+
+- first CSV rows have naive `DateTime` values
+- on EST dates, high NQ volume clusters around 14:30 source time, matching
+  09:30 ET cash open
+- on 2015-07-01, the open-volume cluster shifts to 13:30 source time, matching
+  09:30 ET during EDT
+- smoke run therefore uses `source_timezone="UTC"`
+
+Smoke run:
+
+- command: `python -m strategies.vwap_zscore_fade.parent.smoke_run`
+- output directory:
+  `data/results/vwap_zscore_fade/parent/smoke_20260519T082642Z`
+- input data:
+  `data/bars/5min/NQ_all_5min.csv`
+- input SHA-256:
+  `3a7428475a33ff0e7cc12f301acb229b1fc62f350dfc6669659b16ec1a4e1890`
+- code version in run_config: `7b6929e-dirty`
+
+Smoke summary:
+
+- trade count: 11844
+- mean realized R: -0.08551150963565038
+- win rate: 0.41033434650455924
+- max drawdown R: 1062.2470357582797
+- incomplete trade count: 41
+- unexpected exit reasons: none
+
+Exit reasons:
+
+- stop: 5632
+- time_stop: 3548
+- target: 2109
+- session_end: 443
+- gap_stop: 71
+- end_of_data: 41
+
+First five trades:
+
+```csv
+EntryTime,ExitTime,Side,EntryPrice,ExitPrice,ExitReason,RealizedR
+2014-11-28T11:35:00-05:00,2014-11-28T12:30:00-05:00,short,4341.0,4333.0,time_stop,2.574712643677945
+2014-12-01T12:00:00-05:00,2014-12-01T12:55:00-05:00,long,4282.25,4290.68645409317,target,1.6404216292276104
+2014-12-02T12:00:00-05:00,2014-12-02T12:15:00-05:00,short,4300.0,4293.1862527716185,target,1.6846350763326357
+2014-12-02T14:40:00-05:00,2014-12-02T14:45:00-05:00,short,4302.25,4305.901785714285,stop,-1.0734908136483023
+2014-12-02T14:55:00-05:00,2014-12-02T15:55:00-05:00,short,4307.75,4298.25,session_end,2.6271604938270663
+```
+
+Warnings / errors:
+
+- a first attempt to prepare the full ETH-style file failed with multiple
+  contracts on the same ET calendar date around roll dates
+- the final smoke script fixes this locally by filtering the raw file to RTH
+  rows before calling `prepare_bars`; no warnings or errors occurred in the
+  final smoke run
+- the superseded first smoke output with stale code-version metadata was
+  removed; only `smoke_20260519T082642Z` remains
 
 Verification:
 
-- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`: 4 passed
 - `python -m pytest`: 61 passed
 
 Assumptions:
 
-- pytest's normal `tmp_path` and configured `--basetemp` both create
-  inaccessible Windows directories in this environment, so a small ignored
-  scratch folder with explicit cleanup is the least-bad local workaround
-- `.test_artifacts/` is test-only scratch space, not strategy output
+- this is a pilot smoke run, not decision evidence, because the smoke script was
+  uncommitted at execution time and the run_config correctly marks the working
+  tree as dirty
+- RTH prefiltering belongs in this strategy-local smoke glue for now; it was
+  not added to shared data loading
+- zero commission remains smoke-test-only
 
 Remaining risks:
 
-- one pre-existing `.tmp/tmp5z2_ifh4` permission warning remains in
-  `git status --ignored`; it was not created by this slice and was left alone
-- no parent smoke run has been executed yet
+- no context recording or slicing exists yet
+- simulator extraction remains deferred
+- smoke results look poor on the full file; next review should inspect whether
+  behavior or data handling is obviously wrong before adding more code
 
 Next proposed slice:
 
-- pause for Claude review. If accepted, add a strategy-local `smoke_run.py`
-  and run the parent once on `data/bars/5min/NQ_all_5min.csv` after inspecting
-  a few CSV rows and documenting the timestamp-timezone assumption
+- pause for Claude review. If accepted, inspect the smoke output rather than
+  adding infrastructure: check date ranges, exit reason distribution, first
+  losing/winning examples, and whether RTH filtering/roll-session exclusion
+  created any obvious artifacts
