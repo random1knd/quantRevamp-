@@ -26,6 +26,26 @@ def test_true_range_uses_previous_close_inside_each_session():
     pd.testing.assert_series_equal(result, expected)
 
 
+def test_true_range_rejects_null_ohlc_values():
+    bars = pd.DataFrame(
+        {
+            "SessionDate_ET": ["a", "a"],
+            "High": [12.0, None],
+            "Low": [8.0, 9.0],
+            "Close": [10.0, 12.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="OHLC values must not be null"):
+        true_range(
+            bars,
+            high_col="High",
+            low_col="Low",
+            close_col="Close",
+            session_col="SessionDate_ET",
+        )
+
+
 def test_session_atr_uses_full_window_rolling_mean_per_session():
     bars = pd.DataFrame(
         {
@@ -94,6 +114,41 @@ def test_session_atr_preserves_input_order_with_interleaved_sessions():
 
     expected = pd.Series([None, None, 3.75, 4.0], name="ATR")
     pd.testing.assert_series_equal(result, expected)
+
+
+def test_session_atr_is_causal_when_future_rows_change():
+    bars = pd.DataFrame(
+        {
+            "SessionDate_ET": ["a"] * 5,
+            "High": [12.0, 13.0, 15.0, 16.0, 17.0],
+            "Low": [8.0, 9.0, 14.0, 15.0, 16.0],
+            "Close": [10.0, 12.0, 14.5, 15.5, 16.5],
+        }
+    )
+    mutated = bars.copy()
+    mutated.loc[3:, ["High", "Low", "Close"]] = [
+        [100.0, 90.0, 95.0],
+        [200.0, 190.0, 195.0],
+    ]
+
+    original_result = session_atr(
+        bars,
+        high_col="High",
+        low_col="Low",
+        close_col="Close",
+        session_col="SessionDate_ET",
+        window=2,
+    )
+    mutated_result = session_atr(
+        mutated,
+        high_col="High",
+        low_col="Low",
+        close_col="Close",
+        session_col="SessionDate_ET",
+        window=2,
+    )
+
+    pd.testing.assert_series_equal(original_result.iloc[:3], mutated_result.iloc[:3])
 
 
 def test_session_atr_rejects_missing_columns():

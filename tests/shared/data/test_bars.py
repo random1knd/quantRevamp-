@@ -69,6 +69,17 @@ def test_prepare_bars_uses_dst_aware_et_conversion():
     assert bars.loc[0, "SessionMinute_ET"] == 0
 
 
+def test_prepare_bars_accepts_timezone_aware_source_datetimes():
+    raw = make_bars(["2026-01-02 14:30:00+00:00"])
+
+    bars = prepare(raw)
+
+    assert str(bars["DateTime_UTC"].dt.tz) == "UTC"
+    assert bars.loc[0, "DateTime_ET"].hour == 9
+    assert bars.loc[0, "DateTime_ET"].minute == 30
+    assert bars.loc[0, "SessionMinute_ET"] == 0
+
+
 def test_prepare_bars_marks_first_session_after_contract_change_without_dropping_rows():
     raw = make_bars(
         [
@@ -90,6 +101,21 @@ def test_prepare_bars_marks_first_session_after_contract_change_without_dropping
         True,
         False,
     ]
+
+
+def test_prepare_bars_marks_a_b_a_contract_changes_as_roll_sessions():
+    raw = make_bars(
+        [
+            "2026-02-27 14:30:00",
+            "2026-03-02 14:30:00",
+            "2026-03-03 14:30:00",
+        ],
+        contracts=["NQH26", "NQM26", "NQH26"],
+    )
+
+    bars = prepare(raw)
+
+    assert bars["IsFirstSessionAfterContractChange"].tolist() == [False, True, True]
 
 
 def test_prepare_bars_preserves_premarket_rows_instead_of_filtering():

@@ -81,6 +81,34 @@ def test_session_vwap_preserves_non_default_index_alignment():
     pd.testing.assert_series_equal(result, expected)
 
 
+def test_session_vwap_is_causal_when_future_rows_change():
+    bars = pd.DataFrame(
+        {
+            "SessionDate_ET": ["2026-01-02"] * 5,
+            "TypicalPrice": [10.0, 12.0, 14.0, 16.0, 18.0],
+            "Volume": [100, 200, 300, 400, 500],
+        }
+    )
+    mutated = bars.copy()
+    mutated.loc[3:, "TypicalPrice"] = [1000.0, 2000.0]
+    mutated.loc[3:, "Volume"] = [10_000, 20_000]
+
+    original_result = session_vwap(
+        bars,
+        price_col="TypicalPrice",
+        volume_col="Volume",
+        session_col="SessionDate_ET",
+    )
+    mutated_result = session_vwap(
+        mutated,
+        price_col="TypicalPrice",
+        volume_col="Volume",
+        session_col="SessionDate_ET",
+    )
+
+    pd.testing.assert_series_equal(original_result.iloc[:3], mutated_result.iloc[:3])
+
+
 def test_session_vwap_rejects_missing_columns():
     bars = pd.DataFrame(
         {

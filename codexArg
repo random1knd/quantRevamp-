@@ -2,51 +2,58 @@
 
 Change made:
 
-- added the approved red-test checkpoint convention to `AGENTS.md`
-- widened the strategy import boundary test using Claude's Option B
-- kept the approved volatility implementation and focused tests unchanged
+- added shared indicator causality tests for `session_vwap` and `session_atr`
+- added `strategies/vwap_zscore_fade/parent/params.py` as constants only
+- added a local params test under the parent strategy folder
+- updated pytest collection so strategy-local tests run in the normal suite
+- added small regression tests for timezone-aware bar inputs, A-B-A contract
+  roll marking, and direct `true_range` null OHLC validation
 
 Why:
 
-- commits and handoffs should stay green even when local red-test-first work is
-  in progress
-- scanning all strategy-local `.py` files except `research_indicators.py`
-  protects future helper files by default
-- trade-generating code must stay separate from research-context code before
-  parent `params.py` and `indicators.py` are added
+- causality must be pinned before parent trade-driving indicators depend on
+  shared math
+- parent README constants should be explicit before indicator and strategy code
+  is implemented
+- strategy-local tests should be included in `python -m pytest`
+- the added regression tests close small review gaps without changing behavior
 
 Files touched:
 
-- `AGENTS.md`
-- `tests/boundaries/test_strategy_imports.py`
-- `shared/indicators/volatility.py`
+- `pyproject.toml`
+- `strategies/vwap_zscore_fade/parent/params.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_params.py`
+- `tests/shared/data/test_bars.py`
+- `tests/shared/indicators/test_vwap.py`
 - `tests/shared/indicators/test_volatility.py`
-- `claudeArg`
 - `codexArg`
-
-Boundary behavior:
-
-- scans all `.py` files under `strategies/`
-- exempts `research_indicators.py`
-- blocks imports of `shared.context`, `shared.slicing`, and
-  `research_indicators` from scanned files
-- parent/child import rules remain deferred until child strategies exist
 
 Verification:
 
-- `python -m pytest tests/boundaries/test_strategy_imports.py`: `1 passed`
-- `python -m pytest`: `32 passed`
-- removed test-generated `__pycache__/` folders after the run
+- `python -m pytest tests\shared\indicators\test_vwap.py`: 12 passed
+- `python -m pytest tests\shared\indicators\test_volatility.py`: 12 passed
+- `python -m pytest tests\shared\data\test_bars.py`: 12 passed
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_params.py`: 1 passed
+- `python -m pytest tests\boundaries\test_strategy_imports.py`: 1 passed
+- `python -m pytest`: 38 passed
 
-Explicitly not done:
+Assumptions:
 
-- no parent `params.py`
-- no parent `indicators.py`
-- no strategy execution code
-- no simulator code
-- no run_config writer or SHA-256 helper
+- simple constants in `params.py` do not need dynamic loading or a config object
+- commission is intentionally not defaulted in `params.py`; run costs must be
+  declared in run configuration later
+- collecting `strategies/` with pytest is consistent with the repo's
+  strategy-local test plan
 
-Next action item:
+Remaining risks:
 
-- commit this volatility and guardrail checkpoint, then start
-  `strategies/vwap_zscore_fade/parent/params.py`
+- parent indicator integration is still unimplemented
+- `prepare_bars` still uses ET calendar dates as sessions, acceptable for RTH
+  v0 but not enough for future ETH or overnight work
+- child parent-import boundary tests remain deferred until child strategies
+  exist
+
+Next proposed slice:
+
+- after review, add parent-local `indicators.py` for RTH-scoped VWAP, VWAP
+  deviation z-score, ATR, and volume z-score with focused tests
