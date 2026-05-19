@@ -130,7 +130,7 @@ def test_write_parent_artifacts_writes_summary_metrics(artifact_scratch):
             make_trade(realized_r=1.0),
             make_trade(realized_r=-0.5, exit_reason="stop"),
             make_trade(realized_r=2.0),
-            make_trade(realized_r=0.0, exit_reason="end_of_data"),
+            make_trade(realized_r=-10.0, exit_reason="end_of_data"),
         ],
     )
 
@@ -140,8 +140,8 @@ def test_write_parent_artifacts_writes_summary_metrics(artifact_scratch):
     assert summary["instrument"] == "NQ"
     assert summary["timeframe"] == "5min"
     assert summary["trade_count"] == 4
-    assert summary["mean_realized_r"] == 0.625
-    assert summary["win_rate"] == 0.5
+    assert summary["mean_realized_r"] == pytest.approx(2.5 / 3.0)
+    assert summary["win_rate"] == pytest.approx(2.0 / 3.0)
     assert summary["max_drawdown_r"] == 0.5
     assert summary["incomplete_trade_count"] == 1
     assert summary["r_multiple_diagnostics"]["1R_or_better"] == 2

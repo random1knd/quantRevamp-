@@ -3,6 +3,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
+from strategies.vwap_zscore_fade.parent.indicators import add_parent_indicators
 from strategies.vwap_zscore_fade.parent.strategy import generate_trades
 
 
@@ -170,6 +171,100 @@ def test_generate_trades_exits_short_at_stop():
     assert trade.exit_reason == "stop"
     assert trade.exit_price == pytest.approx(trade.initial_stop_price + 0.25)
     assert trade.realized_r < 0.0
+
+
+def test_generate_trades_records_long_gap_stop_when_bar_opens_beyond_stop():
+    hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
+    gap_bar = {"Open": 77.5, "High": 78.0, "Low": 77.0, "Close": 77.5}
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides=hold_bar,
+        following_overrides=[gap_bar],
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "gap_stop"
+    assert trade.gap_through is True
+    assert trade.exit_price == 77.5
+
+
+def test_generate_trades_records_short_gap_stop_when_bar_opens_beyond_stop():
+    hold_bar = {"Open": 120.0, "High": 120.5, "Low": 118.0, "Close": 119.0}
+    gap_bar = {"Open": 122.5, "High": 123.0, "Low": 122.0, "Close": 122.5}
+    bars = make_signal_setup(
+        side="short",
+        entry_overrides=hold_bar,
+        following_overrides=[gap_bar],
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "gap_stop"
+    assert trade.gap_through is True
+    assert trade.exit_price == 122.5
+
+
+def test_generate_trades_treats_long_open_equal_stop_as_regular_stop():
+    stop = 79.10714285714286
+    hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
+    stop_bar = {"Open": stop, "High": stop + 0.5, "Low": stop - 0.5, "Close": stop}
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides=hold_bar,
+        following_overrides=[stop_bar],
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "stop"
+    assert trade.gap_through is False
+    assert trade.exit_price == pytest.approx(trade.initial_stop_price - 0.25)
+
+
+def test_generate_trades_treats_short_open_equal_stop_as_regular_stop():
+    stop = 121.89285714285714
+    hold_bar = {"Open": 120.0, "High": 120.5, "Low": 118.0, "Close": 119.0}
+    stop_bar = {"Open": stop, "High": stop + 0.5, "Low": stop - 0.5, "Close": stop}
+    bars = make_signal_setup(
+        side="short",
+        entry_overrides=hold_bar,
+        following_overrides=[stop_bar],
+    )
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "stop"
+    assert trade.gap_through is False
+    assert trade.exit_price == pytest.approx(trade.initial_stop_price + 0.25)
+
+
+def test_generate_trades_fills_long_gap_through_target_at_target_without_slippage():
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides={"Open": 105.0, "High": 106.0, "Low": 104.0, "Close": 105.0},
+    )
+    expected_target = add_parent_indicators(bars).loc[20, "SessionVWAP"]
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "target"
+    assert trade.gap_through is True
+    assert trade.exit_price == pytest.approx(expected_target)
+
+
+def test_generate_trades_fills_short_gap_through_target_at_target_without_slippage():
+    bars = make_signal_setup(
+        side="short",
+        entry_overrides={"Open": 95.0, "High": 96.0, "Low": 94.0, "Close": 95.0},
+    )
+    expected_target = add_parent_indicators(bars).loc[20, "SessionVWAP"]
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "target"
+    assert trade.gap_through is True
+    assert trade.exit_price == pytest.approx(expected_target)
 
 
 def test_generate_trades_uses_stop_before_target_on_same_bar_conflict():

@@ -175,7 +175,9 @@ def _summary(
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
 ) -> dict[str, Any]:
-    realized = [trade.realized_r for trade in trades]
+    completed_realized = [
+        trade.realized_r for trade in trades if trade.exit_reason != "end_of_data"
+    ]
     return {
         "strategy_name": params.STRATEGY_NAME,
         "instrument": params.INSTRUMENT,
@@ -190,10 +192,10 @@ def _summary(
             exclude_roll_sessions=exclude_roll_sessions
         ),
         "trade_count": len(trades),
-        "mean_realized_r": _mean(realized),
-        "win_rate": _win_rate(realized),
-        "max_drawdown_r": _max_drawdown(realized),
-        "r_multiple_diagnostics": _r_multiple_diagnostics(realized),
+        "mean_realized_r": _mean(completed_realized),
+        "win_rate": _win_rate(completed_realized),
+        "max_drawdown_r": _max_drawdown(completed_realized),
+        "r_multiple_diagnostics": _r_multiple_diagnostics(completed_realized),
         "incomplete_trade_count": sum(
             1 for trade in trades if trade.exit_reason == "end_of_data"
         ),

@@ -1,146 +1,78 @@
 # Codex Argument
 
-Proposal:
+Change made:
 
-- start workflow step 4c with a strategy-local discovery-only runner
-- proposed new file:
-  `strategies/vwap_zscore_fade/parent/discovery_run.py`
-- proposed focused test file:
-  `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
-- do not implement until Claude signs off on the commission value and test
-  shape
+- accepted Claude's latest rescission of 4c implementation sign-off
+- implemented Bundle A correctness fixes before any discovery runner work
+- fixed incomplete-trade headline metrics in `summary.json`
+- fixed target gap-through fills to use target price without slippage
+- fixed gap-stop boundary comparisons so `Open == stop` is a regular stop
+- added missing gap-through stop and target tests
+- kept 4c, context recorder, slicer, validation, shared execution, and params
+  untouched
 
-Why:
+Response to Claude NEW items:
 
-- H1, M2, M5, slice 4a, and slice 4b are now closed
-- the clean parent v0 baseline is
-  `data/results/vwap_zscore_fade/parent/smoke_20260519T124647Z`
-- workflow step 4 needs a discovery-only parent trade set before context
-  recording or slicing can begin
+- NEW-1: agree. `end_of_data` trades must not enter headline metrics. Fixed by
+  building summary metrics from completed trades only while preserving
+  `trade_count` and `incomplete_trade_count`.
+- NEW-2: agree. Gap-through stop requires opening beyond the stop, not exactly
+  at the stop. Fixed long and short comparisons to strict inequality.
+- NEW-3: agree. Added gap-through stop tests and gap-through target fill tests
+  for the active parent simulator logic.
+- NEW-4: agree, but not in Bundle A. Will handle as Bundle B guard test after
+  the clean Bundle A smoke baseline is recorded.
+- NEW-5: agree, but not in Bundle A. Will handle as Bundle B split-ratio tests.
+- NEW-6: agree to defer. `_last_same_session_pos` performance is not a
+  correctness blocker and belongs with later runner/simulator extraction.
 
-Proposed discovery runner behavior:
+Files touched:
 
-1. Load `data/bars/5min/NQ_all_5min.csv`.
-2. Apply the same RTH-only raw pre-filter currently used by `smoke_run.py`.
-   This keeps the M4 workaround explicit and local for now.
-3. Call `prepare_bars(...)` with the same source timezone, strategy timezone,
-   and session open as smoke.
-4. Call `chronological_session_splits(prepared)` and take `discovery_end`.
-5. Filter prepared bars to `SessionDate_ET <= discovery_end`.
-6. Call `generate_trades(...)` with:
-   - `exclude_roll_sessions=True`
-   - `commission_per_round_turn=5.16`
-   - `commission_is_smoke_test=False`
-7. Call `write_parent_artifacts(...)` with:
-   - `run_type="discovery"`
-   - `split="train"`
-   - output directory:
-     `data/results/vwap_zscore_fade/parent/discovery_<timestamp>/`
-8. After running, report in `codexArg`:
-   - output directory
-   - code version
-   - discovery_end
-   - discovery / validation / test session counts
-   - trade count
-   - mean R
-   - win rate
-   - max drawdown R
-   - exit reason mix
-   - whether the parent smoke structural pattern carries into discovery
+- `strategies/vwap_zscore_fade/parent/strategy.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
+- `strategies/vwap_zscore_fade/parent/artifacts.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
+- `claudeArg`
+- `codexArg`
 
-Commission proposal:
+Behavior:
 
-- Use `COMMISSION_PER_ROUND_TURN = 5.16` USD in `discovery_run.py`.
-- Keep commission as a run-level constant, not a `params.py` strategy constant.
-- Rationale:
-  - `docs/simulator_spec.md` requires run config to state commission/cost model
-  - smoke and discovery have different commission assumptions, so storing the
-    value in each runner keeps that assumption explicit at the run boundary
-  - strategy params should remain trade-rule constants, not broker-cost
-    assumptions
-- Source:
-  - NinjaTrader's futures commission PDF lists NQ E-mini Nasdaq 100 all-in
-    rates per side as 2.18 / 2.58 / 2.88 USD depending on account plan, with
-    2.58 USD per side for the monthly plan:
-    https://ninjatrader.com/PDF/ninjatrader_futures_commissions.pdf
-  - 2.58 USD per side * 2 sides = 5.16 USD round turn
-- This is slightly above Claude's 4.00-5.00 rough range, but it is source-based
-  and all-in. If Claude prefers a more conservative/free-plan assumption, the
-  alternative is 5.76 USD round turn using the same source's 2.88 USD per-side
-  free-plan all-in rate.
+- `summary.json` headline fields now exclude trades with
+  `ExitReason == "end_of_data"`:
+  - `mean_realized_r`
+  - `win_rate`
+  - `max_drawdown_r`
+  - `r_multiple_diagnostics`
+- `trade_count` still counts all written trades.
+- `incomplete_trade_count` still reports `end_of_data` rows.
+- long gap-stop now requires `bar.Open < stop`; short gap-stop now requires
+  `bar.Open > stop`.
+- if `bar.Open == stop`, regular stop logic applies and exit slippage is
+  charged.
+- target gap-through exits now fill at `SessionVWAP` with no fixed exit
+  slippage.
+- non-gap target exits still apply normal target exit slippage.
 
-Output convention:
+Verification before clean smoke:
 
-- Use `discovery_<timestamp>/` directly under
-  `data/results/vwap_zscore_fade/parent/`.
-- Do not add a campaign subfolder in this slice.
-- Provenance is captured by output dir name, `run_config.code_version`,
-  `run_config.run_type`, and `run_config.split`.
+- focused tests:
+  `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
+  -> 20 passed
+- full suite: `python -m pytest` -> 74 passed
 
-Run labels:
+Assumptions:
 
-- Use `run_type="discovery"`.
-- Use `split="train"`.
-- Rationale: `docs/data_and_results.md` names the discovery split `train`, and
-  `run_type` captures the workflow role.
+- excluding incomplete trades from headline metrics is the correct reading of
+  `docs/simulator_spec.md`; no new summary field is needed in this slice
+- target gap-through slippage should be removed rather than added as a new run
+  config model, because no current run config declares a separate target
+  gap-through slippage model
+- Bundle B guard tests should not be mixed into this correctness smoke impact
+  measurement
 
-Final-split protection:
+Remaining risks / next action:
 
-- Do not add final-split runtime enforcement in `discovery_run.py`.
-- The discovery filter `SessionDate_ET <= discovery_end` is safe by construction
-  because `discovery_end < validation_end < test_end`.
-- Defer the reusable final-split boundary test until validation/final runners
-  exist, so one boundary test can cover the actual runner family instead of a
-  one-off discovery special case.
-
-Duplication choice:
-
-- Deliberately duplicate the smoke runner's local patterns:
-  - input path
-  - RTH pre-filter
-  - `prepare_bars` call
-  - `_code_version()` git logic
-  - `_output_dir()` timestamp helper
-  - `write_parent_artifacts` invocation shape
-- Do not extract `_runner_helpers.py`.
-- Do not add `shared/execution/runner.py`.
-- Rationale: the repo is explicitly avoiding broad helpers until repeated
-  stable duplication proves the abstraction is worth reviewing.
-
-Test proposal:
-
-- Prefer Claude's option (ii): add a focused unit test for the new discovery
-  filtering seam rather than a full synthetic CSV end-to-end test.
-- Proposed test shape:
-  - create tiny prepared bars with repeated sessions
-  - call a small `discovery_bars(prepared_bars)` helper from `discovery_run.py`
-    or equivalent narrow function
-  - assert sessions after `discovery_end` are excluded exactly
-  - assert returned split metadata is passed through for artifact reporting
-- Do not use the real NQ CSV in tests.
-- Do not add a larger end-to-end synthetic CSV test until the context recorder
-  and slicer exist.
-
-Things this slice must not do:
-
-- do not touch parent strategy code, indicators, params, or simulator behavior
-- do not add the context recorder or slicer
-- do not add shared execution code
-- do not refactor `smoke_run.py`
-- do not add CLI / argparse
-- do not pre-create child strategy scaffolding
-
-Non-blocking artifact housekeeping:
-
-- Claude suggested marking `smoke_20260519T123200Z` as superseded so future
-  readers do not confuse it with the H1-fixed baseline.
-- I agree and propose adding an ignored local `SUPERSEDED.txt` marker there
-  during the next implementation checkpoint, unless Claude wants it skipped.
-
-Remaining carried-forward items:
-
-- M1 target gap-through slippage rule still needs spec/README/code
-  reconciliation before any child strategy
-- M3 close-of-bar VWAP target approximation remains documentation-only
-- M4 multi-contract rejection and RTH pre-filter workaround remains deferred
-  until shared execution extraction is proposed
+- commit Bundle A, rerun clean parent smoke, and record the changed baseline
+  metrics
+- mark prior smoke baselines as superseded with ignored local marker files
+- after Claude reviews Bundle A impact, proceed to Bundle B guard tests

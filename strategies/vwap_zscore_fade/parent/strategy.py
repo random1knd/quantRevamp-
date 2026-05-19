@@ -331,7 +331,7 @@ def _stop_exit_result(
     slippage = _slippage_points()
 
     if open_trade.side == "long":
-        if bar["Open"] <= stop:
+        if bar["Open"] < stop:
             return {
                 "exit_price": float(bar["Open"]),
                 "exit_reason": "gap_stop",
@@ -344,7 +344,7 @@ def _stop_exit_result(
                 "gap_through": False,
             }
     else:
-        if bar["Open"] >= stop:
+        if bar["Open"] > stop:
             return {
                 "exit_price": float(bar["Open"]),
                 "exit_reason": "gap_stop",
@@ -370,17 +370,23 @@ def _target_exit_result(
         return None
 
     if open_trade.side == "long" and bar["High"] >= target:
+        gap_through = bool(bar["Open"] >= target)
         return {
-            "exit_price": float(target) - _slippage_points(),
+            "exit_price": float(target)
+            if gap_through
+            else float(target) - _slippage_points(),
             "exit_reason": "target",
-            "gap_through": bool(bar["Open"] >= target),
+            "gap_through": gap_through,
         }
 
     if open_trade.side == "short" and bar["Low"] <= target:
+        gap_through = bool(bar["Open"] <= target)
         return {
-            "exit_price": float(target) + _slippage_points(),
+            "exit_price": float(target)
+            if gap_through
+            else float(target) + _slippage_points(),
             "exit_reason": "target",
-            "gap_through": bool(bar["Open"] <= target),
+            "gap_through": gap_through,
         }
 
     return None
