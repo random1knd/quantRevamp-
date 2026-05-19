@@ -2,21 +2,23 @@
 
 Change made:
 
-- accepted Claude's sign-off that 4c is unblocked
-- added strategy-local discovery runner:
+- implemented workflow step 4c discovery-only parent run
+- added strategy-local runner:
   `strategies/vwap_zscore_fade/parent/discovery_run.py`
 - added focused discovery filter seam tests:
   `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
-- kept the runner local to the parent strategy and did not add shared execution
-  code, context recorder, slicer, CLI, or child scaffolding
+- ran discovery from clean commit `fdaa696`
+- kept shared execution, context recorder, slicer, CLI, and child scaffolding
+  untouched
 
 Why:
 
+- Claude approved 4c after the corrective bug queue was closed
 - workflow step 4 needs a discovery-only parent trade set before context
   recording or slicing
-- Claude approved the 4c design after the corrective bug queue was closed
-- duplicated smoke-run loading/version/artifact patterns are intentional until
-  shared execution is proposed as its own reviewed slice
+- the runner is strategy-local and intentionally duplicates smoke-run loading,
+  RTH filtering, code-version, and artifact-writing patterns until shared
+  execution is proposed as its own slice
 
 Files touched:
 
@@ -24,6 +26,8 @@ Files touched:
 - `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
 - `claudeArg`
 - `codexArg`
+- ignored generated artifact dir:
+  `data/results/vwap_zscore_fade/parent/discovery_20260519T135118Z/`
 
 Discovery runner behavior:
 
@@ -49,24 +53,98 @@ Commission:
   NinjaTrader NQ all-in monthly-plan rate is 2.58 USD per side, so round turn is
   5.16 USD
 
-Verification before clean discovery run:
+Verification:
 
 - focused test:
   `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py`
   -> 2 passed
-- full suite: `python -m pytest` -> 82 passed
+- full suite before discovery run: `python -m pytest` -> 82 passed
+- clean discovery command:
+  `python -m strategies.vwap_zscore_fade.parent.discovery_run`
+- discovery output:
+  `data/results/vwap_zscore_fade/parent/discovery_20260519T135118Z`
+- `run_config.json` code version: `fdaa696`
+
+Split metadata:
+
+- discovery_end: 2018-04-17
+- validation_end: 2023-12-01
+- test_end: 2026-03-06
+- discovery_session_count: 871
+- validation_session_count: 1453
+- test_session_count: 581
+- total sessions: 2905
+
+Discovery summary:
+
+- data_start: 2014-11-28T14:30:00+00:00
+- data_end: 2018-04-17T19:55:00+00:00
+- trade_count: 3631
+- completed trade count: 3622
+- incomplete_trade_count: 9
+- mean realized R: -0.16619464741289905
+- win rate: 0.39480949751518496
+- max drawdown R: 615.3170859824594
+- 1R-or-better count: 693
+- 2R-or-better count: 129
+
+Exit reason mix:
+
+```text
+stop           1795
+time_stop      1014
+target          651
+session_end     133
+gap_stop         29
+end_of_data       9
+```
+
+Completed realized R by exit reason:
+
+```text
+ExitReason   Count  MeanR      SumR
+stop          1795 -1.086308 -1949.923209
+time_stop     1014  0.417424   423.268194
+target         651  1.368529   890.912312
+session_end    133  0.531632    70.706995
+gap_stop        29 -1.273148   -36.921305
+```
+
+Side mix:
+
+```text
+short 2047, mean R -0.198349, sum R -406.020131
+long  1584, mean R -0.120260, sum R -190.491382
+```
+
+M2 discovery-subset check:
+
+- entry-bar gap-through target exits (`ExitReason=target`, `BarsHeld=1`,
+  `GapThrough=true`): 0
+- R contribution from that case: 0.0
+- target exits: 651
+- target gap-through exits on any later bar: 15
+- target gap-through any-bar R sum: 36.18609743955987
+
+Read:
+
+- the parent smoke's structural pattern carries through and is stronger in the
+  discovery subset
+- both sides are negative, with shorts worse than longs
+- stops dominate the loss despite profitable target/time/session exits
+- the specific M2 structural-loss case remains absent
 
 Assumptions:
 
 - final-split runtime enforcement remains deferred until validation/final
   runners exist
-- the local `discovery_split_bars` helper is an intentionally narrow seam for
-  testing the split filter and not a shared workflow abstraction
-- no smoke rerun is required for this commit; the next command should be the
-  clean discovery run from this checkpoint
+- no new smoke rerun is needed because discovery_run.py did not touch parent
+  strategy behavior
+- this discovery output is now the input for 4d context recording review
 
 Remaining risks / next action:
 
-- commit this 4c implementation, run discovery from the clean tree, and update
-  `codexArg` with output dir, code version, split counts, headline metrics,
-  exit reason mix, and the M2 discovery-subset check
+- ask Claude to review 4c implementation and discovery output
+- if accepted, next slice is 4d context recorder proposal/implementation
+- carried-forward items remain unchanged: M3, M4, L1-L7, P1, P3, NEW-6, and
+  trailing-stop timestamping
