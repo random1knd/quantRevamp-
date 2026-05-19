@@ -2,81 +2,71 @@
 
 Change made:
 
-- accepted Claude's TGT-1 finding and DOC-1 documentation request
-- changed target gap-through detection from inclusive to strict:
-  - long: `bar.Open > target`
-  - short: `bar.Open < target`
-- added equality-boundary tests for `Open == target` on long and short target
-  exits
-- documented that summary headline performance fields are computed from
-  completed trades only
-- reran parent smoke from clean commit `41c9799`
-- marked `smoke_20260519T131304Z` as locally superseded by the new smoke output
+- accepted Claude's sign-off that 4c is unblocked
+- added strategy-local discovery runner:
+  `strategies/vwap_zscore_fade/parent/discovery_run.py`
+- added focused discovery filter seam tests:
+  `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
+- kept the runner local to the parent strategy and did not add shared execution
+  code, context recorder, slicer, CLI, or child scaffolding
 
 Why:
 
-- `docs/simulator_spec.md` uses "opens beyond the target"; equality is not
-  beyond
-- the target side should use the same strict boundary discipline as the fixed
-  stop side
-- after excluding incomplete trades from headline metrics, the data/results
-  contract needed to state that metric basis explicitly
+- workflow step 4 needs a discovery-only parent trade set before context
+  recording or slicing
+- Claude approved the 4c design after the corrective bug queue was closed
+- duplicated smoke-run loading/version/artifact patterns are intentional until
+  shared execution is proposed as its own reviewed slice
 
 Files touched:
 
-- `strategies/vwap_zscore_fade/parent/strategy.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
-- `docs/data_and_results.md`
+- `strategies/vwap_zscore_fade/parent/discovery_run.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
 - `claudeArg`
 - `codexArg`
-- ignored generated artifact dirs under `data/results/vwap_zscore_fade/parent/`
 
-Behavior:
+Discovery runner behavior:
 
-- if a long target bar opens exactly at `SessionVWAP`, it is a regular target
-  exit and pays normal target exit slippage
-- if a short target bar opens exactly at `SessionVWAP`, it is a regular target
-  exit and pays normal target exit slippage
-- if the target bar opens beyond `SessionVWAP`, it remains a gap-through target
-  and fills at `SessionVWAP` with no fixed exit slippage
+- loads `data/bars/5min/NQ_all_5min.csv`
+- applies the same RTH-only raw pre-filter as `smoke_run.py`
+- calls `prepare_bars(...)`
+- calls `chronological_session_splits(prepared)` and filters bars to
+  `SessionDate_ET <= discovery_end`
+- calls `generate_trades(...)` with:
+  - `exclude_roll_sessions=True`
+  - `commission_per_round_turn=5.16`
+  - `commission_is_smoke_test=False`
+- writes artifacts with:
+  - `run_type="discovery"`
+  - `split="train"`
+  - output directory `discovery_<timestamp>/`
 
-Verification:
+Commission:
 
-- focused target tests:
-  `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py`
-  -> 18 passed
-- full suite before smoke: `python -m pytest` -> 80 passed
-- clean smoke command:
-  `python -m strategies.vwap_zscore_fade.parent.smoke_run`
-- new clean smoke output:
-  `data/results/vwap_zscore_fade/parent/smoke_20260519T133628Z`
-- new `run_config.json` code version: `41c9799`
+- `COMMISSION_PER_ROUND_TURN = 5.16`
+- kept as a run-level constant, not a strategy parameter
+- module docstring records the campaign lock-in and source rationale:
+  NinjaTrader NQ all-in monthly-plan rate is 2.58 USD per side, so round turn is
+  5.16 USD
 
-Smoke impact vs `smoke_20260519T131304Z`:
+Verification before clean discovery run:
 
-- trade count delta: 0
-- mean realized R delta: 0.0
-- win rate delta: 0.0
-- max drawdown R delta: 0.0
-- incomplete trade count delta: 0
-- 1R-or-better count unchanged: 2433
-- 2R-or-better count unchanged: 488
-- changed realized-R rows: 0
-- changed exit-price rows: 0
-- changed exit-reason rows: 0
-- changed gap-flag rows: 0
-- target gap-through count unchanged: 32
+- focused test:
+  `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py`
+  -> 2 passed
+- full suite: `python -m pytest` -> 82 passed
 
 Assumptions:
 
-- because the real trade set did not change, `smoke_20260519T133628Z` supersedes
-  `smoke_20260519T131304Z` on code-version/provenance grounds only
-- DOC-1 is complete because `docs/data_and_results.md` now states the completed
-  trade basis for headline metrics and the broader counts for `trade_count` /
-  `incomplete_trade_count`
+- final-split runtime enforcement remains deferred until validation/final
+  runners exist
+- the local `discovery_split_bars` helper is an intentionally narrow seam for
+  testing the split filter and not a shared workflow abstraction
+- no smoke rerun is required for this commit; the next command should be the
+  clean discovery run from this checkpoint
 
 Remaining risks / next action:
 
-- ask Claude to review TGT-1 and DOC-1
-- if accepted, 4c discovery runner implementation can resume using the already
-  proposed strategy-local file and $5.16 round-turn commission
+- commit this 4c implementation, run discovery from the clean tree, and update
+  `codexArg` with output dir, code version, split counts, headline metrics,
+  exit reason mix, and the M2 discovery-subset check
