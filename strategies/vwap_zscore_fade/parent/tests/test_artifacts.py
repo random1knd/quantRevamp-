@@ -1,9 +1,12 @@
 import csv
 import json
+import shutil
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
+from strategies.vwap_zscore_fade.parent import artifacts
 from strategies.vwap_zscore_fade.parent.artifacts import (
     REQUIRED_TRADE_COLUMNS,
     write_parent_artifacts,
@@ -11,7 +14,24 @@ from strategies.vwap_zscore_fade.parent.artifacts import (
 from strategies.vwap_zscore_fade.parent.strategy import Trade
 
 
-OUTPUT_ROOT = Path("data/results/test_artifacts")
+SCRATCH_ROOT = Path(".test_artifacts/parent_artifact_tests")
+
+
+@pytest.fixture
+def artifact_scratch(request):
+    path = SCRATCH_ROOT / request.node.name
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+        for parent in (SCRATCH_ROOT, SCRATCH_ROOT.parent):
+            try:
+                parent.rmdir()
+            except OSError:
+                pass
 
 
 def make_trade(
@@ -44,12 +64,10 @@ def make_trade(
     )
 
 
-def write_artifacts(*, case_name: str, trades: list[Trade]):
-    case_dir = OUTPUT_ROOT / case_name
-    case_dir.mkdir(parents=True, exist_ok=True)
-    input_file = case_dir / "NQ_sample.csv"
+def write_artifacts(scratch_path: Path, trades: list[Trade]):
+    input_file = scratch_path / "NQ_sample.csv"
     input_file.write_text("DateTime,Open\n2026-01-02 14:30:00,100\n")
-    output_dir = case_dir / "run"
+    output_dir = scratch_path / "run"
 
     write_parent_artifacts(
         trades=trades,
@@ -69,9 +87,11 @@ def write_artifacts(*, case_name: str, trades: list[Trade]):
     return output_dir, input_file
 
 
-def test_write_parent_artifacts_writes_required_trade_columns_and_run_config():
+def test_write_parent_artifacts_writes_required_trade_columns_and_run_config(
+    artifact_scratch,
+):
     output_dir, input_file = write_artifacts(
-        case_name="required_columns",
+        artifact_scratch,
         trades=[make_trade(realized_r=1.25)],
     )
 
@@ -86,7 +106,7 @@ def test_write_parent_artifacts_writes_required_trade_columns_and_run_config():
     assert rows[0]["CommissionIsSmokeTest"] == "True"
 
     run_config = json.loads((output_dir / "run_config.json").read_text())
-    input_key = input_file.as_posix()
+    input_key = input_file.resolve().relative_to(artifacts.ROOT).as_posix()
     assert run_config["strategy_name"] == "vwap_zscore_fade"
     assert run_config["run_type"] == "smoke"
     assert run_config["split"] == "train"
@@ -99,9 +119,9 @@ def test_write_parent_artifacts_writes_required_trade_columns_and_run_config():
     assert run_config["commission_model"]["commission_per_round_turn"] == 0.0
 
 
-def test_write_parent_artifacts_writes_summary_metrics():
+def test_write_parent_artifacts_writes_summary_metrics(artifact_scratch):
     output_dir, _ = write_artifacts(
-        case_name="summary_metrics",
+        artifact_scratch,
         trades=[
             make_trade(realized_r=1.0),
             make_trade(realized_r=-0.5, exit_reason="stop"),
@@ -122,3 +142,40 @@ def test_write_parent_artifacts_writes_summary_metrics():
     assert summary["incomplete_trade_count"] == 1
     assert summary["r_multiple_diagnostics"]["1R_or_better"] == 2
     assert summary["r_multiple_diagnostics"]["2R_or_better"] == 1
+
+
+def test_write_parent_artifacts_handles_empty_trades(artifact_scratch):
+    output_dir, _ = write_artifacts(artifact_scratch, trades=[])
+
+    with (output_dir / "trades.csv").open(newline="") as file:
+        rows = list(csv.DictReader(file))
+
+    assert rows == []
+
+    summary = json.loads((output_dir / "summary.json").read_text())
+    assert summary["trade_count"] == 0
+    assert summary["mean_realized_r"] is None
+    assert summary["win_rate"] is None
+    assert summary["max_drawdown_r"] is None
+    assert summary["incomplete_trade_count"] == 0
+    assert all(value == 0 for value in summary["r_multiple_diagnostics"].values())
+
+
+def test_write_parent_artifacts_marks_non_repo_relative_inputs(
+    artifact_scratch,
+    monkeypatch,
+):
+    fake_repo_root = artifact_scratch / "fake_repo_root"
+    fake_repo_root.mkdir()
+    monkeypatch.setattr(artifacts, "ROOT", fake_repo_root)
+
+    output_dir, input_file = write_artifacts(
+        artifact_scratch,
+        trades=[make_trade(realized_r=1.0)],
+    )
+
+    run_config = json.loads((output_dir / "run_config.json").read_text())
+    input_key = str(input_file.resolve())
+
+    assert run_config["input_data_is_repo_relative"] is False
+    assert run_config["non_reproducible_input_paths"] == [input_key]

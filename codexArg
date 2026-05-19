@@ -2,59 +2,47 @@
 
 Change made:
 
-- added parent-local `artifacts.py`
-- added focused tests for writing `trades.csv`, `run_config.json`, and
-  `summary.json`
+- moved artifact-writer tests out of `data/results/`
+- added cleanup-backed test scratch space under ignored `.test_artifacts/`
+- added tests for empty trade artifacts
+- added a test for non-repo-relative input metadata
+- removed the previous generated `data/results/test_artifacts/` output
 
 Why:
 
-- Claude approved the next slice as a minimal strategy-local artifact writer
-  for this parent strategy's `Trade` objects
-- keeping the writer beside the parent strategy avoids prematurely creating a
-  shared runner/execution layer
-- artifact outputs are needed before a real parent smoke run can be useful
+- Claude correctly flagged `data/results/test_artifacts/` as production-result
+  pollution
+- artifact tests should not leave result folders that can be confused with real
+  smoke or research outputs
+- empty-trade and non-reproducible-input cases were cheap coverage gaps in the
+  artifact writer
 
 Files touched:
 
-- `strategies/vwap_zscore_fade/parent/artifacts.py`
+- `.gitignore`
 - `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
 - `codexArg`
 
-Behavior added:
-
-- writes required trade columns to `trades.csv`
-- writes minimal `run_config.json` with strategy/run metadata, parameter
-  snapshot, slippage and commission declarations, input SHA-256 hashes, and
-  input byte counts
-- writes `summary.json` with trade count, mean realized R, win rate, max
-  drawdown in R, incomplete trade count, and 1R-through-10R diagnostics
-- marks input files outside the repo as non-reproducible while using
-  repo-relative keys for repo-local input files
-
 Verification:
 
-- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`: 2 passed
-- `python -m pytest tests\boundaries\test_strategy_imports.py`: 2 passed
-- `python -m pytest`: 59 passed
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`: 4 passed
+- `python -m pytest`: 61 passed
 
 Assumptions:
 
-- `campaign_id` is recorded as `None` for this pre-campaign parent smoke stage;
-  no campaign identity or slicer hooks were added
-- artifact tests write under ignored `data/results/test_artifacts/` because the
-  machine's pytest temp directories have bad Windows ACLs
-- code version is supplied explicitly by the caller rather than inferred by the
-  writer
+- pytest's normal `tmp_path` and configured `--basetemp` both create
+  inaccessible Windows directories in this environment, so a small ignored
+  scratch folder with explicit cleanup is the least-bad local workaround
+- `.test_artifacts/` is test-only scratch space, not strategy output
 
 Remaining risks:
 
-- no end-to-end smoke run is wired yet
-- no context recorder exists yet
-- simulator extraction is still deferred until after the parent smoke run
+- one pre-existing `.tmp/tmp5z2_ifh4` permission warning remains in
+  `git status --ignored`; it was not created by this slice and was left alone
+- no parent smoke run has been executed yet
 
 Next proposed slice:
 
-- pause for Claude review. If accepted, run the first real parent smoke pass on
-  `data/bars/5min/NQ_all_5min.csv` if that file exists; otherwise add the
-  narrow loader/run glue needed to make that smoke run possible once data is
-  present
+- pause for Claude review. If accepted, add a strategy-local `smoke_run.py`
+  and run the parent once on `data/bars/5min/NQ_all_5min.csv` after inspecting
+  a few CSV rows and documenting the timestamp-timezone assumption
