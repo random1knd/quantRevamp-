@@ -186,21 +186,20 @@ ShortStop = EntryPrice + 1.5 * SignalATR
 
 Target:
 
-- target is live/tracking session VWAP, not VWAP frozen at entry
-- for exit evaluation on bar T, `SessionVWAP_T` includes bar T
-- long target touched when `bar_T.High >= SessionVWAP_T`
-- short target touched when `bar_T.Low <= SessionVWAP_T`
+- target is fixed at the closed signal bar's session VWAP
+- long target touched when `bar_T.High >= SignalSessionVWAP`
+- short target touched when `bar_T.Low <= SignalSessionVWAP`
 
 Known behavior:
 
-- tracking VWAP can drift away from price after entry during a trend
-- the 12-bar time stop is the explicit backstop for this behavior
+- the fixed target removes current-bar VWAP look-ahead on OHLC bars
+- the 60-minute time stop is the explicit backstop when price does not revert
 
 Time stop:
 
-- maximum hold: 12 bars / 60 minutes
-- if neither stop nor target is touched first, exit at the close of the 12th
-  held bar
+- maximum hold: 60 elapsed minutes
+- if neither stop nor target is touched first, exit at the close of the first
+  available bar whose close is at least 60 minutes after entry
 
 Session exit:
 

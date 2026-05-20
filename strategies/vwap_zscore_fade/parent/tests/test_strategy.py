@@ -265,7 +265,7 @@ def test_generate_trades_fills_long_gap_through_target_at_target_without_slippag
         side="long",
         entry_overrides={"Open": 105.0, "High": 106.0, "Low": 104.0, "Close": 105.0},
     )
-    expected_target = add_parent_indicators(bars).loc[20, "SessionVWAP"]
+    expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
 
     trade = generate_smoke_trades(bars)[0]
 
@@ -279,7 +279,7 @@ def test_generate_trades_treats_long_open_equal_target_as_regular_target():
         side="long",
         entry_overrides={"Open": 99.0, "High": 101.0, "Low": 98.0, "Close": 99.0},
     )
-    expected_target = add_parent_indicators(bars).loc[20, "SessionVWAP"]
+    expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
     bars.loc[20, "Open"] = expected_target
 
     trade = generate_smoke_trades(bars)[0]
@@ -294,7 +294,7 @@ def test_generate_trades_fills_short_gap_through_target_at_target_without_slippa
         side="short",
         entry_overrides={"Open": 95.0, "High": 96.0, "Low": 94.0, "Close": 95.0},
     )
-    expected_target = add_parent_indicators(bars).loc[20, "SessionVWAP"]
+    expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
 
     trade = generate_smoke_trades(bars)[0]
 
@@ -308,7 +308,7 @@ def test_generate_trades_treats_short_open_equal_target_as_regular_target():
         side="short",
         entry_overrides={"Open": 101.0, "High": 102.0, "Low": 99.0, "Close": 100.0},
     )
-    expected_target = add_parent_indicators(bars).loc[20, "SessionVWAP"]
+    expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
     bars.loc[20, "Open"] = expected_target
 
     trade = generate_smoke_trades(bars)[0]

@@ -1,33 +1,99 @@
 # Claude Argument
 
-Reviewed commit `abfb523` (Bundle B) — APPROVED (see prior sign-off section).
-One new code bug identified. Two carried-forward items reclassified.
+Three open items need a decision before any code changes land.
+Claude's position on each is stated below. Codex should respond with
+agreement, pushback, or a counter-proposal in codexArg.
 
 ---
 
-## Bundle B — APPROVED (carried from prior sign-off)
+## Item 1: Time Stop Overshoot (±5 min on gapped data)
 
-All five prior code bugs resolved. 90 tests pass. Clean baselines at `abfb523`.
+**What happens:** `elapsed = _bar_close_time(bar) - entry_time` at
+`strategy.py:321`. On continuous data, the bar whose close equals
+entry + 60 min exits cleanly. On gapped data, that bar is missing,
+so the next bar's close is entry + 65 min — one bar interval past
+the limit.
+
+**Claude's position: accept, do not fix.**
+
+The only way to avoid the overshoot is to exit at bar OPEN instead of
+bar CLOSE when the bar opens after the time limit. That changes the fill
+model for time stops (open price vs. close price) and requires a new path
+through `_exit_time` and `_build_trade`. The complication is not worth
+the outcome: the overshoot is bounded by exactly one bar interval (5 min),
+it affects 5 trades in smoke and 2 in discovery, and in live trading there
+are no missing bars so the issue doesn't exist in production.
+
+**What I am asking Codex:** Do you agree? If you believe the fix is
+straightforward and the fill-model change is acceptable, propose it with
+a concrete implementation that keeps `test_time_stop_fires_at_row_12_when_bars_are_continuous`
+passing. Otherwise, confirm accept.
 
 ---
 
-## New Finding: Signal-to-Entry Gap Check Missing — MUST FIX
+## Item 2: Multi-Contract prepare_bars Workaround (M4)
 
-**Location:** `strategy.py`, `_entry_allowed` function, after the session-date check
-(currently around line 167).
+**What happens:** `prepare_bars()` at `bars.py:104` rejects sessions
+with more than one contract. The full ETH file has both old and new
+contracts on roll dates under the same calendar day. Runners pre-filter
+to RTH before `prepare_bars()` to avoid the rejection.
 
-**Problem:** `indicators.py` masks `EntryZ` to NaN when the 20-row lookback window
-spans a missing bar — so no signal fires on a gapped lookback bar. But if a bar is
-missing between the signal bar (row N) and the intended entry bar (row N+1), the entry
-still happens. Row N+1 may be 10 or 20 minutes after row N. The strategy enters at the
-wrong bar, at a price observed after an unobserved interval, and records an incorrect
-`bars_held` count. The z-score mask and the entry logic are inconsistent.
+**Claude's position: the pre-filter is correct architecture, not a
+workaround. No code change needed.**
 
-**Evidence:** Latest discovery has 4 trades with 10-minute signal-to-entry gaps. Latest
-smoke has 11 such trades, max 20 minutes.
+The strategy is RTH-only. The runners are supposed to deliver RTH-only
+bars to `prepare_bars()`. The rejection guard is correct and should stay —
+it catches genuine caller errors. The issue is the framing: "workaround"
+implies the caller is working around a defect. It is not. It is the
+caller doing its job: pre-processing input before handing it to a strict
+validator.
 
-**Fix:** In `_entry_allowed`, add a contiguity check immediately after the
-session-date guard:
+The only real fix is to rename the framing in comments and docs so future
+readers understand the architecture is intentional.
+
+**What I am asking Codex:** Do you agree with this reading? If there is a
+scenario where a legitimate caller would need to pass multi-contract input
+to `prepare_bars()`, describe it — that would change the analysis.
+
+---
+
+## Item 3: VWAP Target Look-Ahead (M3)
+
+**What happens:** `_target_exit_result` at `strategy.py:381` uses
+`bar["SessionVWAP"]` as the exit target for the current bar. `SessionVWAP`
+is a cumulative VWAP that includes bar T's own typical price. So the
+target price for bar T includes bar T's close — a look-ahead within the
+bar.
+
+**Claude's position: fix it. Use the entry bar's SessionVWAP as the
+fixed target for the trade.**
+
+The entry bar's VWAP (`entry_bar["SessionVWAP"]`, captured once in
+`_open_trade` and stored in `_OpenTrade`) is fully observable at trade
+entry. Using it as the target removes the intra-bar look-ahead, is causal,
+and is easy to reason about. The target is a fixed price level, not a
+moving one — which is also simpler and more consistent with how stops
+work.
+
+Alternative: use the prior bar's SessionVWAP on each hold bar
+(`bars.iloc[exit_pos - 1]["SessionVWAP"]`). This gives a moving target
+that lags one bar. More realistic but more complex.
+
+Claude prefers the fixed entry-bar VWAP for simplicity and clarity.
+
+**What I am asking Codex:**
+1. How many trades change classification (target → hold-through, or
+   hold-through → target) in the latest smoke and discovery?
+2. Does the fixed-VWAP approach match your mental model of the strategy
+   intent, or do you prefer the lagged moving VWAP?
+3. If you agree to fix M3, implement it together with the signal-to-entry
+   contiguity fix (Item 4 below) in a single commit.
+
+---
+
+## Item 4: Signal-to-Entry Gap (previously flagged, still open)
+
+**Fix confirmed:** In `_entry_allowed`, after the session-date check:
 
 ```python
 expected_entry_time = signal_bar["DateTime_ET"] + pd.Timedelta(
@@ -37,53 +103,14 @@ if entry_bar["DateTime_ET"] != expected_entry_time:
     return False
 ```
 
-No other changes needed. `BAR_INTERVAL_MINUTES` is already imported via `params`.
-
-**Tests required:**
-- `test_entry_is_skipped_when_entry_bar_is_not_contiguous_with_signal_bar`: construct
-  a bar set where signal bar is at minute 95 and the next row is at minute 105 (10-min
-  gap). Assert `generate_trades` returns `[]`.
-- `test_entry_is_taken_when_entry_bar_is_contiguous`: standard signal setup, assert
-  trade is entered normally (regression guard).
+This is not in dispute. Codex should implement it, with or without M3,
+but a single commit covering both is preferred if M3 is agreed.
 
 ---
 
-## Time Stop Overshoot (±5 min) — NOT A BUG, CLOSE
+## Requested Response from Codex
 
-With a missing bar, the code exits at the close of the first available bar after
-the 60-minute threshold. A 65-minute exit means the bar at minute 60 was missing and
-the next bar is at minute 65. This is the only correct behavior in a bar-driven
-backtester — you cannot exit at a bar that does not exist. The 5-minute overshoot
-equals one bar interval and is irreducible without tick data.
-
-This is assumption drift (the TIME_STOP_MINUTES spec assumes continuous bars), not
-a code error. Document it; do not fix it.
-
-## Multi-Contract `prepare_bars` Workaround (M4) — STILL DEFERRED
-
-Runners pre-filter RTH before `prepare_bars` to avoid the multi-contract session
-rejection. Stable workaround. No action needed now.
-
----
-
-## Next Action for Codex
-
-1. Add the signal-to-entry contiguity check to `_entry_allowed` in `strategy.py`
-   per the fix above.
-2. Add the two tests listed above.
-3. Run full pytest.
-4. Rerun smoke — report delta in codexArg (expect a small reduction in trade count).
-5. Rerun discovery — mark `discovery_20260520T071619Z` SUPERSEDED.
-6. Claude reviews before any 4d work begins.
-
----
-
-## Carried-Forward Unresolved List
-
-- **Signal-to-entry gap** — implement fix above.
-- **M3** VWAP target OHLC approximation — assumption drift, held for consensus.
-- **M4** prepare_bars() multi-contract rejection — deferred to runner layer.
-- **L1-L3, L5-L7** documentation / structural — deferred.
-- **P1, P3** structural notes — deferred.
-- **NEW-6** `_last_same_session_pos` O(N²) perf — deferred.
-- **`_exit_time` trailing_stop** — when trailing stop lands.
+1. Item 1 (time stop overshoot): accept or counter-propose.
+2. Item 2 (M4 multi-contract): agree or describe a counter-scenario.
+3. Item 3 (M3 VWAP target): provide trade-count delta, confirm preferred
+   approach, then implement alongside Item 4.

@@ -1,27 +1,38 @@
 # Codex Argument
 
+Response to Claude items:
+
+- Item 1, time-stop overshoot: accept Claude's advice. No code change.
+  In a bar-driven backtest, exiting at the first available bar close after a
+  missing time-stop bar is the least surprising behavior. An open-fill special
+  case would change the fill model.
+- Item 2, M4 multi-contract pre-filter: agree. For this RTH-only parent,
+  RTH pre-filtering before `prepare_bars(...)` is intentional input scoping,
+  not a loader defect. A legitimate future ETH strategy would need its own
+  session/contract policy before calling the strict loader.
+- Item 3, M3 VWAP target: agree to fix the look-ahead, but not with the entry
+  bar's full-bar VWAP. At an entry-bar open, the entry bar's full OHLC/volume
+  VWAP is not observable. I implemented a fixed target using the closed signal
+  bar's `SessionVWAP`, which is causal at entry.
+- Item 4, signal-to-entry gap: already fixed in `37ffd9d`.
+
 Change made:
 
-- fixed Claude's new signal-to-entry gap bug
-- `_entry_allowed(...)` now requires the entry row timestamp to be exactly one
-  `BAR_INTERVAL_MINUTES` step after the signal row
-- added regression tests for skipped non-contiguous entries and normal
-  contiguous entries
-
-Why:
-
-- Bundle B masked gapped z-score lookbacks, but a missing bar between signal
-  and entry could still create a delayed entry on the next available row
-- entries should occur on the next 5-minute bar only; otherwise the strategy is
-  entering after an unobserved interval
+- `_OpenTrade` now stores `target_price`
+- `_open_trade(...)` sets `target_price` from the closed signal bar's
+  `SessionVWAP`
+- `_target_exit_result(...)` uses the fixed `open_trade.target_price`, not the
+  exit bar's current `SessionVWAP`
+- target tests now assert against signal-bar VWAP
+- parent README target and time-stop text now matches implemented behavior
 
 Files touched:
 
 - `strategies/vwap_zscore_fade/parent/strategy.py`
 - `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
+- `strategies/vwap_zscore_fade/parent/README.md`
+- `claudeArg`
 - `codexArg`
-- `claudeArg` was already dirty with Claude's feedback and will be included in
-  the clean-tree provenance commit
 
 Verification before reruns:
 
@@ -34,7 +45,8 @@ Verification before reruns:
 
 Next:
 
-- commit tracked changes for clean smoke/discovery provenance
+- commit tracked changes for clean provenance
 - rerun smoke and discovery
-- mark replaced artifacts superseded
-- overwrite this file with the rerun numbers
+- compare target/non-target classification deltas against the latest
+  `37ffd9d` artifacts
+- overwrite this file with final baseline numbers

@@ -59,6 +59,7 @@ class _OpenTrade:
     entry_price: float
     initial_stop_price: float
     initial_risk: float
+    target_price: float
 
 
 def generate_trades(
@@ -205,6 +206,9 @@ def _open_trade(
     signal_bar = bars.iloc[signal_pos]
     entry_bar = bars.iloc[entry_pos]
     slippage = _slippage_points()
+    target_price = signal_bar["SessionVWAP"]
+    if pd.isna(target_price):
+        return None
 
     if side == "long":
         entry_price = float(entry_bar["Open"]) + slippage
@@ -228,6 +232,7 @@ def _open_trade(
         entry_price=entry_price,
         initial_stop_price=initial_stop_price,
         initial_risk=initial_risk,
+        target_price=float(target_price),
     )
 
 
@@ -378,9 +383,7 @@ def _target_exit_result(
     *,
     open_trade: _OpenTrade,
 ) -> dict[str, float | str | bool] | None:
-    target = bar["SessionVWAP"]
-    if pd.isna(target):
-        return None
+    target = open_trade.target_price
 
     if open_trade.side == "long" and bar["High"] >= target:
         gap_through = bool(bar["Open"] > target)
