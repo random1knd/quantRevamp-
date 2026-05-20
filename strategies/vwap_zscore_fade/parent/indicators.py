@@ -4,6 +4,7 @@ import pandas as pd
 
 from shared.indicators.volatility import session_atr
 from shared.indicators.vwap import session_vwap, typical_price
+from shared.indicators.zscore import gap_free_rolling_window
 from strategies.vwap_zscore_fade.parent import params
 
 
@@ -94,7 +95,7 @@ def _session_deviation_zscore(
 ) -> pd.Series:
     rolling_std = _session_rolling_std(values, session=session, window=window)
     zscore = values / rolling_std.mask(rolling_std == 0.0)
-    gap_free_window = _gap_free_rolling_window(
+    gap_free_window = gap_free_rolling_window(
         bar_gap,
         session=session,
         window=window,
@@ -111,16 +112,3 @@ def _session_rolling_std(
     return values.groupby(session, sort=False).transform(
         lambda group: group.rolling(window=window, min_periods=window).std()
     )
-
-
-def _gap_free_rolling_window(
-    bar_gap: pd.Series,
-    *,
-    session: pd.Series,
-    window: int,
-) -> pd.Series:
-    gap_flags = bar_gap.fillna(False).astype(bool).astype(int)
-    gap_in_window = gap_flags.groupby(session, sort=False).transform(
-        lambda group: group.rolling(window=window, min_periods=1).max()
-    )
-    return ~gap_in_window.astype(bool)

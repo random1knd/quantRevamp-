@@ -2,54 +2,57 @@
 
 Change made:
 
-- Completed Claude's post-review boundary cleanup.
-- Narrowed `tests/boundaries/test_strategy_imports.py` so it scans only
-  `strategy.py` and `indicators.py` under `strategies/**/`.
-- Restored the normal top-level `research_indicators` import in
-  `discovery_run.py`.
-- Removed the temporary `importlib.import_module` path and module-name
-  constant from `discovery_run.py`.
+- Fixed the duplicated `_gap_free_rolling_window` helper called out by Claude.
+- Added `shared/indicators/zscore.py` with `gap_free_rolling_window(...)`.
+- Updated parent trade-driving indicators and research indicators to import the
+  shared helper.
+- Removed the duplicated private helper from both strategy-local files.
+- Added focused shared-helper tests.
 
 Why:
 
-- Claude approved Tiers 1, 2, and 3 but flagged that the boundary test was
-  treating runner files as trade-generating code.
-- Runners are allowed to import research indicators for post-trade context
-  work; the import restriction should apply to trade-driving strategy files.
+- Claude identified this duplication as an existing bug/cleanup item that must
+  be fixed before any new indicator build cycles.
+- This is a pure mechanical extraction of existing behavior, not a new
+  indicator family or strategy behavior change.
 
 Files touched:
 
-- `tests/boundaries/test_strategy_imports.py`
-- `strategies/vwap_zscore_fade/parent/discovery_run.py`
+- `shared/indicators/zscore.py`
+- `strategies/vwap_zscore_fade/parent/indicators.py`
+- `strategies/vwap_zscore_fade/parent/research_indicators.py`
+- `tests/shared/indicators/test_zscore.py`
 - `codexArg`
 
 Verification:
 
+- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_zscore.py`
+  -> 5 passed
+- `.venv\Scripts\python.exe -m pytest
+  strategies\vwap_zscore_fade\parent\tests\test_indicators.py
+  strategies\vwap_zscore_fade\parent\tests\test_research_indicators.py`
+  -> 12 passed
 - `.venv\Scripts\python.exe -m pytest tests\boundaries\test_strategy_imports.py`
   -> 2 passed
-- `.venv\Scripts\python.exe -m pytest
-  strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py` -> 5 passed
-- `.venv\Scripts\python.exe -m pytest` -> 99 passed
-
-Smoke rerun:
-
-- New artifact: `data/results/vwap_zscore_fade/parent/smoke_20260520T112620Z`
-- Prior smoke baseline:
-  `data/results/vwap_zscore_fade/parent/smoke_20260520T110541Z`
-- Trade count: 11551
-- Prior trade count: 11551
-- Trade-count delta: 0
-- `HoldCrossesGap=True`: 51 trades
-- Prior `HoldCrossesGap=True`: 51 trades
+- `.venv\Scripts\python.exe -m pytest` -> 104 passed
 
 Assumptions:
 
-- `strategy.py` and `indicators.py` are the current trade-driving strategy
-  files protected by this boundary test.
-- Strategy-local runners remain reviewable code, but they are not
-  trade-generating strategy files for import-boundary purposes.
-- The prior smoke artifact was marked superseded locally for review clarity.
+- `gap_free_rolling_window(...)` is shared pure indicator support, not shared
+  trading context.
+- The extraction is behavior-preserving; no smoke or discovery rerun is needed
+  because no strategy calculations changed.
+- There is no trailing stop in the current strategy, so the old trailing-stop
+  timestamping concern is closed as not applicable.
 
-Remaining:
+Carried forward:
 
-- Claude should review this cleanup before slicing discussion begins.
+- `_last_same_session_pos` in `strategy.py` is O(N^2). Claude said not to fix
+  it during the indicator build; carry this forward until a dedicated cycle.
+
+Stopped before:
+
+- Phase 1 doc challenge.
+- New shared indicator build cycles.
+- Research-indicator expansion.
+- Slicing.
