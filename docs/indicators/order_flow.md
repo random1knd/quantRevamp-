@@ -12,10 +12,20 @@ Purpose:
 | `CumDelta` | Cumulative delta over a declared reset scope. | delta, reset rule |
 | `DeltaROC` | Delta change over N bars. | delta, lookback |
 | `DeltaVel_Z` | Z-score of delta velocity. | delta velocity, window |
-| `OFI` | Order-flow imbalance. | bid/ask/order-book inputs or approximation |
-| `OFI_Z` | Z-score of OFI. | OFI, window |
-| `CumOFI` | Cumulative OFI over reset scope. | OFI, reset rule |
-| `OFI_Momentum` | Change/rate of OFI. | OFI, lookback |
+| `OFI` | NOT BUILDABLE: true order-flow imbalance. | order book events or depth |
+| `OFI_Approx` | APPROXIMATION: Chordia-style bid/ask volume change proxy. Context-only. | `BidVolume`, `AskVolume` |
+| `OFI_Z` | NOT BUILDABLE for true OFI; possible only from `OFI_Approx` as context. | OFI approximation, window |
+| `CumOFI` | NOT BUILDABLE for true OFI; possible only from `OFI_Approx` as context. | OFI approximation, reset rule |
+| `OFI_Momentum` | NOT BUILDABLE for true OFI; possible only from `OFI_Approx` as context. | OFI approximation, lookback |
+
+True `OFI`, `OFI_Z`, `CumOFI`, and `OFI_Momentum` require order book events
+or depth data that this repo does not have. Only `OFI_Approx`, using bid/ask
+volume changes on time bars, is buildable now. It must be labeled as an
+approximation and used for context only.
+
+`Delta`, `CumDelta`, and `DeltaROC` are time-bar values when computed from the
+current data. They are acceptable for context use, but they are not equivalent
+to tick-level signed flow.
 
 ## Implementation Approach
 
@@ -28,11 +38,10 @@ shared/indicators/order_flow.py
 Expected functions:
 
 ```text
-delta(bars)
-cumulative_delta(delta, reset_rule)
+delta(bid_volume, ask_volume)
+cumulative_delta(delta, session)
 delta_roc(delta, lookback)
-ofi(bars, method)
-rolling_flow_zscore(series, window)
+ofi_approx(bars)
 ```
 
 ## Parameter Decisions

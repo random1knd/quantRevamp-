@@ -9,9 +9,21 @@ Purpose:
 
 | Feature | Meaning | Required Inputs |
 |---|---|---|
-| `VPIN` | Volume-synchronized probability of informed trading / toxicity context. | volume, signed volume proxy, bucket size |
+| `VPIN` | NOT BUILDABLE from current time bars: volume-synchronized probability of informed trading / toxicity context. | volume buckets, signed volume method |
+| `VPIN_Approx` | APPROXIMATION: rolling mean of `abs(AskVolume - BidVolume) / Volume`. Context-only. | `AskVolume`, `BidVolume`, `Volume`, window |
 | `KyleLambda` | Price impact per unit order flow. | returns/price change, signed volume |
 | `KyleLambda_Pctile` | Percentile rank of Kyle lambda. | Kyle lambda, window |
+
+True VPIN was designed for volume buckets and is not buildable from the current
+5-minute time bars. Only `vpin_approx = rolling mean(abs(AskVolume - BidVolume)
+/ Volume)` is buildable now. This is a time-bar approximation, not volume-bar
+VPIN.
+
+Zero-denominator behavior:
+
+- `vpin_approx`: if `Volume` is zero for a bar, that bar returns NaN.
+- `kyle_lambda`: if variance of signed volume over the window is zero, returns
+  NaN.
 
 ## Implementation Approach
 
@@ -19,15 +31,14 @@ Shared math can live in:
 
 ```text
 shared/indicators/liquidity.py
-shared/indicators/vpin.py
 ```
 
 Expected functions:
 
 ```text
-vpin(bars, bucket_volume, signed_volume_method)
+vpin_approx(bars, window)
 kyle_lambda(price_change, signed_volume, window)
-rolling_percentile(series, window)
+kyle_lambda_percentile(series, window)
 ```
 
 ## Parameter Decisions
@@ -35,8 +46,8 @@ rolling_percentile(series, window)
 Each strategy must state:
 
 - bar construction: time bars, volume bars, dollar bars, or other
-- VPIN bucket size
-- signed-volume classification method
+- VPIN approximation window when using current time bars
+- signed-volume classification method for any future true VPIN implementation
 - Kyle lambda window
 - price-change definition
 - whether the feature is context-only or trade-driving

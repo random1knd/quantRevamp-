@@ -1,3 +1,7 @@
+> DEFERRED - do not build until a strategy README declares the input series,
+> process noise, observation noise, initial state method, and burn-in behavior.
+> Noise ratios are not declared for any current strategy.
+
 # Kalman Indicators
 
 Purpose:
@@ -54,4 +58,3 @@ observations and is not allowed for live-style signals.
 - step-change series
 - known sequential update example
 - causality test by mutating future bars
-

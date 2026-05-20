@@ -9,13 +9,21 @@ Purpose:
 | Feature | Meaning | Required Inputs |
 |---|---|---|
 | `ADX` | Trend strength. | OHLC, window |
-| `ATR` | Average true range for volatility/risk context. | OHLC, window |
 | `MA_Slope` | Moving-average slope. | close, window |
 | `EMA_Slope` | Exponential moving-average slope. | close, span |
-| `ER_Short/Mid/Long` | Efficiency ratio across horizons. | close, windows |
-| `MOM_Short/Mid/Long` | Return/momentum over horizons. | close, lookbacks |
-| `MOM_Composite` | Explicit weighted momentum composite. | component list |
-| `TSMOM` | Time-series momentum signal/context. | returns, lookback |
+| `ER_BarWindows` | Efficiency ratio across strategy-declared bar windows. | close, windows |
+| `MOM_BarLookbacks` | Return/momentum over strategy-declared bar lookbacks. | close, lookbacks |
+| `MOM_Composite` | BLOCKED: explicit weighted momentum composite. | component list |
+| `TSMOM` | BLOCKED: time-series momentum signal/context. | returns, lookback |
+
+Notes:
+
+- ATR already lives in `shared/indicators/volatility.py`; do not duplicate it
+  in this family.
+- `MOM_Composite`: component weights are not declared.
+- `TSMOM`: lookback is not declared by a strategy.
+- Efficiency-ratio and momentum horizons are undeclared parameters. Each
+  strategy must choose explicit bar windows/lookbacks.
 
 ## Implementation Approach
 
@@ -23,18 +31,15 @@ Shared math can live in:
 
 ```text
 shared/indicators/trend.py
-shared/indicators/momentum.py
-shared/indicators/atr.py
 ```
 
 Expected functions:
 
 ```text
-atr(high, low, close, period)
-adx(high, low, close, period)
-moving_average_slope(close, window)
-efficiency_ratio(close, window)
-momentum(close, lookback)
+adx(bars, window)
+ma_slope(series, window)
+efficiency_ratio(series, window)
+momentum(series, lookback)
 ```
 
 ## Parameter Decisions
@@ -52,8 +57,7 @@ Slope must compare historical values only, not a fitted line using future bars.
 
 ## Test Plan
 
-- hand-calculated ATR example
+- hand-calculated ADX example
 - monotonic trend synthetic segment
 - choppy synthetic segment
 - causality test by mutating future bars
-

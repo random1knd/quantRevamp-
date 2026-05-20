@@ -10,9 +10,14 @@ Purpose:
 |---|---|---|
 | `RealizedVol` | Rolling realized volatility. | returns, window |
 | `VolPctile` | Percentile of realized volatility. | realized vol, window |
-| `VolRegime` | Label derived from volatility thresholds. | volatility measure, thresholds |
+| `VolRegime` | BLOCKED: label derived from volatility thresholds. | volatility measure, thresholds |
 | `ATR_Pctile` | Percentile of ATR. | ATR, window |
-| `JumpRatio` | Estimate of jump-driven vs smooth variance. | returns, window, method |
+| `JumpRatio` | BLOCKED: estimate of jump-driven vs smooth variance. | returns, window, method |
+
+Blocked items:
+
+- `VolRegime`: regime thresholds are not declared.
+- `JumpRatio`: jump-variance method is not declared.
 
 ## Implementation Approach
 
@@ -26,9 +31,8 @@ Expected functions:
 
 ```text
 realized_volatility(returns, window)
-rolling_percentile(series, window)
-vol_regime(series, thresholds)
-jump_ratio(returns, window, method)
+vol_percentile(series, window)
+atr_percentile(series, window)
 ```
 
 ## Parameter Decisions
@@ -48,10 +52,14 @@ Percentiles and volatility windows must use prior/current bars only.
 Do not classify volatility regime with full-sample percentiles for trade-driving
 values.
 
+`realized_volatility` does not reset at session boundaries by default. If
+session-scoped realized volatility is needed, the caller must pass a
+session-grouped series. This is intentional and must be documented by the
+caller.
+
 ## Test Plan
 
 - low-vol synthetic segment
 - high-vol synthetic segment
 - jump bar segment
 - causality test by mutating future bars
-

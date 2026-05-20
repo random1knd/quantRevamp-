@@ -13,7 +13,13 @@ Purpose:
 | `ZScore_EWMA` | Adaptive mean and dispersion using EWMA. | source series, span/alpha |
 | `ZScore_Robust` | Median/MAD based robust z-score. | source series, window |
 | `ZScore_Pctile` | Non-parametric percentile rank. | source series, window |
-| `VolScaledMove` | Current move normalized by recent volatility. | return/move series, vol window |
+| `GapFreeRollingWindow` | Shared support for masking rolling windows that include gapped time bars. | `BarGapFromPrevious`, session, window |
+| `VolScaledMove` | BLOCKED: current move normalized by recent volatility. | return/move series, vol window |
+
+Blocked items:
+
+- `VolScaledMove`: return definition and volatility window must be declared by
+  a strategy before this is built.
 
 ## Implementation Approach
 
@@ -26,11 +32,12 @@ shared/indicators/zscore.py
 Expected functions:
 
 ```text
-rolling_zscore(series, window)
+gap_free_rolling_window(bar_gap, session, window)
+rolling_zscore(series, session, window)
+rolling_zscore_cross_session(series, window)
 ewma_zscore(series, span)
-robust_zscore(series, window)
+robust_zscore(series, session, window)
 rolling_percentile(series, window)
-vol_scaled_move(series, vol_window)
 ```
 
 Every strategy must state the source column and window/span. A column named
@@ -52,4 +59,3 @@ reference set.
 - MAD example with an outlier
 - flat series behavior
 - causality test by mutating future values
-

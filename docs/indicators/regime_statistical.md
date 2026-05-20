@@ -9,12 +9,19 @@ Purpose:
 
 | Feature | Meaning | Required Inputs |
 |---|---|---|
-| `Hurst` | Rough persistence / mean-reversion estimate. | price or deviation series, window |
+| `Hurst` | DEFERRED: rough persistence / mean-reversion estimate. | price or deviation series, window |
 | `ADF_PValue` | Stationarity test p-value. | price/deviation series, window |
-| `ADF_Stationary` | Boolean interpretation of ADF threshold. | `ADF_PValue`, threshold |
+| `ADF_Stationary` | BLOCKED: boolean interpretation of ADF threshold. | `ADF_PValue`, threshold |
 | `VR_q4` | Variance ratio at lag/q. | return series, q, window |
 | `AC1` | Lag-1 autocorrelation. | return/deviation series, window |
-| `RegimeScore` | Composite score from selected regime features. | explicit component list |
+| `RegimeScore` | BLOCKED: composite score from selected regime features. | explicit component list |
+
+Deferred and blocked items:
+
+- `Hurst`: computationally expensive; deferred until a strategy explicitly
+  requests it.
+- `ADF_Stationary`: blocked until an ADF threshold is declared by a strategy.
+- `RegimeScore`: component weights are not declared; it must not be built.
 
 ## Implementation Approach
 
@@ -30,11 +37,14 @@ Expected functions:
 rolling_autocorr(series, window, lag)
 rolling_variance_ratio(series, window, q)
 rolling_adf_pvalue(series, window)
-hurst_estimate(series, window)
 ```
 
 `RegimeScore` should not be implemented until the component formula is
 strategy-approved. It is easy for a composite score to hide policy.
+
+`rolling_adf_pvalue` is computationally heavy because statsmodels ADF runs per
+window per bar. A timing test is required on a 100-bar segment before it is
+used on full discovery data. It is context-only and never trade-driving.
 
 ## Parameter Decisions
 
@@ -59,4 +69,3 @@ unless a strategy explicitly depends on them.
 - known mean-reverting synthetic segment
 - causality test by mutating future bars
 - compare output shape and missing-value behavior on short windows
-

@@ -13,8 +13,14 @@ Purpose:
 | `VWAPDist` | `Close - SessionVWAP`. | `Close`, `SessionVWAP` |
 | `VWAPDist_ATR` | VWAP distance normalized by ATR. | `VWAPDist`, `ATR` |
 | `VWAPDist_SD` | VWAP distance normalized by rolling deviation standard deviation. | `VWAPDist`, window |
-| `AnchoredVWAP` | VWAP from a declared anchor event/time. | `Close`, `Volume`, anchor rule |
-| `VWAPDev_SlotPctile` | VWAP deviation percentile compared to same time slot history. | historical slot deviations |
+| `AnchoredVWAP` | DEFERRED: VWAP from a declared anchor event/time. | `Close`, `Volume`, anchor rule |
+| `VWAPDev_SlotPctile` | DEFERRED: VWAP deviation percentile compared to same time slot history. | historical slot deviations |
+
+Deferred items:
+
+- `AnchoredVWAP`: anchor rule is not declared.
+- `VWAPDev_SlotPctile`: requires historical session storage that does not
+  exist.
 
 ## Implementation Approach
 
@@ -27,13 +33,15 @@ shared/indicators/vwap.py
 Expected functions:
 
 ```text
-session_vwap(bars, session_open, session_close, timezone)
+session_vwap(frame, price_col, volume_col, session_col)
+typical_price(high, low, close)
 vwap_distance(close, vwap)
-anchored_vwap(bars, anchor_rule)
-slot_percentile(series, slot_key, lookback_sessions)
+vwap_distance_atr_normalized(vwap_distance, atr)
 ```
 
-Strategy code must pass the session and anchor parameters explicitly.
+Strategy code must pass session parameters explicitly. Any future anchored VWAP
+work must pass the anchor parameters explicitly after a strategy declares the
+anchor rule.
 
 No global VWAP defaults.
 
@@ -67,4 +75,3 @@ All values must be causal at bar N:
 - session reset example
 - zero-volume behavior
 - causality test that mutating bars after N does not change values up to N
-

@@ -5,6 +5,20 @@ This folder is the planning catalog for indicators and context features.
 These docs do not define a universal bootstrap. They define reusable indicator
 math and strategy-owned context recording.
 
+## Available Bar Columns
+
+After `prepare_bars`, every bar has:
+
+```text
+DateTime_ET, SessionDate_ET, SessionMinute_ET, BarGapFromPrevious,
+IsFirstSessionAfterContractChange, Open, High, Low, Close, Volume,
+BidVolume, AskVolume, Contract
+```
+
+Delta is computable as `AskVolume - BidVolume`.
+
+No VIX, no implied volatility, no order book depth, no tick data.
+
 ## Core Rule
 
 ```text

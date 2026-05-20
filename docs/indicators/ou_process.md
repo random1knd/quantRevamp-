@@ -1,3 +1,7 @@
+> DEFERRED - do not build until a strategy README declares the source series,
+> fit window, minimum observations, invalid-theta handling, and max half-life.
+> O-U parameters are not declared for any current strategy.
+
 # Ornstein-Uhlenbeck Process Indicators
 
 Purpose:
@@ -54,4 +58,3 @@ No full-sample equilibrium estimate for trade-driving use.
 - random-walk-like series
 - invalid/near-zero theta behavior
 - causality test by mutating future bars
-
