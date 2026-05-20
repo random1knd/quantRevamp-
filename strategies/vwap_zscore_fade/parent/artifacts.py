@@ -51,9 +51,15 @@ def write_parent_artifacts(
     exclude_roll_sessions: bool,
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
+    bar_gap_count: int,
+    bar_gap_session_count: int,
 ) -> None:
     if commission_per_round_turn == 0.0 and not commission_is_smoke_test:
         raise ValueError("zero commission requires smoke-test label")
+    if bar_gap_count < 0:
+        raise ValueError("bar_gap_count must be non-negative")
+    if bar_gap_session_count < 0:
+        raise ValueError("bar_gap_session_count must be non-negative")
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -71,6 +77,8 @@ def write_parent_artifacts(
         exclude_roll_sessions=exclude_roll_sessions,
         commission_per_round_turn=commission_per_round_turn,
         commission_is_smoke_test=commission_is_smoke_test,
+        bar_gap_count=bar_gap_count,
+        bar_gap_session_count=bar_gap_session_count,
     )
 
     _write_trades_csv(output_path / "trades.csv", trades)
@@ -136,6 +144,8 @@ def _run_config(
     exclude_roll_sessions: bool,
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
+    bar_gap_count: int,
+    bar_gap_session_count: int,
 ) -> dict[str, Any]:
     return {
         "campaign_id": None,
@@ -158,6 +168,10 @@ def _run_config(
         "input_data_bytes": input_data["bytes"],
         "input_data_is_repo_relative": input_data["is_repo_relative"],
         "non_reproducible_input_paths": input_data["non_reproducible_paths"],
+        "data_quality": {
+            "bar_gap_count": bar_gap_count,
+            "bar_gap_session_count": bar_gap_session_count,
+        },
         "slippage_model": _slippage_model(),
         "commission_model": _commission_model(
             commission_per_round_turn=commission_per_round_turn,

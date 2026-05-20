@@ -25,12 +25,18 @@ def prepare_bars(
     source_timezone: str,
     strategy_timezone: str,
     session_open: str,
+    expected_bar_interval_minutes: int,
 ) -> pd.DataFrame:
     """Prepare raw bars with mechanical timestamp and contract-roll fields."""
 
     missing = [column for column in REQUIRED_COLUMNS if column not in bars.columns]
     if missing:
         raise ValueError(f"missing required columns: {missing}")
+    if expected_bar_interval_minutes <= 0:
+        raise ValueError(
+            "expected_bar_interval_minutes must be positive, got: "
+            f"{expected_bar_interval_minutes}"
+        )
 
     prepared = bars.copy()
     session_open_time = _parse_session_open(session_open)
@@ -57,6 +63,10 @@ def prepare_bars(
     prepared["SessionMinute_ET"] = prepared["MinuteOfDay_ET"] - (
         session_open_time.hour * 60 + session_open_time.minute
     )
+    prepared["BarGapMinutesFromPrevious"] = _bar_gap_minutes_from_previous(prepared)
+    prepared["BarGapFromPrevious"] = prepared["BarGapMinutesFromPrevious"].ne(
+        expected_bar_interval_minutes
+    ) & prepared["BarGapMinutesFromPrevious"].notna()
     prepared["IsFirstSessionAfterContractChange"] = _mark_first_session_after_contract_change(
         prepared
     )
@@ -98,6 +108,19 @@ def _reject_multiple_contracts_per_session(bars: pd.DataFrame) -> None:
     if not mixed_sessions.empty:
         sessions = [str(session) for session in mixed_sessions.index.tolist()]
         raise ValueError(f"multiple contracts in one session: {sessions}")
+
+
+def _bar_gap_minutes_from_previous(
+    bars: pd.DataFrame,
+) -> pd.Series:
+    previous_datetime = bars.groupby("SessionDate_ET", sort=False)["DateTime_ET"].shift(
+        1
+    )
+    gap_minutes = (
+        (bars["DateTime_ET"] - previous_datetime).dt.total_seconds() / 60.0
+    )
+    gap_minutes.name = "BarGapMinutesFromPrevious"
+    return gap_minutes
 
 
 def _mark_first_session_after_contract_change(bars: pd.DataFrame) -> pd.Series:

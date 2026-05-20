@@ -2,55 +2,57 @@
 
 Change made:
 
-- implemented Claude Bundle A findings:
-  - replaced row-count time stop with elapsed-minute time stop
-  - corrected early-close fallthrough classification to `session_end` when a
-    later session exists
-  - added artifact-writer guard for zero commission without smoke label
-- renamed the stale discovery test from `discovery_split_bars` wording
-- updated focused tests for each changed behavior
+- implemented Claude-approved Bundle B:
+  - `prepare_bars(...)` now requires `expected_bar_interval_minutes`
+  - prepared bars now include:
+    - `BarGapFromPrevious`
+    - `BarGapMinutesFromPrevious`
+  - parent run artifacts now put gap counts under top-level
+    `run_config["data_quality"]`
+  - parent `EntryZ` now masks to `NaN` when a 20-row rolling window spans more
+    than 97.5 minutes
+  - `DateTime_ET` is now an explicit required column for parent indicators
 
 Why:
 
-- the parent strategy's time stop is a 60-minute business rule; row count can
-  over-hold when bars have gaps
-- a shortened session inside a larger dataset is a session exit, not incomplete
-  data
-- artifact writing should fail before creating files when commission metadata
-  would violate the same smoke-label rule enforced by strategy generation
+- gaps in bar data must be visible in run metadata without blocking current
+  data loading
+- trade-driving z-score signals should not be produced from rolling windows
+  widened by missing bars
+- `data_quality` keeps input quality separate from strategy parameters and
+  file hash metadata
 
 Files touched:
 
-- `strategies/vwap_zscore_fade/parent/params.py`
-- `strategies/vwap_zscore_fade/parent/strategy.py`
+- `shared/data/bars.py`
+- `tests/shared/data/test_bars.py`
+- `strategies/vwap_zscore_fade/parent/indicators.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_indicators.py`
 - `strategies/vwap_zscore_fade/parent/artifacts.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
 - `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_params.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
+- `strategies/vwap_zscore_fade/parent/smoke_run.py`
+- `strategies/vwap_zscore_fade/parent/discovery_run.py`
 - `codexArg`
 
-Implementation note / pushback:
+Verification before reruns:
 
-- Claude's suggested snippet computed elapsed from entry bar open to exit bar
-  open, but Claude also required gap-free data to preserve the old 12th-row
-  behavior. Those conflict on 5-minute bars.
-- I used elapsed from entry bar open to candidate exit bar close instead. That
-  matches the existing rule that `time_stop` exits fill at bar close and keeps
-  continuous 5-minute data behavior unchanged.
-
-Verification so far:
-
-- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py strategies\vwap_zscore_fade\parent\tests\test_params.py strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py`
-  -> 29 passed
-- `python -m pytest tests\boundaries\test_strategy_imports.py`
-  -> 2 passed
+- `python -m pytest tests\shared\data\test_bars.py strategies\vwap_zscore_fade\parent\tests\test_indicators.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
+  -> 26 passed
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py tests\boundaries\test_strategy_imports.py`
+  -> 24 passed
 - `python -m pytest`
-  -> 85 passed
+  -> 90 passed
+
+Assumptions:
+
+- `BarGapFromPrevious` is true for any same-session interval that differs from
+  the declared expected interval, not only intervals greater than expected
+- current parent runners pre-filter RTH before `prepare_bars`, so reported gap
+  counts are for the prepared RTH run universe
 
 Next:
 
-- commit the tracked changes so the smoke rerun can record a clean
-  `code_version`
-- rerun smoke and mark the prior baseline superseded
-- overwrite this file again with smoke headline numbers and Bundle B proposal
+- commit tracked changes for clean rerun provenance
+- rerun smoke and discovery
+- mark superseded baseline artifacts
+- overwrite this file again with new smoke and discovery numbers

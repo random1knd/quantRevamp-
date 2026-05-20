@@ -8,6 +8,7 @@ from strategies.vwap_zscore_fade.parent import params
 
 
 REQUIRED_COLUMNS = (
+    "DateTime_ET",
     "SessionDate_ET",
     "SessionMinute_ET",
     "High",
@@ -54,7 +55,9 @@ def add_parent_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     rth["EntryZ"] = _session_deviation_zscore(
         rth["VWAPDeviation"],
         session=rth["SessionDate_ET"],
+        timestamps=rth["DateTime_ET"],
         window=params.Z_WINDOW,
+        bar_interval_minutes=params.BAR_INTERVAL_MINUTES,
     )
     rth["ATR"] = session_atr(
         rth,
@@ -86,10 +89,19 @@ def _session_deviation_zscore(
     values: pd.Series,
     *,
     session: pd.Series,
+    timestamps: pd.Series,
     window: int,
+    bar_interval_minutes: int,
 ) -> pd.Series:
     rolling_std = _session_rolling_std(values, session=session, window=window)
-    return values / rolling_std.mask(rolling_std == 0.0)
+    zscore = values / rolling_std.mask(rolling_std == 0.0)
+    valid_span = _valid_rolling_window_span(
+        timestamps,
+        session=session,
+        window=window,
+        bar_interval_minutes=bar_interval_minutes,
+    )
+    return zscore.mask(~valid_span)
 
 
 def _session_rolling_std(
@@ -101,3 +113,20 @@ def _session_rolling_std(
     return values.groupby(session, sort=False).transform(
         lambda group: group.rolling(window=window, min_periods=window).std()
     )
+
+
+def _valid_rolling_window_span(
+    timestamps: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+    bar_interval_minutes: int,
+) -> pd.Series:
+    window_start = timestamps.groupby(session, sort=False).transform(
+        lambda group: group.shift(window - 1)
+    )
+    span = timestamps - window_start
+    max_span = pd.Timedelta(
+        minutes=(window - 1) * bar_interval_minutes + bar_interval_minutes / 2
+    )
+    return span.notna() & span.le(max_span)

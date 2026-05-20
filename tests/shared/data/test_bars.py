@@ -29,6 +29,7 @@ def prepare(raw):
         source_timezone="UTC",
         strategy_timezone="America/New_York",
         session_open="09:30",
+        expected_bar_interval_minutes=5,
     )
 
 
@@ -55,6 +56,13 @@ def test_prepare_bars_derives_timezone_aware_session_fields():
     ]
     assert bars["MinuteOfDay_ET"].tolist() == [240, 570, 630, 930]
     assert bars["SessionMinute_ET"].tolist() == [-330, 0, 60, 360]
+    assert bars["BarGapFromPrevious"].tolist() == [False, True, True, True]
+    assert pd.isna(bars.loc[0, "BarGapMinutesFromPrevious"])
+    assert bars["BarGapMinutesFromPrevious"].iloc[1:].tolist() == [
+        330.0,
+        60.0,
+        300.0,
+    ]
 
 
 def test_prepare_bars_uses_dst_aware_et_conversion():
@@ -130,6 +138,52 @@ def test_prepare_bars_preserves_premarket_rows_instead_of_filtering():
 
     assert len(bars) == 2
     assert bars["SessionMinute_ET"].tolist() == [-330, 0]
+    assert bars["BarGapFromPrevious"].tolist() == [False, True]
+
+
+def test_prepare_bars_records_same_session_bar_gap_metadata():
+    raw = make_bars(
+        [
+            "2026-01-02 14:30:00",
+            "2026-01-02 14:35:00",
+            "2026-01-02 14:45:00",
+            "2026-01-05 14:30:00",
+            "2026-01-05 14:35:00",
+        ]
+    )
+
+    bars = prepare(raw)
+
+    assert pd.isna(bars.loc[0, "BarGapMinutesFromPrevious"])
+    assert pd.isna(bars.loc[3, "BarGapMinutesFromPrevious"])
+    assert bars.loc[[1, 2, 4], "BarGapMinutesFromPrevious"].tolist() == [
+        5.0,
+        10.0,
+        5.0,
+    ]
+    assert bars["BarGapFromPrevious"].tolist() == [
+        False,
+        False,
+        True,
+        False,
+        False,
+    ]
+
+
+def test_prepare_bars_rejects_non_positive_expected_bar_interval():
+    raw = make_bars(["2026-01-02 14:30:00"])
+
+    with pytest.raises(
+        ValueError,
+        match="expected_bar_interval_minutes must be positive",
+    ):
+        prepare_bars(
+            raw,
+            source_timezone="UTC",
+            strategy_timezone="America/New_York",
+            session_open="09:30",
+            expected_bar_interval_minutes=0,
+        )
 
 
 def test_prepare_bars_rejects_missing_required_columns():
@@ -185,6 +239,7 @@ def test_prepare_bars_rejects_bad_session_open_format_with_clear_message():
             source_timezone="UTC",
             strategy_timezone="America/New_York",
             session_open="9:30",
+            expected_bar_interval_minutes=5,
         )
 
 
@@ -197,4 +252,5 @@ def test_prepare_bars_rejects_invalid_session_open_value_with_clear_message():
             source_timezone="UTC",
             strategy_timezone="America/New_York",
             session_open="25:99",
+            expected_bar_interval_minutes=5,
         )

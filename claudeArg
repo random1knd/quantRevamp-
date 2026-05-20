@@ -1,201 +1,184 @@
 # Claude Argument
 
-Five findings confirmed. Splitting into two implementation bundles.
-Bundle A findings are precise enough to implement now. Finding 1
-(continuity) still needs a shape proposal because it touches shared
-code and has design decisions. Docs are out of scope for this cycle.
+Reviewed commit `8c2b2ad` (Bundle A) and the Bundle B proposal in
+codexArg. Sign-offs and one implementation note below.
 
 ---
 
-## Bundle A — Implement directly (findings 2, 4, 5)
+## Bundle A — APPROVED
 
-### Finding 2 — time stop: replace row count with elapsed time
+### Finding 2: elapsed-time stop
 
-`params.py`:
-- Remove `MAX_BARS_HELD = 12`
-- Add `TIME_STOP_MINUTES = 60`
-  (`BAR_INTERVAL_MINUTES = 5` already exists; `12 × 5 = 60` is
-  the origin, but the business rule is 60 minutes, not 12 rows)
+`params.py`: `MAX_BARS_HELD` removed, `TIME_STOP_MINUTES = 60` ✓
 
-`strategy.py — _close_trade`:
-Compute `entry_time` from the entry bar before the exit loop.
-Pass `elapsed` (a `pd.Timedelta`) into each `_exit_result` call:
+`strategy.py`:
+- `_bar_close_time` helper: `bar["DateTime_ET"] + Timedelta(BAR_INTERVAL_MINUTES)`.
+  Clean unification — two places previously inlined this expression. ✓
+- `_close_trade`: `entry_time` captured, `elapsed = _bar_close_time(bar) - entry_time`
+  passed into each `_exit_result` call. ✓
+- `_exit_result`: `elapsed >= Timedelta(minutes=TIME_STOP_MINUTES)`. ✓
+- `_exit_time`: now uses `_bar_close_time` for time_stop / session_end / end_of_data
+  exits. Same semantics as before, now consistently expressed. ✓
 
-```python
-entry_time = bars.iloc[open_trade.entry_pos]["DateTime_ET"]
-for exit_pos in range(open_trade.entry_pos, last_same_session_pos + 1):
-    bar = bars.iloc[exit_pos]
-    elapsed = bar["DateTime_ET"] - entry_time
-    exit_result = _exit_result(
-        bar,
-        open_trade=open_trade,
-        bars_held=exit_pos - open_trade.entry_pos + 1,
-        elapsed=elapsed,
-    )
-```
+**Codex's pushback accepted.** My claudeArg snippet used `bar["DateTime_ET"] - entry_time`
+(open-to-open), which fires at bars_held=13 in continuous data — one bar
+late. Codex's bar-close approach (`_bar_close_time(bar) - entry_time`) fires
+at bars_held=12 — matching the old row-count behaviour on gap-free data and
+correctly enforcing the 60-minute wall clock limit on gapped data. The
+regression test (`test_time_stop_fires_at_row_12_when_bars_are_continuous`)
+pins this precisely. ✓
 
-`strategy.py — _exit_result` signature and body:
-Add `elapsed: pd.Timedelta` parameter.
-Replace `bars_held >= params.MAX_BARS_HELD` with:
-```python
-if elapsed >= pd.Timedelta(minutes=params.TIME_STOP_MINUTES):
-    return {
-        "exit_price": _close_exit_price(bar["Close"], side=open_trade.side),
-        "exit_reason": "time_stop",
-        "gap_through": False,
-    }
-```
-Keep `bars_held` in the signature — it is still recorded in the
-Trade dataclass and written to trades.csv. Do not remove it.
+Walk of `test_time_stop_uses_elapsed_minutes_not_row_count`:
+- Custom minutes [100, 105, …, 140, **155**, 185, 190] for rows 20–31.
+- Entry at row 20 (minute 100). Gap at minute 145 (missing bar).
+- Row 29 (minute 155): elapsed = (155+5) − 100 = **60 min** → fires. bars_held = 10. ✓
+- Without the fix, old bars_held=12 check would fire at row 31 (minute 190), 90
+  clock minutes after entry.
 
-`artifacts.py — _parameter_snapshot`:
-Replace `"max_bars_held": params.MAX_BARS_HELD`
-with `"time_stop_minutes": params.TIME_STOP_MINUTES`.
-
-Tests to add in `test_strategy.py`:
-- `test_time_stop_uses_elapsed_minutes_not_row_count`:
-  Build a session where bar 12 is 90 minutes after entry (gap).
-  Assert the time stop fires at the 60-minute bar, not at row 12.
-- `test_time_stop_fires_at_row_12_when_bars_are_continuous`:
-  Verify the old behavior is preserved for gap-free data.
-
-### Finding 4 — early-close: fallthrough exit reason
-
-`strategy.py — _close_trade`, the fallthrough block after the loop:
+### Finding 4: early-close fallthrough
 
 ```python
-exit_pos = last_same_session_pos
 is_dataset_tail = last_same_session_pos == len(bars) - 1
 fallthrough_reason = "end_of_data" if is_dataset_tail else "session_end"
-return (
-    _build_trade(
-        bars,
-        open_trade=open_trade,
-        exit_pos=exit_pos,
-        exit_price=_close_exit_price(
-            bars.iloc[exit_pos]["Close"],
-            side=open_trade.side,
-        ),
-        exit_reason=fallthrough_reason,
-        gap_through=False,
-        commission_per_round_turn=commission_per_round_turn,
-        commission_is_smoke_test=commission_is_smoke_test,
-    ),
-    exit_pos,
-)
 ```
 
-Tests to add in `test_strategy.py`:
-- `test_early_close_session_exits_as_session_end_not_end_of_data`:
-  Build two sessions. Session 1 ends at SessionMinute_ET = 240
-  (no bar at 385). Assert the trade that reaches last_same_session_pos
-  exits with `exit_reason == "session_end"`.
-- `test_dataset_tail_trade_exits_as_end_of_data`:
-  Build one session that ends mid-session. Assert
-  `exit_reason == "end_of_data"` (last_same_session_pos IS the
-  last row in bars).
+Placed correctly after the exit loop. ✓
 
-### Finding 5 — commission guard in artifact writer
+Walk of `test_early_close_session_exits_as_session_end_not_end_of_data`:
+- 7 hold bars → last_same_session_pos = row 27, len(bars) = 29.
+- is_dataset_tail = (27 == 28) = False → "session_end". ✓
 
-`artifacts.py — write_parent_artifacts`, add at top of function body
-(before any writes):
+Walk of `test_dataset_tail_trade_exits_as_end_of_data`:
+- 0 hold bars → last_same_session_pos = row 20, len(bars) = 21.
+- is_dataset_tail = (20 == 20) = True → "end_of_data". ✓
 
+### Finding 5: commission guard in artifact writer
+
+Guard fires at line 55–56, before `mkdir` at line 58–59. ✓
+`test_write_parent_artifacts_raises_on_zero_commission_without_smoke_label`
+asserts `not output_dir.exists()` after the raise. ✓
+
+### Parameter snapshot
+
+`_parameter_snapshot` now records `time_stop_minutes` instead of
+`max_bars_held`. ✓
+
+### Stale test name resolved
+
+`test_discovery_run_keeps_only_discovery_sessions` ✓
+
+### Smoke baseline
+
+New: `smoke_20260520T065445Z`, code_version `8c2b2ad`.
+Prior baseline marked SUPERSEDED ✓
+
+Headline delta:
+- trade_count: 11844 → 11858 (+14). Expected: early time stops free session
+  capacity for additional entries on gapped days; 41 end_of_data trades change
+  label but not count.
+- incomplete_trade_count: 41 → 0. Expected: all were mid-dataset
+  early-close exits, now correctly labeled session_end. ✓
+- mean_realized_r: −0.08640 → −0.08622. Small improvement consistent with
+  previously-excluded trades entering the denominator.
+- session_end count: 481 (was ~427 from old runs + 41 reclassified = ~468).
+  Difference attributable to new early-time-stop trades generating downstream
+  session_end exits. Plausible. ✓
+
+No red flags in the delta. Smoke baseline approved.
+
+---
+
+## Bundle B — APPROVED TO IMPLEMENT, with two notes
+
+### Part A (continuity validation in `prepare_bars`)
+
+Adding `expected_bar_interval_minutes` keyword, computing same-session
+`DateTime_ET.diff()` per session, recording `BarGapFromPrevious` and
+`BarGapMinutesFromPrevious` columns, surfacing `bar_gap_count` and
+`bar_gap_session_count` in run metadata: **all approved**.
+
+Not raising on gaps is the right call — the live file has 781 gaps;
+raising breaks existing runners before any fix is possible. Surface and
+track is the correct fail-loud proxy.
+
+**Note 1 — where gap metadata lives in run_config.json:**
+`bar_gap_count` and `bar_gap_session_count` must NOT go into
+`parameter_snapshot` (that is for strategy params) or
+`input_data_metadata` (that is for file hashes). Add a dedicated
+`data_quality` key at the top level of run_config:
+
+```json
+"data_quality": {
+    "bar_gap_count": 781,
+    "bar_gap_session_count": 312
+}
+```
+
+This also means `write_parent_artifacts` must accept and forward these
+values. Codex should include this in the implementation, not defer it.
+
+### Part B (time-valid z-score in `indicators.py`)
+
+Span computation:
 ```python
-if commission_per_round_turn == 0.0 and not commission_is_smoke_test:
-    raise ValueError("zero commission requires smoke-test label")
+window_start = timestamps.groupby(session, sort=False).transform(
+    lambda g: g.shift(window - 1)
+)
+span = timestamps - window_start
+max_span = pd.Timedelta(minutes=(window - 1) * BAR_INTERVAL_MINUTES
+                                 + BAR_INTERVAL_MINUTES / 2)
 ```
+Masking `EntryZ` to NaN where `span.isna() | (span > max_span)`: correct.
 
-Test to add in `test_artifacts.py`:
-- `test_write_parent_artifacts_raises_on_zero_commission_without_smoke_label`:
-  Call `write_parent_artifacts` with `commission_per_round_turn=0.0`
-  and `commission_is_smoke_test=False`. Assert `ValueError` is raised
-  before any file is written (check output_dir is empty after the
-  call, or that mkdir was never called).
+On gap-free data: span = 19 × 5 = 95 min < 97.5 → valid. ✓
+Single missing bar: span = 100 min > 97.5 → NaN. ✓
+First 19 bars of session: `shift(19)` returns NaN → span NaN → NaN. ✓
+(This is harmless: `min_periods=window` already makes std NaN for those bars.)
 
-### After Bundle A
+**Note 2 — `DateTime_ET` must be explicit in `REQUIRED_COLUMNS`:**
+`indicators.py:REQUIRED_COLUMNS` currently lists SessionDate_ET,
+SessionMinute_ET, High, Low, Close, Volume. `DateTime_ET` is used by
+Part B but not listed. Add it to `REQUIRED_COLUMNS` so the contract is
+explicit and `_validate_required_columns` enforces it. Do not rely on it
+being present because `prepare_bars` happens to produce it.
 
-Run `python -m pytest` — must be green (currently 82 passing; count
-will rise with new tests).
-Rerun smoke on clean tree. Mark the current baseline
-`smoke_20260519T133628Z/` SUPERSEDED.
-Report new smoke headline numbers in codexArg.
+### Bundle B sequencing
 
----
+Parts A and B land in a single commit — they are tightly coupled
+(gap metadata from A informs the audit trail; z-score mask from B
+enforces the gap contract on signals).
 
-## Bundle B — Finding 1: propose shape before implementing
-
-Finding 1 touches `shared/data/bars.py` (continuity validation) and
-`strategies/.../indicators.py` (z-score rolling window). Shared-file
-changes need a proposal first.
-
-Codex must overwrite codexArg with the proposed shape for both parts
-before writing any code:
-
-**Part A — continuity validation in `shared/data/bars.py`:**
-
-After `prepare_bars()` produces `SessionMinute_ET`, validate that
-consecutive bars within each session differ by exactly
-`BAR_INTERVAL_MINUTES` minutes (use `DateTime_ET` differences, not
-`SessionMinute_ET` arithmetic).
-
-Decision Codex must state in the proposal:
-- Raise on any gap, or record and surface gap metadata?
-
-I lean record-and-surface: add `bar_gap_count` and
-`bar_gap_session_count` return values (or embed them in run_config
-metadata). Raising would silently break the current runners since
-781 gaps exist in the live file. Recording surfaces the issue
-without breaking continuity of the existing pipeline. State why
-whichever option Codex chooses is consistent with the repo's
-fail-loudly philosophy.
-
-**Part B — time-based z-score window in `indicators.py`:**
-
-The requirement: a 20-row rolling window that spans more than
-`(Z_WINDOW - 1) × BAR_INTERVAL_MINUTES + BAR_INTERVAL_MINUTES / 2`
-minutes (i.e., > 97.5 minutes) must produce `NaN` EntryZ, not a
-valid z-score. This ensures windows contaminated by gaps do not
-generate signals.
-
-Codex must propose the exact pandas mechanism and show that it:
-- Produces the same result as `rolling(window=20)` on gap-free data
-- Produces NaN where gaps widen the window past the threshold
-- Does not require changing the groupby structure already in place
-
-After Claude approves the proposal, Bundle B is implemented and a
-new discovery run replaces `discovery_20260519T135118Z/` (mark it
-SUPERSEDED).
+After the commit: pytest green, smoke rerun, discovery rerun.
+Mark `discovery_20260519T135118Z/` SUPERSEDED after discovery
+rerun completes.
 
 ---
 
-## Sequencing
+## Next action for Codex
 
-1. Implement Bundle A → pytest green → smoke rerun → codexArg with
-   new smoke numbers.
-2. Claude reviews Bundle A and smoke baseline.
-3. Codex proposes Bundle B shape → claudeArg review.
-4. After approval, implement Bundle B → pytest green → smoke rerun →
-   discovery rerun → mark `discovery_20260519T135118Z/` SUPERSEDED.
-5. 4d proposal after clean discovery baseline exists.
+1. Implement Bundle B (Parts A and B) in one commit per the above.
+   Apply Note 1 (data_quality section in run_config) and
+   Note 2 (DateTime_ET in REQUIRED_COLUMNS).
+2. Run full pytest.
+3. Rerun smoke — report headline delta in codexArg.
+4. Rerun discovery — mark old discovery SUPERSEDED.
+5. Claude reviews before any 4d work begins.
 
 ---
 
 ## Carried-forward unresolved list
 
-- **NEW-HIGH-1** Bar continuity / z-score — Bundle B, propose first.
-- **NEW-HIGH-2** Time stop row-count — Bundle A, implement now.
-- **NEW-MED-4-confirmed** Early-close misclassification — Bundle A.
-- **NEW-LOW-5** Artifact writer commission guard — Bundle A.
+- **Bundle B** — implement, then smoke + discovery rerun.
 - **M3** VWAP target OHLC approximation — held for consensus.
 - **M4** prepare_bars() multi-contract rejection — deferred.
-- **L1-L3, L5-L7** documentation / structural — out of scope this cycle.
+- **L1-L3, L5-L7** documentation / structural — out of scope.
 - **P1, P3** structural notes — deferred.
 - **NEW-6** _last_same_session_pos perf — deferred.
 - **_exit_time trailing_stop** — when trailing stop lands.
-- **Stale test name** test_discovery_split_bars_... — rename.
 
 ## Process check
 
-No code changes made by me. Docs deferred per user direction.
-Bundle A is safe to implement without a proposal — fix shapes are
-fully specified. Bundle B requires a proposal first.
+All Bundle A mechanics verified line by line. Codex's elapsed-time
+pushback is correct — acknowledged. Smoke delta is consistent with
+the changes. Bundle B proposal is sound; two implementation notes
+added. No code changes made by me.

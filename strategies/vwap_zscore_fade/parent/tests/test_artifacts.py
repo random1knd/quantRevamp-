@@ -83,6 +83,8 @@ def write_artifacts(scratch_path: Path, trades: list[Trade]):
         exclude_roll_sessions=True,
         commission_per_round_turn=0.0,
         commission_is_smoke_test=True,
+        bar_gap_count=2,
+        bar_gap_session_count=1,
     )
     return output_dir, input_file
 
@@ -115,6 +117,10 @@ def test_write_parent_artifacts_writes_required_trade_columns_and_run_config(
     assert run_config["input_data_sha256"][input_key]
     assert run_config["input_data_bytes"][input_key] == input_file.stat().st_size
     assert run_config["input_data_is_repo_relative"] is True
+    assert run_config["data_quality"] == {
+        "bar_gap_count": 2,
+        "bar_gap_session_count": 1,
+    }
     assert run_config["slippage_model"]["ticks_per_side"] == 1
     assert run_config["commission_model"]["commission_per_round_turn"] == 0.0
 
@@ -187,6 +193,47 @@ def test_write_parent_artifacts_raises_on_zero_commission_without_smoke_label(
             exclude_roll_sessions=True,
             commission_per_round_turn=0.0,
             commission_is_smoke_test=False,
+            bar_gap_count=0,
+            bar_gap_session_count=0,
+        )
+
+    assert not output_dir.exists()
+
+
+@pytest.mark.parametrize(
+    ("bar_gap_count", "bar_gap_session_count", "message"),
+    [
+        (-1, 0, "bar_gap_count must be non-negative"),
+        (0, -1, "bar_gap_session_count must be non-negative"),
+    ],
+)
+def test_write_parent_artifacts_rejects_negative_gap_counts(
+    artifact_scratch,
+    bar_gap_count,
+    bar_gap_session_count,
+    message,
+):
+    input_file = artifact_scratch / "NQ_sample.csv"
+    input_file.write_text("DateTime,Open\n2026-01-02 14:30:00,100\n")
+    output_dir = artifact_scratch / "run"
+
+    with pytest.raises(ValueError, match=message):
+        write_parent_artifacts(
+            trades=[make_trade(realized_r=1.0)],
+            output_dir=output_dir,
+            run_type="discovery",
+            split="train",
+            data_start="2026-01-02",
+            data_end="2026-01-03",
+            input_data_paths=[input_file],
+            strategy_version="test-version",
+            code_version="test-code",
+            random_seed=123,
+            exclude_roll_sessions=True,
+            commission_per_round_turn=5.16,
+            commission_is_smoke_test=False,
+            bar_gap_count=bar_gap_count,
+            bar_gap_session_count=bar_gap_session_count,
         )
 
     assert not output_dir.exists()

@@ -53,6 +53,7 @@ def run_smoke() -> Path:
         source_timezone=params.SOURCE_TIMEZONE,
         strategy_timezone=params.STRATEGY_TIMEZONE,
         session_open=params.SESSION_OPEN,
+        expected_bar_interval_minutes=params.BAR_INTERVAL_MINUTES,
     )
     trades = generate_trades(
         prepared,
@@ -76,6 +77,8 @@ def run_smoke() -> Path:
         exclude_roll_sessions=EXCLUDE_ROLL_SESSIONS,
         commission_per_round_turn=COMMISSION_PER_ROUND_TURN,
         commission_is_smoke_test=COMMISSION_IS_SMOKE_TEST,
+        bar_gap_count=_bar_gap_count(prepared),
+        bar_gap_session_count=_bar_gap_session_count(prepared),
     )
     return output_dir
 
@@ -98,6 +101,19 @@ def _rth_only_raw_bars(raw_bars: pd.DataFrame) -> pd.DataFrame:
 def _output_dir() -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return OUTPUT_ROOT / f"smoke_{timestamp}"
+
+
+def _bar_gap_count(prepared_bars: pd.DataFrame) -> int:
+    return int(prepared_bars["BarGapFromPrevious"].sum())
+
+
+def _bar_gap_session_count(prepared_bars: pd.DataFrame) -> int:
+    return int(
+        prepared_bars.loc[
+            prepared_bars["BarGapFromPrevious"],
+            "SessionDate_ET",
+        ].nunique()
+    )
 
 
 def _code_version() -> str:
