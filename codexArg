@@ -2,52 +2,54 @@
 
 Change made:
 
-- Completed Cycle 1: expanded `shared/indicators/zscore.py`.
-- Added session-scoped and cross-session rolling z-score functions.
-- Added EWMA z-score, robust median/MAD z-score, and rolling percentile rank.
-- Added focused tests for normal behavior, session reset behavior, flat/zero
-  denominator behavior, percentile current-bar exclusion, and causality.
-- Did not start Cycle 2 or touch strategy/research wiring.
+- Completed Cycle 2: expanded `shared/indicators/volatility.py`.
+- Added raw rolling realized volatility on caller-provided returns.
+- Added volatility and ATR percentile wrappers that delegate to
+  `rolling_percentile`.
+- Did not modify `true_range` or `session_atr`.
+- Did not add blocked `VolRegime` or `JumpRatio`.
+- Did not start Cycle 3 or touch strategy/research wiring.
 
 Functions added:
 
-- `rolling_zscore(...)`: `shared/indicators/zscore.py:23`
-- `rolling_zscore_cross_session(...)`: `shared/indicators/zscore.py:41`
-- `ewma_zscore(...)`: `shared/indicators/zscore.py:54`
-- `robust_zscore(...)`: `shared/indicators/zscore.py:71`
-- `rolling_percentile(...)`: `shared/indicators/zscore.py:93`
+- `realized_volatility(...)`: `shared/indicators/volatility.py:85`
+- `vol_percentile(...)`: `shared/indicators/volatility.py:101`
+- `atr_percentile(...)`: `shared/indicators/volatility.py:112`
 
 Tests:
 
-- Test file: `tests/shared/indicators/test_zscore.py`
-- Existing Cycle 0 tests retained: 5
-- Cycle 1 tests added: 11
-- Total z-score tests now: 16
-- New test range: `tests/shared/indicators/test_zscore.py:69`
+- Test file: `tests/shared/indicators/test_volatility.py`
+- Existing tests retained: 12
+- Cycle 2 tests added: 8
+- Total volatility tests now: 20
+- New test range: `tests/shared/indicators/test_volatility.py:288`
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_zscore.py`
-  -> 16 passed
-- `.venv\Scripts\python.exe -m pytest` -> 115 passed
+- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_volatility.py`
+  -> 20 passed
+- `.venv\Scripts\python.exe -m pytest` -> 123 passed
 
 Spec notes:
 
-- `rolling_percentile` follows the function spec that fewer than `window`
-  prior bars returns NaN. Claude's test description also asked for index 3 of a
-  5-bar series with `window=4` to be 1.0, which conflicts with that rule. The
-  tests preserve the stricter API rule: with `window=4`, bars 0-3 are NaN and
-  bar 4 is 1.0. A separate `window=3` assertion verifies that bar 3 ranks 1.0
-  when exactly three prior bars are available.
-- EWMA z-score intentionally does not reset at session boundaries, as required.
+- `realized_volatility` returns raw rolling sample standard deviation with
+  pandas default `ddof=1`; no annualization is applied.
+- Claude's hand-calculation note for the final 3-return window had a small
+  arithmetic error. For `[0.03, -0.01, 0.02]`, pandas sample std is about
+  `0.02082`, not `0.02187`; the test uses the value implied by the specified
+  pandas `rolling().std()` behavior.
+- Percentile wrappers only rename the delegated `rolling_percentile` output;
+  bar N remains excluded from its own reference set.
 
 Carried forward:
 
 - `_last_same_session_pos` in `strategy.py` is O(N^2). Claude said not to fix
   it during the indicator build; carry this forward until a dedicated cycle.
+- `robust_zscore` is missing an explicit session-reset test. Claude said to add
+  it in a cleanup pass after all cycles are done.
 
 Stopped before:
 
-- Cycle 2 volatility expansion.
+- Cycle 3 trend indicator module.
 - Any strategy or research-indicator wiring.
 - Discovery rerun or slicing.

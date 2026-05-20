@@ -1,7 +1,14 @@
 import pandas as pd
 import pytest
 
-from shared.indicators.volatility import session_atr, true_range
+from shared.indicators.volatility import (
+    atr_percentile,
+    realized_volatility,
+    session_atr,
+    true_range,
+    vol_percentile,
+)
+from shared.indicators.zscore import rolling_percentile
 
 
 def test_true_range_uses_previous_close_inside_each_session():
@@ -276,3 +283,83 @@ def test_session_atr_returns_empty_named_series_for_empty_input():
 
     expected = pd.Series([], dtype="float64", name="ATR")
     pd.testing.assert_series_equal(result, expected)
+
+
+def test_realized_volatility_returns_zero_for_constant_low_vol_returns():
+    returns = pd.Series([0.001] * 5)
+
+    result = realized_volatility(returns, window=3)
+
+    assert result.iloc[2] == 0.0
+    assert result.iloc[4] == 0.0
+
+
+def test_realized_volatility_is_higher_for_large_returns():
+    low_vol = pd.Series([0.001, -0.001, 0.001, -0.001, 0.001])
+    high_vol = pd.Series([0.01, -0.02, 0.03, -0.01, 0.02])
+
+    low_result = realized_volatility(low_vol, window=3)
+    high_result = realized_volatility(high_vol, window=3)
+
+    assert high_result.iloc[4] > low_result.iloc[4]
+
+
+def test_realized_volatility_uses_hand_calculated_sample_std():
+    returns = pd.Series([0.01, -0.02, 0.03, -0.01, 0.02])
+
+    result = realized_volatility(returns, window=3)
+
+    assert result.iloc[4] == pytest.approx(0.02082, abs=0.0001)
+
+
+def test_realized_volatility_returns_nan_before_window_is_met():
+    returns = pd.Series([0.01, -0.02, 0.03, -0.01])
+
+    result = realized_volatility(returns, window=3)
+
+    assert pd.isna(result.iloc[0])
+    assert pd.isna(result.iloc[1])
+    assert not pd.isna(result.iloc[2])
+
+
+def test_realized_volatility_crosses_session_boundary_by_design():
+    returns = pd.Series([0.01, -0.02, 0.03, -0.01])
+    session = pd.Series(["a", "a", "b", "b"])
+
+    result = realized_volatility(returns, window=3)
+
+    # Cross-session by design - caller must NaN session-boundary returns if
+    # session-scoped vol is needed.
+    assert session.iloc[2] == "b"
+    assert not pd.isna(result.iloc[2])
+
+
+def test_vol_percentile_delegates_to_rolling_percentile():
+    series = pd.Series([0.1, 0.2, 0.15, 0.3, 0.25])
+
+    result = vol_percentile(series, window=3)
+    expected = rolling_percentile(series, window=3)
+    expected.name = "VolPercentile"
+
+    pd.testing.assert_series_equal(result, expected)
+
+
+def test_atr_percentile_delegates_to_rolling_percentile():
+    series = pd.Series([1.0, 1.5, 1.25, 2.0, 1.75])
+
+    result = atr_percentile(series, window=3)
+    expected = rolling_percentile(series, window=3)
+    expected.name = "ATRPercentile"
+
+    pd.testing.assert_series_equal(result, expected)
+
+
+def test_realized_volatility_is_causal_when_future_return_changes():
+    returns = pd.Series([0.01, -0.02, 0.03, -0.01, 0.02, 0.01])
+    mutated = returns.copy()
+    mutated.iloc[5] = 10.0
+
+    original = realized_volatility(returns, window=3)
+    changed = realized_volatility(mutated, window=3)
+
+    assert original.iloc[4] == changed.iloc[4]

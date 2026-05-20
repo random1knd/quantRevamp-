@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import pandas as pd
 
+from shared.indicators.zscore import rolling_percentile
+
 
 TRUE_RANGE_NAME = "TrueRange"
 ATR_NAME = "ATR"
+REALIZED_VOLATILITY_NAME = "RealizedVolatility"
+VOL_PERCENTILE_NAME = "VolPercentile"
+ATR_PERCENTILE_NAME = "ATRPercentile"
 
 
 def true_range(
@@ -74,6 +79,44 @@ def session_atr(
         lambda values: values.rolling(window=window, min_periods=window).mean()
     )
     result.name = ATR_NAME
+    return result
+
+
+def realized_volatility(
+    returns: pd.Series,
+    *,
+    window: int,
+) -> pd.Series:
+    if window <= 0:
+        raise ValueError(f"window must be positive, got: {window}")
+
+    # Does not reset at session boundaries. Caller is responsible for handling
+    # session-boundary returns (e.g. NaN-ing the first bar of each session) if
+    # session-scoped vol is needed.
+    result = returns.rolling(window=window, min_periods=window).std()
+    result.name = REALIZED_VOLATILITY_NAME
+    return result
+
+
+def vol_percentile(
+    series: pd.Series,
+    *,
+    window: int,
+) -> pd.Series:
+    # Delegates to rolling_percentile - bar N is not in its own reference set.
+    result = rolling_percentile(series, window=window)
+    result.name = VOL_PERCENTILE_NAME
+    return result
+
+
+def atr_percentile(
+    series: pd.Series,
+    *,
+    window: int,
+) -> pd.Series:
+    # Delegates to rolling_percentile - bar N is not in its own reference set.
+    result = rolling_percentile(series, window=window)
+    result.name = ATR_PERCENTILE_NAME
     return result
 
 
