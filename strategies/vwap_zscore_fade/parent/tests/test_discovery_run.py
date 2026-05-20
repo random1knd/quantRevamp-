@@ -1,4 +1,7 @@
+import csv
 from datetime import date
+from pathlib import Path
+import shutil
 
 import pandas as pd
 import pytest
@@ -7,11 +10,32 @@ from shared.data.splits import chronological_session_splits
 from strategies.vwap_zscore_fade.parent.discovery_run import (
     COMMISSION_IS_SMOKE_TEST,
     COMMISSION_PER_ROUND_TURN,
+    _write_context_trades_csv,
     _rth_only_raw_bars as discovery_rth_only_raw_bars,
 )
 from strategies.vwap_zscore_fade.parent.smoke_run import (
     _rth_only_raw_bars as smoke_rth_only_raw_bars,
 )
+
+
+SCRATCH_ROOT = Path(".test_artifacts/discovery_run_tests")
+
+
+@pytest.fixture
+def discovery_scratch(request):
+    path = SCRATCH_ROOT / request.node.name
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+        for parent in (SCRATCH_ROOT, SCRATCH_ROOT.parent):
+            try:
+                parent.rmdir()
+            except OSError:
+                pass
 
 
 def make_prepared_bars(session_dates: list[date]) -> pd.DataFrame:
@@ -91,3 +115,46 @@ def test_runner_rth_filter_accepts_timezone_aware_source_timestamps(
     result = rth_only_raw_bars(raw)
 
     assert result["Open"].tolist() == [2.0, 3.0]
+
+
+def test_discovery_context_trades_append_research_fields(discovery_scratch):
+    output_dir = discovery_scratch / "run"
+    output_dir.mkdir()
+    trades_path = output_dir / "trades.csv"
+    trades_path.write_text(
+        "EntryTime,SignalTime,RealizedR\n"
+        "2026-01-02T11:10:00-05:00,2026-01-02T11:05:00-05:00,1.25\n",
+        encoding="utf-8",
+    )
+    context_bars = pd.DataFrame(
+        {
+            "DateTime_ET": [
+                pd.Timestamp("2026-01-02 11:05:00", tz="America/New_York")
+            ],
+            "EntryVolumeZ": [1.5],
+            "EntryDelta": [42.0],
+            "EntryDeltaPct": [0.2],
+        }
+    )
+
+    _write_context_trades_csv(
+        output_dir=output_dir,
+        context_bars=context_bars,
+        research_indicator_columns=("EntryVolumeZ", "EntryDelta", "EntryDeltaPct"),
+    )
+
+    with (output_dir / "context_trades.csv").open(newline="", encoding="utf-8") as file:
+        rows = list(csv.DictReader(file))
+
+    assert list(rows[0].keys()) == [
+        "EntryTime",
+        "SignalTime",
+        "RealizedR",
+        "EntryVolumeZ",
+        "EntryDelta",
+        "EntryDeltaPct",
+    ]
+    assert rows[0]["SignalTime"] == "2026-01-02T11:05:00-05:00"
+    assert rows[0]["EntryVolumeZ"] == "1.5"
+    assert rows[0]["EntryDelta"] == "42.0"
+    assert rows[0]["EntryDeltaPct"] == "0.2"

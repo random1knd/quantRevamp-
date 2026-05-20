@@ -7,6 +7,11 @@ ported indicator should have explicit parameters and a small test.
 
 Detailed family plans live in `../indicators/`.
 
+**Porting rule:** This is a backlog ordered by general utility, not a
+pre-slicing checklist. Do not port indicators speculatively. The right time to
+add an indicator is after a slice reveals the existing ones are insufficient.
+Port the smallest set the current evidence demands.
+
 ## Priority 1: Basic Execution And Risk
 
 | Indicator | Purpose | Source |

@@ -13,7 +13,9 @@ broker cost a strategy parameter.
 
 from __future__ import annotations
 
+import csv
 from datetime import UTC, datetime
+import importlib
 from pathlib import Path
 import subprocess
 
@@ -34,6 +36,7 @@ COMMISSION_PER_ROUND_TURN = 5.16
 COMMISSION_IS_SMOKE_TEST = False
 RANDOM_SEED = 0
 STRATEGY_VERSION = "parent_v0"
+RESEARCH_INDICATORS_MODULE = "strategies.vwap_zscore_fade.parent.research_indicators"
 
 COMMISSION_SOURCE = (
     "NinjaTrader futures commission PDF: NQ E-mini Nasdaq 100 all-in "
@@ -73,6 +76,8 @@ def run_discovery() -> Path:
         commission_per_round_turn=COMMISSION_PER_ROUND_TURN,
         commission_is_smoke_test=COMMISSION_IS_SMOKE_TEST,
     )
+    research_indicators = _research_indicators_module()
+    context_bars = research_indicators.add_research_indicators(discovery_bars)
 
     output_dir = _output_dir()
     write_parent_artifacts(
@@ -91,6 +96,11 @@ def run_discovery() -> Path:
         commission_is_smoke_test=COMMISSION_IS_SMOKE_TEST,
         bar_gap_count=_bar_gap_count(discovery_bars),
         bar_gap_session_count=_bar_gap_session_count(discovery_bars),
+    )
+    _write_context_trades_csv(
+        output_dir=output_dir,
+        context_bars=context_bars,
+        research_indicator_columns=research_indicators.RESEARCH_INDICATOR_COLUMNS,
     )
     return output_dir
 
@@ -129,6 +139,62 @@ def _bar_gap_session_count(prepared_bars: pd.DataFrame) -> int:
             "SessionDate_ET",
         ].nunique()
     )
+
+
+def _write_context_trades_csv(
+    *,
+    output_dir: Path,
+    context_bars: pd.DataFrame,
+    research_indicator_columns: tuple[str, ...],
+) -> None:
+    trades_path = output_dir / "trades.csv"
+    context_path = output_dir / "context_trades.csv"
+    context_by_signal_time = _context_by_signal_time(
+        context_bars,
+        research_indicator_columns=research_indicator_columns,
+    )
+
+    with trades_path.open(newline="", encoding="utf-8") as source:
+        reader = csv.DictReader(source)
+        fieldnames = list(reader.fieldnames or []) + list(research_indicator_columns)
+        rows = []
+        for row in reader:
+            context_values = context_by_signal_time.get(row["SignalTime"])
+            if context_values is None:
+                raise ValueError(
+                    "missing research context for SignalTime: "
+                    f"{row['SignalTime']}"
+                )
+            rows.append(row | context_values)
+
+    with context_path.open("w", newline="", encoding="utf-8") as target:
+        writer = csv.DictWriter(target, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _context_by_signal_time(
+    context_bars: pd.DataFrame,
+    *,
+    research_indicator_columns: tuple[str, ...],
+) -> dict[str, dict[str, object]]:
+    return {
+        row["DateTime_ET"].isoformat(): {
+            column: _context_value(row[column])
+            for column in research_indicator_columns
+        }
+        for _, row in context_bars.iterrows()
+    }
+
+
+def _context_value(value: object) -> object:
+    if pd.isna(value):
+        return ""
+    return value
+
+
+def _research_indicators_module():
+    return importlib.import_module(RESEARCH_INDICATORS_MODULE)
 
 
 def _code_version() -> str:

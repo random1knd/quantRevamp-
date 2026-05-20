@@ -2,59 +2,60 @@
 
 Change made:
 
-- Completed Claude Tier 1 items 1a through 1d in one code slice.
-- Added `Trade.hold_crosses_gap` and wrote `HoldCrossesGap` to `trades.csv`.
-- Masked parent `EntryZ` when its rolling window includes `BarGapFromPrevious`.
-- Masked research `EntryVolumeZ` when its rolling window includes
-  `BarGapFromPrevious`; `EntryDelta` and `EntryDeltaPct` remain single-bar
-  context values.
-- Updated smoke and discovery RTH filters to accept timezone-aware source
-  timestamps.
-- Added focused tests for the gap metadata, gap-window masking, and runner
-  timestamp behavior.
-- Reran smoke and discovery artifacts and marked the previous non-superseded
-  baselines superseded.
+- Completed Claude Tier 2 context wiring for the parent discovery runner.
+- `discovery_run.py` now creates `context_trades.csv` after `trades.csv`.
+- The context file preserves every `trades.csv` column and appends
+  `EntryVolumeZ`, `EntryDelta`, and `EntryDeltaPct` matched by
+  `SignalTime` to the signal bar's `DateTime_ET`.
+- The research indicator module is loaded only inside the post-trade discovery
+  context path so the strategy import-boundary test remains intact.
+- Added a focused test for context trade output.
+- Completed Claude Tier 3 doc correction in `docs/inventories/indicators.md`.
 
 Why:
 
-- Claude identified that missing-bar intervals were visible at load time but
-  not carried through trade lifecycle metadata or rolling context masking.
-- The fixes make gap exposure explicit without changing strategy architecture
-  or adding shared runner/context abstractions.
+- Claude requested wiring the already-existing research indicators into the
+  discovery artifact before any slicing begins.
+- The context join remains discovery-only and local to the parent runner; no
+  shared context layer, registry, slicer, or universal indicator surface was
+  added.
+- The indicator inventory note makes clear that the backlog is not a
+  speculative pre-slicing checklist.
 
 Files touched:
 
-- `strategies/vwap_zscore_fade/parent/strategy.py`
-- `strategies/vwap_zscore_fade/parent/artifacts.py`
-- `strategies/vwap_zscore_fade/parent/indicators.py`
-- `strategies/vwap_zscore_fade/parent/research_indicators.py`
-- `strategies/vwap_zscore_fade/parent/smoke_run.py`
 - `strategies/vwap_zscore_fade/parent/discovery_run.py`
-- focused tests under `strategies/vwap_zscore_fade/parent/tests/`
+- `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
+- `docs/inventories/indicators.md`
 - `codexArg`
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest` -> 98 passed
-- Smoke rerun: `data/results/vwap_zscore_fade/parent/smoke_20260520T110541Z`
-  - trade count: 11551
-  - mean RealizedR: -0.08656501948794887
-  - `HoldCrossesGap=True`: 51 trades
+- `.venv\Scripts\python.exe -m pytest` -> 99 passed
 - Discovery rerun:
-  `data/results/vwap_zscore_fade/parent/discovery_20260520T110607Z`
-  - trade count: 3528
+  `data/results/vwap_zscore_fade/parent/discovery_20260520T111227Z`
+  - `trades.csv` rows: 3528
+  - `context_trades.csv` rows: 3528
   - mean RealizedR: -0.16653004958204784
-  - `HoldCrossesGap=True`: 12 trades
+
+Discovery context indicator distribution:
+
+- `EntryVolumeZ`: min -2.3692390398010907, median -0.09051471461670114,
+  mean 0.2054406096422133, max 4.204623951352527, NaN count 0
+- `EntryDelta`: min -2541.0, median -4.0, mean -23.21825396825397,
+  max 3651.0, NaN count 0
+- `EntryDeltaPct`: min -1.0, median -0.005402357810579151,
+  mean -0.005476938560204164, max 1.0, NaN count 0
 
 Assumptions:
 
-- `BarGapFromPrevious` remains loader-owned mechanical metadata.
-- A rolling indicator value should be missing if any bar in its lookback window
-  crosses a flagged interval.
-- Existing result artifact folders are ignored by git, but their local
-  `SUPERSEDED.txt` markers were written for review clarity.
+- The context fields are research-only and must not affect parent entries,
+  exits, stops, or timing.
+- Matching context by `SignalTime` is correct because Claude specified signal
+  bar context, not entry bar context.
+- Existing generated result artifact folders are ignored by git; the local
+  previous discovery artifact was marked superseded for review clarity.
 
 Remaining:
 
-- Claude should review this Tier 1 slice before Tier 2 context-trade wiring.
-- Tier 2 has not been started.
+- Claude should review this Tier 2/Tier 3 slice before any slicing begins.
