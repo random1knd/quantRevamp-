@@ -85,6 +85,7 @@ def make_bar(
         "DateTime_ET": start + pd.Timedelta(minutes=minute),
         "SessionDate_ET": SESSION_DATE,
         "SessionMinute_ET": minute,
+        "BarGapFromPrevious": False,
         "Open": Open,
         "High": High,
         "Low": Low,
@@ -224,6 +225,41 @@ def test_generate_trades_records_short_gap_stop_when_bar_opens_beyond_stop():
     assert trade.exit_reason == "gap_stop"
     assert trade.gap_through is True
     assert trade.exit_price == 122.5
+
+
+def test_generate_trades_marks_hold_crosses_gap_when_hold_includes_gap_bar():
+    hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
+    target_bar = {"Open": 82.0, "High": 100.0, "Low": 81.0, "Close": 99.0}
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides=hold_bar,
+        following_overrides=[target_bar],
+    )
+    bars["BarGapFromPrevious"] = False
+    bars.loc[21, "BarGapFromPrevious"] = True
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "target"
+    assert trade.bars_held == 2
+    assert trade.hold_crosses_gap is True
+
+
+def test_generate_trades_marks_clean_hold_crosses_gap_false():
+    hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
+    target_bar = {"Open": 82.0, "High": 100.0, "Low": 81.0, "Close": 99.0}
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides=hold_bar,
+        following_overrides=[target_bar],
+    )
+    bars["BarGapFromPrevious"] = False
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "target"
+    assert trade.bars_held == 2
+    assert trade.hold_crosses_gap is False
 
 
 def test_generate_trades_treats_long_open_equal_stop_as_regular_stop():

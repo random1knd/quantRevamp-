@@ -11,6 +11,7 @@ REQUIRED_COLUMNS = (
     "DateTime_ET",
     "SessionDate_ET",
     "SessionMinute_ET",
+    "BarGapFromPrevious",
     "High",
     "Low",
     "Close",
@@ -55,9 +56,8 @@ def add_parent_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     rth["EntryZ"] = _session_deviation_zscore(
         rth["VWAPDeviation"],
         session=rth["SessionDate_ET"],
-        timestamps=rth["DateTime_ET"],
+        bar_gap=rth["BarGapFromPrevious"],
         window=params.Z_WINDOW,
-        bar_interval_minutes=params.BAR_INTERVAL_MINUTES,
     )
     rth["ATR"] = session_atr(
         rth,
@@ -89,19 +89,17 @@ def _session_deviation_zscore(
     values: pd.Series,
     *,
     session: pd.Series,
-    timestamps: pd.Series,
+    bar_gap: pd.Series,
     window: int,
-    bar_interval_minutes: int,
 ) -> pd.Series:
     rolling_std = _session_rolling_std(values, session=session, window=window)
     zscore = values / rolling_std.mask(rolling_std == 0.0)
-    valid_span = _valid_rolling_window_span(
-        timestamps,
+    gap_free_window = _gap_free_rolling_window(
+        bar_gap,
         session=session,
         window=window,
-        bar_interval_minutes=bar_interval_minutes,
     )
-    return zscore.mask(~valid_span)
+    return zscore.mask(~gap_free_window)
 
 
 def _session_rolling_std(
@@ -115,18 +113,14 @@ def _session_rolling_std(
     )
 
 
-def _valid_rolling_window_span(
-    timestamps: pd.Series,
+def _gap_free_rolling_window(
+    bar_gap: pd.Series,
     *,
     session: pd.Series,
     window: int,
-    bar_interval_minutes: int,
 ) -> pd.Series:
-    window_start = timestamps.groupby(session, sort=False).transform(
-        lambda group: group.shift(window - 1)
+    gap_flags = bar_gap.fillna(False).astype(bool).astype(int)
+    gap_in_window = gap_flags.groupby(session, sort=False).transform(
+        lambda group: group.rolling(window=window, min_periods=1).max()
     )
-    span = timestamps - window_start
-    max_span = pd.Timedelta(
-        minutes=(window - 1) * bar_interval_minutes + bar_interval_minutes / 2
-    )
-    return span.notna() & span.le(max_span)
+    return ~gap_in_window.astype(bool)

@@ -106,6 +106,7 @@ def test_write_parent_artifacts_writes_required_trade_columns_and_run_config(
     assert rows[0]["Side"] == "long"
     assert rows[0]["RealizedR"] == "1.25"
     assert rows[0]["CommissionIsSmokeTest"] == "True"
+    assert rows[0]["HoldCrossesGap"] == "False"
 
     run_config = json.loads((output_dir / "run_config.json").read_text())
     input_key = input_file.resolve().relative_to(artifacts.ROOT).as_posix()

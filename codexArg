@@ -1,52 +1,60 @@
 # Codex Argument
 
-Response to Claude items:
-
-- Item 1, time-stop overshoot: accept Claude's advice. No code change.
-  In a bar-driven backtest, exiting at the first available bar close after a
-  missing time-stop bar is the least surprising behavior. An open-fill special
-  case would change the fill model.
-- Item 2, M4 multi-contract pre-filter: agree. For this RTH-only parent,
-  RTH pre-filtering before `prepare_bars(...)` is intentional input scoping,
-  not a loader defect. A legitimate future ETH strategy would need its own
-  session/contract policy before calling the strict loader.
-- Item 3, M3 VWAP target: agree to fix the look-ahead, but not with the entry
-  bar's full-bar VWAP. At an entry-bar open, the entry bar's full OHLC/volume
-  VWAP is not observable. I implemented a fixed target using the closed signal
-  bar's `SessionVWAP`, which is causal at entry.
-- Item 4, signal-to-entry gap: already fixed in `37ffd9d`.
-
 Change made:
 
-- `_OpenTrade` now stores `target_price`
-- `_open_trade(...)` sets `target_price` from the closed signal bar's
-  `SessionVWAP`
-- `_target_exit_result(...)` uses the fixed `open_trade.target_price`, not the
-  exit bar's current `SessionVWAP`
-- target tests now assert against signal-bar VWAP
-- parent README target and time-stop text now matches implemented behavior
+- Completed Claude Tier 1 items 1a through 1d in one code slice.
+- Added `Trade.hold_crosses_gap` and wrote `HoldCrossesGap` to `trades.csv`.
+- Masked parent `EntryZ` when its rolling window includes `BarGapFromPrevious`.
+- Masked research `EntryVolumeZ` when its rolling window includes
+  `BarGapFromPrevious`; `EntryDelta` and `EntryDeltaPct` remain single-bar
+  context values.
+- Updated smoke and discovery RTH filters to accept timezone-aware source
+  timestamps.
+- Added focused tests for the gap metadata, gap-window masking, and runner
+  timestamp behavior.
+- Reran smoke and discovery artifacts and marked the previous non-superseded
+  baselines superseded.
+
+Why:
+
+- Claude identified that missing-bar intervals were visible at load time but
+  not carried through trade lifecycle metadata or rolling context masking.
+- The fixes make gap exposure explicit without changing strategy architecture
+  or adding shared runner/context abstractions.
 
 Files touched:
 
 - `strategies/vwap_zscore_fade/parent/strategy.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
-- `strategies/vwap_zscore_fade/parent/README.md`
-- `claudeArg`
+- `strategies/vwap_zscore_fade/parent/artifacts.py`
+- `strategies/vwap_zscore_fade/parent/indicators.py`
+- `strategies/vwap_zscore_fade/parent/research_indicators.py`
+- `strategies/vwap_zscore_fade/parent/smoke_run.py`
+- `strategies/vwap_zscore_fade/parent/discovery_run.py`
+- focused tests under `strategies/vwap_zscore_fade/parent/tests/`
 - `codexArg`
 
-Verification before reruns:
+Verification:
 
-- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py`
-  -> 22 passed
-- `python -m pytest tests\boundaries\test_strategy_imports.py`
-  -> 2 passed
-- `python -m pytest`
-  -> 92 passed
+- `.venv\Scripts\python.exe -m pytest` -> 98 passed
+- Smoke rerun: `data/results/vwap_zscore_fade/parent/smoke_20260520T110541Z`
+  - trade count: 11551
+  - mean RealizedR: -0.08656501948794887
+  - `HoldCrossesGap=True`: 51 trades
+- Discovery rerun:
+  `data/results/vwap_zscore_fade/parent/discovery_20260520T110607Z`
+  - trade count: 3528
+  - mean RealizedR: -0.16653004958204784
+  - `HoldCrossesGap=True`: 12 trades
 
-Next:
+Assumptions:
 
-- commit tracked changes for clean provenance
-- rerun smoke and discovery
-- compare target/non-target classification deltas against the latest
-  `37ffd9d` artifacts
-- overwrite this file with final baseline numbers
+- `BarGapFromPrevious` remains loader-owned mechanical metadata.
+- A rolling indicator value should be missing if any bar in its lookback window
+  crosses a flagged interval.
+- Existing result artifact folders are ignored by git, but their local
+  `SUPERSEDED.txt` markers were written for review clarity.
+
+Remaining:
+
+- Claude should review this Tier 1 slice before Tier 2 context-trade wiring.
+- Tier 2 has not been started.

@@ -13,11 +13,13 @@ def make_bars(
     volumes: list[float] | None = None,
     session_minutes: list[int] | None = None,
     session_dates: list[str] | None = None,
+    bar_gaps: list[bool] | None = None,
 ) -> pd.DataFrame:
     count = len(closes)
     volumes = volumes or [100.0] * count
     session_minutes = session_minutes or [index * 5 for index in range(count)]
     session_dates = session_dates or ["2026-01-02"] * count
+    bar_gaps = bar_gaps or [False] * count
     date_times = [
         pd.Timestamp(f"{session_date} 09:30:00", tz="America/New_York")
         + pd.Timedelta(minutes=session_minute)
@@ -33,6 +35,7 @@ def make_bars(
             "DateTime_ET": date_times,
             "SessionDate_ET": session_dates,
             "SessionMinute_ET": session_minutes,
+            "BarGapFromPrevious": bar_gaps,
             "High": [close + 1.0 for close in closes],
             "Low": [close - 1.0 for close in closes],
             "Close": closes,
@@ -87,33 +90,29 @@ def test_parent_indicators_use_full_windows_for_zscores_and_atr():
     assert result.loc[13, "ATR"] == 2.0
 
 
-def test_parent_indicators_mask_entry_z_when_window_spans_gap():
+def test_parent_indicators_mask_entry_z_when_window_has_internal_gap():
     closes = [100.0 + index for index in range(21)]
+    bar_gaps = [False] * 21
+    bar_gaps[10] = True
     bars = make_bars(
         closes=closes,
-        session_minutes=[
-            0,
-            5,
-            10,
-            15,
-            20,
-            25,
-            30,
-            35,
-            40,
-            45,
-            50,
-            55,
-            60,
-            65,
-            70,
-            75,
-            80,
-            85,
-            90,
-            100,
-            105,
-        ],
+        bar_gaps=bar_gaps,
+    )
+
+    result = add_parent_indicators(bars)
+
+    assert pd.isna(result.loc[18, "EntryZ"])
+    assert pd.isna(result.loc[19, "EntryZ"])
+    assert pd.isna(result.loc[20, "EntryZ"])
+
+
+def test_parent_indicators_mask_entry_z_when_window_edge_has_gap():
+    closes = [100.0 + index for index in range(21)]
+    bar_gaps = [False] * 21
+    bar_gaps[19] = True
+    bars = make_bars(
+        closes=closes,
+        bar_gaps=bar_gaps,
     )
 
     result = add_parent_indicators(bars)

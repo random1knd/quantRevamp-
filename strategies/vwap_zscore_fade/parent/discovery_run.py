@@ -97,7 +97,10 @@ def run_discovery() -> Path:
 
 def _rth_only_raw_bars(raw_bars: pd.DataFrame) -> pd.DataFrame:
     source_times = pd.to_datetime(raw_bars["DateTime"], errors="raise")
-    source_times = source_times.dt.tz_localize(params.SOURCE_TIMEZONE)
+    if source_times.dt.tz is None:
+        source_times = source_times.dt.tz_localize(params.SOURCE_TIMEZONE)
+    else:
+        source_times = source_times.dt.tz_convert("UTC")
     strategy_times = source_times.dt.tz_convert(params.STRATEGY_TIMEZONE)
     minute_of_day = strategy_times.dt.hour * 60 + strategy_times.dt.minute
     session_open = pd.to_datetime(params.SESSION_OPEN, format="%H:%M").time()

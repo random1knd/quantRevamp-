@@ -33,6 +33,7 @@ REQUIRED_TRADE_COLUMNS = (
     "Contract",
     "CommissionIsSmokeTest",
     "GapThrough",
+    "HoldCrossesGap",
 )
 
 
@@ -128,6 +129,7 @@ def _trade_row(trade: Trade) -> dict[str, Any]:
         "Contract": trade.contract,
         "CommissionIsSmokeTest": trade.commission_is_smoke_test,
         "GapThrough": trade.gap_through,
+        "HoldCrossesGap": trade.hold_crosses_gap,
     }
 
 

@@ -8,6 +8,7 @@ from strategies.vwap_zscore_fade.parent import params
 REQUIRED_COLUMNS = (
     "SessionDate_ET",
     "SessionMinute_ET",
+    "BarGapFromPrevious",
     "Volume",
     "BidVolume",
     "AskVolume",
@@ -37,6 +38,7 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     rth["EntryVolumeZ"] = _session_standard_zscore(
         rth["Volume"],
         session=rth["SessionDate_ET"],
+        bar_gap=rth["BarGapFromPrevious"],
         window=params.VOLUME_Z_WINDOW,
     )
     rth["EntryDelta"] = rth["AskVolume"] - rth["BidVolume"]
@@ -67,6 +69,7 @@ def _session_standard_zscore(
     values: pd.Series,
     *,
     session: pd.Series,
+    bar_gap: pd.Series,
     window: int,
 ) -> pd.Series:
     rolling_mean = values.groupby(session, sort=False).transform(
@@ -75,4 +78,24 @@ def _session_standard_zscore(
     rolling_std = values.groupby(session, sort=False).transform(
         lambda group: group.rolling(window=window, min_periods=window).std()
     )
-    return (values - rolling_mean) / rolling_std.mask(rolling_std == 0.0)
+    zscore = (values - rolling_mean) / rolling_std.mask(rolling_std == 0.0)
+    return zscore.mask(
+        ~_gap_free_rolling_window(
+            bar_gap,
+            session=session,
+            window=window,
+        )
+    )
+
+
+def _gap_free_rolling_window(
+    bar_gap: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    gap_flags = bar_gap.fillna(False).astype(bool).astype(int)
+    gap_in_window = gap_flags.groupby(session, sort=False).transform(
+        lambda group: group.rolling(window=window, min_periods=1).max()
+    )
+    return ~gap_in_window.astype(bool)

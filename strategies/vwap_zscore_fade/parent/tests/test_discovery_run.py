@@ -1,11 +1,16 @@
 from datetime import date
 
 import pandas as pd
+import pytest
 
 from shared.data.splits import chronological_session_splits
 from strategies.vwap_zscore_fade.parent.discovery_run import (
     COMMISSION_IS_SMOKE_TEST,
     COMMISSION_PER_ROUND_TURN,
+    _rth_only_raw_bars as discovery_rth_only_raw_bars,
+)
+from strategies.vwap_zscore_fade.parent.smoke_run import (
+    _rth_only_raw_bars as smoke_rth_only_raw_bars,
 )
 
 
@@ -63,3 +68,26 @@ def test_discovery_run_keeps_only_discovery_sessions():
 def test_discovery_run_uses_real_commission_not_smoke_label():
     assert COMMISSION_PER_ROUND_TURN == 5.16
     assert COMMISSION_IS_SMOKE_TEST is False
+
+
+@pytest.mark.parametrize(
+    "rth_only_raw_bars",
+    [discovery_rth_only_raw_bars, smoke_rth_only_raw_bars],
+)
+def test_runner_rth_filter_accepts_timezone_aware_source_timestamps(
+    rth_only_raw_bars,
+):
+    raw = pd.DataFrame(
+        {
+            "DateTime": [
+                "2026-01-02 13:00:00+00:00",
+                "2026-01-02 14:30:00+00:00",
+                "2026-01-02 20:55:00+00:00",
+            ],
+            "Open": [1.0, 2.0, 3.0],
+        }
+    )
+
+    result = rth_only_raw_bars(raw)
+
+    assert result["Open"].tolist() == [2.0, 3.0]

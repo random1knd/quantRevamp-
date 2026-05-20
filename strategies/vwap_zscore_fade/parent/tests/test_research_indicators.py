@@ -12,15 +12,18 @@ def make_bars(
     volumes: list[float],
     session_minutes: list[int] | None = None,
     session_dates: list[str] | None = None,
+    bar_gaps: list[bool] | None = None,
 ) -> pd.DataFrame:
     count = len(volumes)
     session_minutes = session_minutes or [index * 5 for index in range(count)]
     session_dates = session_dates or ["2026-01-02"] * count
+    bar_gaps = bar_gaps or [False] * count
 
     return pd.DataFrame(
         {
             "SessionDate_ET": session_dates,
             "SessionMinute_ET": session_minutes,
+            "BarGapFromPrevious": bar_gaps,
             "Volume": volumes,
             "BidVolume": [volume * 0.4 for volume in volumes],
             "AskVolume": [volume * 0.6 for volume in volumes],
@@ -55,6 +58,20 @@ def test_research_indicators_use_full_volume_z_window_per_session():
     assert pd.isna(result.loc[18, "EntryVolumeZ"])
     assert result.loc[19, "EntryVolumeZ"] == expected_volume_z.loc[19]
     assert result.loc[20, "EntryVolumeZ"] == expected_volume_z.loc[20]
+
+
+def test_research_indicators_mask_volume_z_when_window_has_gap():
+    volumes = [100.0 + index * 10.0 for index in range(21)]
+    bar_gaps = [False] * 21
+    bar_gaps[10] = True
+    bars = make_bars(volumes=volumes, bar_gaps=bar_gaps)
+
+    result = add_research_indicators(bars)
+
+    assert pd.isna(result.loc[19, "EntryVolumeZ"])
+    assert pd.isna(result.loc[20, "EntryVolumeZ"])
+    assert result.loc[19, "EntryDelta"] == 58.0
+    assert result.loc[19, "EntryDeltaPct"] == 0.2
 
 
 def test_research_indicators_leave_delta_pct_missing_for_zero_volume():

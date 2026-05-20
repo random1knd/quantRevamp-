@@ -49,6 +49,7 @@ class Trade:
     contract: str
     commission_is_smoke_test: bool
     gap_through: bool = False
+    hold_crosses_gap: bool = False
 
 
 @dataclass(frozen=True)
@@ -267,6 +268,11 @@ def _close_trade(
                     exit_price=exit_result["exit_price"],
                     exit_reason=exit_result["exit_reason"],
                     gap_through=exit_result["gap_through"],
+                    hold_crosses_gap=_hold_crosses_gap(
+                        bars,
+                        start_pos=open_trade.entry_pos,
+                        end_pos=exit_pos,
+                    ),
                     commission_per_round_turn=commission_per_round_turn,
                     commission_is_smoke_test=commission_is_smoke_test,
                 ),
@@ -287,6 +293,11 @@ def _close_trade(
             ),
             exit_reason=fallthrough_reason,
             gap_through=False,
+            hold_crosses_gap=_hold_crosses_gap(
+                bars,
+                start_pos=open_trade.entry_pos,
+                end_pos=exit_pos,
+            ),
             commission_per_round_turn=commission_per_round_turn,
             commission_is_smoke_test=commission_is_smoke_test,
         ),
@@ -415,6 +426,18 @@ def _close_exit_price(price: float, *, side: Side) -> float:
     return float(price) + _slippage_points()
 
 
+def _hold_crosses_gap(
+    bars: pd.DataFrame,
+    *,
+    start_pos: int,
+    end_pos: int,
+) -> bool:
+    for pos in range(start_pos, end_pos + 1):
+        if bool(bars.iloc[pos].get("BarGapFromPrevious", False)):
+            return True
+    return False
+
+
 def _build_trade(
     bars: pd.DataFrame,
     *,
@@ -423,6 +446,7 @@ def _build_trade(
     exit_price: float,
     exit_reason: str,
     gap_through: bool,
+    hold_crosses_gap: bool,
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
 ) -> Trade:
@@ -461,6 +485,7 @@ def _build_trade(
         contract=str(signal_bar["Contract"]),
         commission_is_smoke_test=commission_is_smoke_test,
         gap_through=gap_through,
+        hold_crosses_gap=hold_crosses_gap,
     )
 
 
