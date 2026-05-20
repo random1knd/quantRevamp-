@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import csv
 from datetime import UTC, datetime
-import importlib
 from pathlib import Path
 import subprocess
 
@@ -25,6 +24,10 @@ from shared.data.bars import prepare_bars
 from shared.data.splits import chronological_session_splits
 from strategies.vwap_zscore_fade.parent import params
 from strategies.vwap_zscore_fade.parent.artifacts import write_parent_artifacts
+from strategies.vwap_zscore_fade.parent.research_indicators import (
+    RESEARCH_INDICATOR_COLUMNS,
+    add_research_indicators,
+)
 from strategies.vwap_zscore_fade.parent.strategy import generate_trades
 
 
@@ -36,7 +39,6 @@ COMMISSION_PER_ROUND_TURN = 5.16
 COMMISSION_IS_SMOKE_TEST = False
 RANDOM_SEED = 0
 STRATEGY_VERSION = "parent_v0"
-RESEARCH_INDICATORS_MODULE = "strategies.vwap_zscore_fade.parent.research_indicators"
 
 COMMISSION_SOURCE = (
     "NinjaTrader futures commission PDF: NQ E-mini Nasdaq 100 all-in "
@@ -76,8 +78,7 @@ def run_discovery() -> Path:
         commission_per_round_turn=COMMISSION_PER_ROUND_TURN,
         commission_is_smoke_test=COMMISSION_IS_SMOKE_TEST,
     )
-    research_indicators = _research_indicators_module()
-    context_bars = research_indicators.add_research_indicators(discovery_bars)
+    context_bars = add_research_indicators(discovery_bars)
 
     output_dir = _output_dir()
     write_parent_artifacts(
@@ -100,7 +101,7 @@ def run_discovery() -> Path:
     _write_context_trades_csv(
         output_dir=output_dir,
         context_bars=context_bars,
-        research_indicator_columns=research_indicators.RESEARCH_INDICATOR_COLUMNS,
+        research_indicator_columns=RESEARCH_INDICATOR_COLUMNS,
     )
     return output_dir
 
@@ -191,10 +192,6 @@ def _context_value(value: object) -> object:
     if pd.isna(value):
         return ""
     return value
-
-
-def _research_indicators_module():
-    return importlib.import_module(RESEARCH_INDICATORS_MODULE)
 
 
 def _code_version() -> str:

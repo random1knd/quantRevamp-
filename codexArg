@@ -2,60 +2,54 @@
 
 Change made:
 
-- Completed Claude Tier 2 context wiring for the parent discovery runner.
-- `discovery_run.py` now creates `context_trades.csv` after `trades.csv`.
-- The context file preserves every `trades.csv` column and appends
-  `EntryVolumeZ`, `EntryDelta`, and `EntryDeltaPct` matched by
-  `SignalTime` to the signal bar's `DateTime_ET`.
-- The research indicator module is loaded only inside the post-trade discovery
-  context path so the strategy import-boundary test remains intact.
-- Added a focused test for context trade output.
-- Completed Claude Tier 3 doc correction in `docs/inventories/indicators.md`.
+- Completed Claude's post-review boundary cleanup.
+- Narrowed `tests/boundaries/test_strategy_imports.py` so it scans only
+  `strategy.py` and `indicators.py` under `strategies/**/`.
+- Restored the normal top-level `research_indicators` import in
+  `discovery_run.py`.
+- Removed the temporary `importlib.import_module` path and module-name
+  constant from `discovery_run.py`.
 
 Why:
 
-- Claude requested wiring the already-existing research indicators into the
-  discovery artifact before any slicing begins.
-- The context join remains discovery-only and local to the parent runner; no
-  shared context layer, registry, slicer, or universal indicator surface was
-  added.
-- The indicator inventory note makes clear that the backlog is not a
-  speculative pre-slicing checklist.
+- Claude approved Tiers 1, 2, and 3 but flagged that the boundary test was
+  treating runner files as trade-generating code.
+- Runners are allowed to import research indicators for post-trade context
+  work; the import restriction should apply to trade-driving strategy files.
 
 Files touched:
 
+- `tests/boundaries/test_strategy_imports.py`
 - `strategies/vwap_zscore_fade/parent/discovery_run.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
-- `docs/inventories/indicators.md`
 - `codexArg`
 
 Verification:
 
+- `.venv\Scripts\python.exe -m pytest tests\boundaries\test_strategy_imports.py`
+  -> 2 passed
+- `.venv\Scripts\python.exe -m pytest
+  strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py` -> 5 passed
 - `.venv\Scripts\python.exe -m pytest` -> 99 passed
-- Discovery rerun:
-  `data/results/vwap_zscore_fade/parent/discovery_20260520T111227Z`
-  - `trades.csv` rows: 3528
-  - `context_trades.csv` rows: 3528
-  - mean RealizedR: -0.16653004958204784
 
-Discovery context indicator distribution:
+Smoke rerun:
 
-- `EntryVolumeZ`: min -2.3692390398010907, median -0.09051471461670114,
-  mean 0.2054406096422133, max 4.204623951352527, NaN count 0
-- `EntryDelta`: min -2541.0, median -4.0, mean -23.21825396825397,
-  max 3651.0, NaN count 0
-- `EntryDeltaPct`: min -1.0, median -0.005402357810579151,
-  mean -0.005476938560204164, max 1.0, NaN count 0
+- New artifact: `data/results/vwap_zscore_fade/parent/smoke_20260520T112620Z`
+- Prior smoke baseline:
+  `data/results/vwap_zscore_fade/parent/smoke_20260520T110541Z`
+- Trade count: 11551
+- Prior trade count: 11551
+- Trade-count delta: 0
+- `HoldCrossesGap=True`: 51 trades
+- Prior `HoldCrossesGap=True`: 51 trades
 
 Assumptions:
 
-- The context fields are research-only and must not affect parent entries,
-  exits, stops, or timing.
-- Matching context by `SignalTime` is correct because Claude specified signal
-  bar context, not entry bar context.
-- Existing generated result artifact folders are ignored by git; the local
-  previous discovery artifact was marked superseded for review clarity.
+- `strategy.py` and `indicators.py` are the current trade-driving strategy
+  files protected by this boundary test.
+- Strategy-local runners remain reviewable code, but they are not
+  trade-generating strategy files for import-boundary purposes.
+- The prior smoke artifact was marked superseded locally for review clarity.
 
 Remaining:
 
-- Claude should review this Tier 2/Tier 3 slice before any slicing begins.
+- Claude should review this cleanup before slicing discussion begins.

@@ -7,7 +7,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 STRATEGY_ROOT = ROOT / "strategies"
 FORBIDDEN_SHARED_IMPORTS = ("shared.context", "shared.slicing")
-EXEMPT_STRATEGY_FILES = {"research_indicators.py"}
 
 
 def test_trade_generating_strategy_files_do_not_import_forbidden_modules() -> None:
@@ -32,13 +31,10 @@ def test_strategy_local_tests_are_not_scanned_as_trade_generating_code() -> None
 
 
 def _trade_generating_python_files() -> list[Path]:
-    # research_indicators.py is context-only; all other strategy-local Python
-    # files are treated as trade-generating unless a future spec says otherwise.
     return [
         path
         for path in sorted(STRATEGY_ROOT.glob("**/*.py"))
-        if path.name not in EXEMPT_STRATEGY_FILES
-        and "tests" not in path.relative_to(STRATEGY_ROOT).parts
+        if path.name in {"strategy.py", "indicators.py"}
     ]
 
 
