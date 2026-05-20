@@ -1,49 +1,239 @@
 # Codex Argument
 
-Change made:
+Phase 1 doc challenge only. No indicator implementation, research-indicator
+wiring, discovery rerun, or slicing was started.
 
-- Fixed the duplicated `_gap_free_rolling_window` helper called out by Claude.
-- Added `shared/indicators/zscore.py` with `gap_free_rolling_window(...)`.
-- Updated parent trade-driving indicators and research indicators to import the
-  shared helper.
-- Removed the duplicated private helper from both strategy-local files.
-- Added focused shared-helper tests.
+Available inputs after `prepare_bars`: `DateTime_ET`, `SessionDate_ET`,
+`SessionMinute_ET`, `BarGapFromPrevious`, `IsFirstSessionAfterContractChange`,
+`Open`, `High`, `Low`, `Close`, `Volume`, `BidVolume`, `AskVolume`, `Contract`.
+Delta is computable as `AskVolume - BidVolume`. There is no VIX, implied vol,
+order book depth, tick data, or external feed.
 
-Why:
+### docs/indicators/README.md
+Feasibility: Catalog-level doc only; no concrete feature formulas to build.
+The listed families are generally feasible only after each family resolves the
+issues below.
+Module conflicts: None in this file.
+Bar-type drift: Clean at this level; it explicitly asks docs to state
+bar-construction assumptions.
+Undeclared parameters: None in this file.
+Gaps: It does not name the current input-column limit; adding that summary
+would reduce repeated feasibility drift in family docs.
+Overall: clean.
 
-- Claude identified this duplication as an existing bug/cleanup item that must
-  be fixed before any new indicator build cycles.
-- This is a pure mechanical extraction of existing behavior, not a new
-  indicator family or strategy behavior change.
+### docs/indicators/price_extension.md
+Feasibility: `SessionVWAP`, `VWAPDist`, `VWAPDist_ATR`, and `VWAPDist_SD` are
+fully buildable from current bars plus caller-supplied ATR/window. `SessionVWAP`
+should keep using the current candle approximation, not imply tick VWAP.
+`AnchoredVWAP` is buildable only after an explicit anchor rule exists.
+`VWAPDev_SlotPctile` is not buildable now because there is no historical
+same-slot session storage API.
+Module conflicts: The expected `session_vwap(bars, session_open, session_close,
+timezone)` signature conflicts with existing `shared/indicators/vwap.py`,
+where `session_vwap(frame, price_col, volume_col, session_col)` already exists.
+`anchored_vwap` and `slot_percentile` are documented for `vwap.py` but are
+explicitly deferred by Claude.
+Bar-type drift: VWAP from OHLCV bars is an approximation of trade-level VWAP;
+acceptable for current time-bar context when stated. Slot percentiles assume a
+session-history structure that does not exist.
+Undeclared parameters: Anchored VWAP anchor rule, slot key, and lookback
+sessions are undeclared. `VWAPDev_SlotPctile` is a planning-bias item.
+Gaps: Current strategy already records `EntrySessionVWAP`; raw `EntryVWAPDist`
+and ATR-normalized distance are useful and feasible context fields.
+Overall: has blockers.
 
-Files touched:
+### docs/indicators/zscore_family.md
+Feasibility: `ZScore_SMA`, `ZScore_EMA`, `ZScore_EWMA`, `ZScore_Robust`,
+`ZScore_Pctile`, and `VolScaledMove` are all buildable from series data.
+`VolScaledMove` also needs a declared return/move definition and volatility
+window.
+Module conflicts: The doc names `vol_scaled_move` in `zscore.py`, but Claude's
+approved cycle list does not include that function. The implemented
+`gap_free_rolling_window` is missing from the doc.
+Bar-type drift: No bar-type dependency beyond caller-provided series.
+Undeclared parameters: Source series, window/span/alpha, percentile reference
+set inclusion, and volatility window are strategy choices. The doc correctly
+says a generic `ZScore` column name is not enough.
+Gaps: Add `gap_free_rolling_window` to the doc because it is now shared support
+for gapped time-bar windows.
+Overall: has issues.
 
-- `shared/indicators/zscore.py`
-- `strategies/vwap_zscore_fade/parent/indicators.py`
-- `strategies/vwap_zscore_fade/parent/research_indicators.py`
-- `tests/shared/indicators/test_zscore.py`
-- `codexArg`
+### docs/indicators/volatility.md
+Feasibility: `RealizedVol`, `VolPctile`, and `ATR_Pctile` are fully buildable
+from close/returns and ATR. `VolRegime` is buildable only after thresholds are
+declared. `JumpRatio` is not buildable as written until a jump-variance method
+is declared.
+Module conflicts: The expected `rolling_percentile(series, window)` in
+`volatility.py` conflicts with the current direction that percentile math lives
+in `zscore.py` and volatility-specific functions delegate explicitly.
+Bar-type drift: Realized volatility on 5-minute time bars is acceptable, but it
+is not tick/high-frequency realized volatility. The doc should say this.
+Undeclared parameters: Return definition, realized-vol window, percentile
+lookback, regime thresholds, and jump-ratio method are undeclared. `JumpRatio`
+is specifically blocked by missing method.
+Gaps: A clear note that realized vol crosses session boundaries unless caller
+groups by session would prevent assumption drift.
+Overall: has blockers.
 
-Verification:
+### docs/indicators/regime_statistical.md
+Feasibility: `ADF_PValue`, `VR_q4`, and `AC1` are buildable from price,
+deviation, or returns series. `ADF_Stationary` is buildable only after a
+threshold is declared. `Hurst` is theoretically buildable but computationally
+expensive and deferred. `RegimeScore` must not be built until component weights
+are declared.
+Module conflicts: None for module name; `regime.py` matches the planned module.
+Bar-type drift: Time-bar returns/deviations are acceptable, but the doc should
+state that regime estimates are time-bar regime context, not volume/tick
+regime estimates.
+Undeclared parameters: Input series, window, lag/q, ADF threshold, Hurst
+method, and `RegimeScore` components/weights are undeclared. `RegimeScore` is
+blocked.
+Gaps: The doc should flag rolling ADF runtime cost more explicitly before
+full-discovery use.
+Overall: has blockers.
 
-- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_zscore.py`
-  -> 5 passed
-- `.venv\Scripts\python.exe -m pytest
-  strategies\vwap_zscore_fade\parent\tests\test_indicators.py
-  strategies\vwap_zscore_fade\parent\tests\test_research_indicators.py`
-  -> 12 passed
-- `.venv\Scripts\python.exe -m pytest tests\boundaries\test_strategy_imports.py`
-  -> 2 passed
-- `.venv\Scripts\python.exe -m pytest` -> 104 passed
+### docs/indicators/ou_process.md
+Feasibility: `OU_Theta`, `OU_Mu`, `OU_Sigma`, `OU_HalfLife`, `OU_R2`, and
+`OU_ZScore` are buildable from a source series, but only as rolling regression
+estimates. They are not justified by current strategy evidence.
+Module conflicts: None; `shared/indicators/ou.py` is a coherent future module
+name, but Claude deferred it.
+Bar-type drift: O-U estimates on 5-minute bars are acceptable as context only
+if the source series is declared; they should not be presented as a continuous
+process fit without acknowledging bar sampling.
+Undeclared parameters: Source series, fit window, minimum observations,
+invalid-theta handling, max half-life, and context/trade-driving use are all
+undeclared. Claude explicitly said O-U parameters are not declared.
+Gaps: Needs a "deferred until strategy asks for it" banner to avoid premature
+porting.
+Overall: has blockers.
 
-Assumptions:
+### docs/indicators/kalman.md
+Feasibility: `Kalman_Mean`, `Kalman_Var`, `Kalman_Gain`, and `Kalman_ZScore`
+are buildable from a source series and noise parameters. They cannot be built
+honestly without declared process/observation noise and initialization rules.
+Module conflicts: None; `shared/indicators/kalman.py` is coherent, but Claude
+deferred it.
+Bar-type drift: Sequential Kalman updates on 5-minute bars are feasible, but
+the state model is only a bar-sampled approximation.
+Undeclared parameters: Input series, process noise, observation noise, initial
+state, burn-in behavior, and recorded vs used fields are undeclared. Noise
+ratios are a blocker.
+Gaps: Needs an explicit statement that no smoothing pass is allowed for
+trade-driving use; the current causality section says this and is good.
+Overall: has blockers.
 
-- `gap_free_rolling_window(...)` is shared pure indicator support, not shared
-  trading context.
-- The extraction is behavior-preserving; no smoke or discovery rerun is needed
-  because no strategy calculations changed.
-- There is no trailing stop in the current strategy, so the old trailing-stop
-  timestamping concern is closed as not applicable.
+### docs/indicators/trend_momentum.md
+Feasibility: `ADX`, `ATR`, `MA_Slope`, `EMA_Slope`, `ER_*`, `MOM_*`, and
+`TSMOM` are buildable from OHLC/close/returns. `MOM_Composite` must not be
+built until component weights are declared.
+Module conflicts: `shared/indicators/atr.py` is wrong because ATR already lives
+in `shared/indicators/volatility.py`. The planned build uses
+`shared/indicators/trend.py` for trend/efficiency/momentum and does not create
+`shared/indicators/momentum.py`.
+Bar-type drift: Trend/momentum on 5-minute bars is acceptable, but horizons
+should be described in bars or elapsed time, not generic "short/mid/long".
+Undeclared parameters: ADX/ATR windows, MA/EMA windows/spans, ER horizons,
+momentum lookbacks, TSMOM lookback, and `MOM_Composite` weights are undeclared.
+`MOM_Composite` is blocked.
+Gaps: The doc should remove ATR from this family or clearly point to
+`volatility.py`.
+Overall: has blockers.
+
+### docs/indicators/order_flow.md
+Feasibility: `Delta`, `CumDelta`, `DeltaROC`, and `DeltaVel_Z` are fully
+buildable from bid/ask volume. Exact `OFI`, `OFI_Z`, `CumOFI`, and
+`OFI_Momentum` are not buildable from current bars because true OFI needs book
+events/depth; an `ofi_approx` from bid/ask volume changes is buildable as
+context-only.
+Module conflicts: No module-name conflict; `order_flow.py` matches the plan.
+The documented `delta(bars)` signature differs from Claude's approved
+`delta(bid_volume, ask_volume)` function.
+Bar-type drift: Order-flow metrics on 5-minute time bars are acceptable only
+as approximations/context. The doc warns against silently treating time-bar
+flow as volume-bar features; this should be retained.
+Undeclared parameters: Reset rule, delta source, lookbacks, z-score windows,
+and OFI method are undeclared. Exact OFI should be deferred.
+Gaps: Add an explicit Chordia-style `ofi_approx` note if that is the approved
+approximation.
+Overall: has issues.
+
+### docs/indicators/absorption_volume.md
+Feasibility: `AbsRatio`, `VolRatio`, `Volume_RobustZ`, and `Volume_Pctile` are
+buildable from volume, delta, and price change/range. `AbsRatio` is an
+approximation because bar-level delta cannot reveal intrabar absorption.
+Module conflicts: The doc points to `shared/indicators/absorption.py`, but
+Claude's plan puts `absorption_ratio` in `shared/indicators/volume.py` and
+does not create a separate absorption module.
+Bar-type drift: Absorption from 5-minute bars is context-only approximation;
+true absorption usually needs finer order-flow or footprint data.
+Undeclared parameters: Volume window, robust-z window, percentile window,
+absorption formula/method, and zero-denominator behavior are undeclared.
+Gaps: The doc should specify that zero price movement/range returns NaN unless
+a strategy explicitly asks for another behavior.
+Overall: has issues.
+
+### docs/indicators/candle_time.md
+Feasibility: `BodyRatio`, `ClosePosition`, `Hour`, `DayOfWeek`,
+`SessionProgress`, and `BarsSinceOpen` are fully buildable from current bars.
+`CandleType` is buildable only after classification rules are declared.
+Module conflicts: The doc's generic `time_context(...)` function does not match
+Claude's planned separate `session_progress`, `bars_since_open`, `hour_of_day`,
+and `day_of_week` functions.
+Bar-type drift: Candle shape is valid for closed 5-minute bars only; the doc
+correctly notes closed-bar signal timing. `BarsSinceOpen` should use the
+session column/index count, not elapsed-time inference, to remain robust to
+gaps.
+Undeclared parameters: Timezone, session open/close, and candle classification
+rules are undeclared. `CandleType` is blocked.
+Gaps: Add explicit behavior for bars outside the session in
+`SessionProgress`.
+Overall: has issues.
+
+### docs/indicators/liquidity_toxicity.md
+Feasibility: `KyleLambda` and `KyleLambda_Pctile` are buildable from
+price-change and signed-volume proxies. True `VPIN` is not buildable from
+current time bars because volume buckets and trade classification are missing;
+only `VPIN_approx = rolling mean(|AskVolume - BidVolume| / Volume)` is
+buildable as context-only.
+Module conflicts: The doc points to `shared/indicators/vpin.py`, but Claude's
+plan keeps the approximation in `shared/indicators/liquidity.py` and does not
+create `vpin.py`.
+Bar-type drift: VPIN was designed for volume bars. Time-bar VPIN approximation
+is acceptable only as context if labeled clearly; exact VPIN should be
+deferred.
+Undeclared parameters: VPIN bucket size, signed-volume method, Kyle lambda
+window, price-change definition, and context/trade-driving status are
+undeclared.
+Gaps: Add explicit zero-volume handling for VPIN approximation and zero
+signed-volume variance handling for Kyle lambda.
+Overall: has blockers.
+
+### docs/inventories/indicators.md
+Feasibility: Priority 1 items are mostly buildable from current bars:
+ATR, Session VWAP, VWAP distance, rolling z-score, robust z-score. Priority 2
+contains deferred/blocking items: Kalman and O-U need undeclared model
+parameters; ADF/variance ratio/autocorrelation are buildable as context but
+need input/window choices. Priority 3: Delta is buildable; delta velocity is
+buildable; OFI is only approximate; absorption is approximate; VPIN is only a
+time-bar approximation; Kyle lambda is buildable from proxies. Priority 4:
+realized vol, volume z-score, candle body/close position, and session phase are
+buildable; anchored/composite VWAP is blocked by anchor/storage rules.
+Module conflicts: The inventory does not name modules directly, but it still
+lists "Anchored VWAP / composite VWAP" as if it were a normal backlog item;
+that conflicts with Claude's deferred anchored/slot/composite rule.
+Bar-type drift: The inventory does not distinguish time-bar approximations for
+OFI, VPIN, absorption, and Kyle lambda. This needs annotation before those
+entries guide implementation.
+Undeclared parameters: Kalman noise, O-U fit/half-life rules, ADF threshold,
+VPIN bucket/method, Kyle lambda window, session phase definition, and anchored
+VWAP anchor are undeclared.
+Gaps: The new porting-rule note is good. Add per-item feasibility tags
+(`buildable`, `approximation`, `deferred`) so backlog priority is not confused
+with permission to implement.
+Overall: has blockers.
+
+Summary: 1 clean, 4 have issues, 8 have blockers.
 
 Carried forward:
 
@@ -52,7 +242,7 @@ Carried forward:
 
 Stopped before:
 
-- Phase 1 doc challenge.
-- New shared indicator build cycles.
+- Cycle 1 z-score expansion.
+- Any new indicator implementation.
 - Research-indicator expansion.
-- Slicing.
+- Discovery rerun or slicing.
