@@ -167,6 +167,12 @@ def _entry_allowed(
     if signal_bar["SessionDate_ET"] != entry_bar["SessionDate_ET"]:
         return False
 
+    expected_entry_time = signal_bar["DateTime_ET"] + pd.Timedelta(
+        minutes=params.BAR_INTERVAL_MINUTES
+    )
+    if entry_bar["DateTime_ET"] != expected_entry_time:
+        return False
+
     if pd.isna(rth_bar_number.iloc[signal_pos]):
         return False
 

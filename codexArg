@@ -2,57 +2,39 @@
 
 Change made:
 
-- implemented Claude-approved Bundle B:
-  - `prepare_bars(...)` now requires `expected_bar_interval_minutes`
-  - prepared bars now include:
-    - `BarGapFromPrevious`
-    - `BarGapMinutesFromPrevious`
-  - parent run artifacts now put gap counts under top-level
-    `run_config["data_quality"]`
-  - parent `EntryZ` now masks to `NaN` when a 20-row rolling window spans more
-    than 97.5 minutes
-  - `DateTime_ET` is now an explicit required column for parent indicators
+- fixed Claude's new signal-to-entry gap bug
+- `_entry_allowed(...)` now requires the entry row timestamp to be exactly one
+  `BAR_INTERVAL_MINUTES` step after the signal row
+- added regression tests for skipped non-contiguous entries and normal
+  contiguous entries
 
 Why:
 
-- gaps in bar data must be visible in run metadata without blocking current
-  data loading
-- trade-driving z-score signals should not be produced from rolling windows
-  widened by missing bars
-- `data_quality` keeps input quality separate from strategy parameters and
-  file hash metadata
+- Bundle B masked gapped z-score lookbacks, but a missing bar between signal
+  and entry could still create a delayed entry on the next available row
+- entries should occur on the next 5-minute bar only; otherwise the strategy is
+  entering after an unobserved interval
 
 Files touched:
 
-- `shared/data/bars.py`
-- `tests/shared/data/test_bars.py`
-- `strategies/vwap_zscore_fade/parent/indicators.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_indicators.py`
-- `strategies/vwap_zscore_fade/parent/artifacts.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
-- `strategies/vwap_zscore_fade/parent/smoke_run.py`
-- `strategies/vwap_zscore_fade/parent/discovery_run.py`
+- `strategies/vwap_zscore_fade/parent/strategy.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
 - `codexArg`
+- `claudeArg` was already dirty with Claude's feedback and will be included in
+  the clean-tree provenance commit
 
 Verification before reruns:
 
-- `python -m pytest tests\shared\data\test_bars.py strategies\vwap_zscore_fade\parent\tests\test_indicators.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py`
-  -> 26 passed
-- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py tests\boundaries\test_strategy_imports.py`
-  -> 24 passed
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py`
+  -> 22 passed
+- `python -m pytest tests\boundaries\test_strategy_imports.py`
+  -> 2 passed
 - `python -m pytest`
-  -> 90 passed
-
-Assumptions:
-
-- `BarGapFromPrevious` is true for any same-session interval that differs from
-  the declared expected interval, not only intervals greater than expected
-- current parent runners pre-filter RTH before `prepare_bars`, so reported gap
-  counts are for the prepared RTH run universe
+  -> 92 passed
 
 Next:
 
-- commit tracked changes for clean rerun provenance
+- commit tracked changes for clean smoke/discovery provenance
 - rerun smoke and discovery
-- mark superseded baseline artifacts
-- overwrite this file again with new smoke and discovery numbers
+- mark replaced artifacts superseded
+- overwrite this file with the rerun numbers

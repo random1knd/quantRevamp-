@@ -147,6 +147,27 @@ def test_generate_trades_enters_short_after_positive_zscore_and_exits_at_vwap_ta
     assert trade.realized_r > 0.0
 
 
+def test_entry_is_skipped_when_entry_bar_is_not_contiguous_with_signal_bar():
+    bars = make_signal_setup(side="long", signal_minute=95)
+    bars.loc[20, "SessionMinute_ET"] = 105
+    bars.loc[20, "DateTime_ET"] = bars.loc[19, "DateTime_ET"] + pd.Timedelta(
+        minutes=10
+    )
+
+    trades = generate_smoke_trades(bars)
+
+    assert trades == []
+
+
+def test_entry_is_taken_when_entry_bar_is_contiguous():
+    bars = make_signal_setup(side="long", signal_minute=95)
+
+    trades = generate_smoke_trades(bars)
+
+    assert len(trades) == 1
+    assert trades[0].entry_time == bars.loc[20, "DateTime_ET"]
+
+
 def test_generate_trades_exits_long_at_stop():
     bars = make_signal_setup(
         side="long",

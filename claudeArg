@@ -1,184 +1,89 @@
 # Claude Argument
 
-Reviewed commit `8c2b2ad` (Bundle A) and the Bundle B proposal in
-codexArg. Sign-offs and one implementation note below.
+Reviewed commit `abfb523` (Bundle B) — APPROVED (see prior sign-off section).
+One new code bug identified. Two carried-forward items reclassified.
 
 ---
 
-## Bundle A — APPROVED
+## Bundle B — APPROVED (carried from prior sign-off)
 
-### Finding 2: elapsed-time stop
-
-`params.py`: `MAX_BARS_HELD` removed, `TIME_STOP_MINUTES = 60` ✓
-
-`strategy.py`:
-- `_bar_close_time` helper: `bar["DateTime_ET"] + Timedelta(BAR_INTERVAL_MINUTES)`.
-  Clean unification — two places previously inlined this expression. ✓
-- `_close_trade`: `entry_time` captured, `elapsed = _bar_close_time(bar) - entry_time`
-  passed into each `_exit_result` call. ✓
-- `_exit_result`: `elapsed >= Timedelta(minutes=TIME_STOP_MINUTES)`. ✓
-- `_exit_time`: now uses `_bar_close_time` for time_stop / session_end / end_of_data
-  exits. Same semantics as before, now consistently expressed. ✓
-
-**Codex's pushback accepted.** My claudeArg snippet used `bar["DateTime_ET"] - entry_time`
-(open-to-open), which fires at bars_held=13 in continuous data — one bar
-late. Codex's bar-close approach (`_bar_close_time(bar) - entry_time`) fires
-at bars_held=12 — matching the old row-count behaviour on gap-free data and
-correctly enforcing the 60-minute wall clock limit on gapped data. The
-regression test (`test_time_stop_fires_at_row_12_when_bars_are_continuous`)
-pins this precisely. ✓
-
-Walk of `test_time_stop_uses_elapsed_minutes_not_row_count`:
-- Custom minutes [100, 105, …, 140, **155**, 185, 190] for rows 20–31.
-- Entry at row 20 (minute 100). Gap at minute 145 (missing bar).
-- Row 29 (minute 155): elapsed = (155+5) − 100 = **60 min** → fires. bars_held = 10. ✓
-- Without the fix, old bars_held=12 check would fire at row 31 (minute 190), 90
-  clock minutes after entry.
-
-### Finding 4: early-close fallthrough
-
-```python
-is_dataset_tail = last_same_session_pos == len(bars) - 1
-fallthrough_reason = "end_of_data" if is_dataset_tail else "session_end"
-```
-
-Placed correctly after the exit loop. ✓
-
-Walk of `test_early_close_session_exits_as_session_end_not_end_of_data`:
-- 7 hold bars → last_same_session_pos = row 27, len(bars) = 29.
-- is_dataset_tail = (27 == 28) = False → "session_end". ✓
-
-Walk of `test_dataset_tail_trade_exits_as_end_of_data`:
-- 0 hold bars → last_same_session_pos = row 20, len(bars) = 21.
-- is_dataset_tail = (20 == 20) = True → "end_of_data". ✓
-
-### Finding 5: commission guard in artifact writer
-
-Guard fires at line 55–56, before `mkdir` at line 58–59. ✓
-`test_write_parent_artifacts_raises_on_zero_commission_without_smoke_label`
-asserts `not output_dir.exists()` after the raise. ✓
-
-### Parameter snapshot
-
-`_parameter_snapshot` now records `time_stop_minutes` instead of
-`max_bars_held`. ✓
-
-### Stale test name resolved
-
-`test_discovery_run_keeps_only_discovery_sessions` ✓
-
-### Smoke baseline
-
-New: `smoke_20260520T065445Z`, code_version `8c2b2ad`.
-Prior baseline marked SUPERSEDED ✓
-
-Headline delta:
-- trade_count: 11844 → 11858 (+14). Expected: early time stops free session
-  capacity for additional entries on gapped days; 41 end_of_data trades change
-  label but not count.
-- incomplete_trade_count: 41 → 0. Expected: all were mid-dataset
-  early-close exits, now correctly labeled session_end. ✓
-- mean_realized_r: −0.08640 → −0.08622. Small improvement consistent with
-  previously-excluded trades entering the denominator.
-- session_end count: 481 (was ~427 from old runs + 41 reclassified = ~468).
-  Difference attributable to new early-time-stop trades generating downstream
-  session_end exits. Plausible. ✓
-
-No red flags in the delta. Smoke baseline approved.
+All five prior code bugs resolved. 90 tests pass. Clean baselines at `abfb523`.
 
 ---
 
-## Bundle B — APPROVED TO IMPLEMENT, with two notes
+## New Finding: Signal-to-Entry Gap Check Missing — MUST FIX
 
-### Part A (continuity validation in `prepare_bars`)
+**Location:** `strategy.py`, `_entry_allowed` function, after the session-date check
+(currently around line 167).
 
-Adding `expected_bar_interval_minutes` keyword, computing same-session
-`DateTime_ET.diff()` per session, recording `BarGapFromPrevious` and
-`BarGapMinutesFromPrevious` columns, surfacing `bar_gap_count` and
-`bar_gap_session_count` in run metadata: **all approved**.
+**Problem:** `indicators.py` masks `EntryZ` to NaN when the 20-row lookback window
+spans a missing bar — so no signal fires on a gapped lookback bar. But if a bar is
+missing between the signal bar (row N) and the intended entry bar (row N+1), the entry
+still happens. Row N+1 may be 10 or 20 minutes after row N. The strategy enters at the
+wrong bar, at a price observed after an unobserved interval, and records an incorrect
+`bars_held` count. The z-score mask and the entry logic are inconsistent.
 
-Not raising on gaps is the right call — the live file has 781 gaps;
-raising breaks existing runners before any fix is possible. Surface and
-track is the correct fail-loud proxy.
+**Evidence:** Latest discovery has 4 trades with 10-minute signal-to-entry gaps. Latest
+smoke has 11 such trades, max 20 minutes.
 
-**Note 1 — where gap metadata lives in run_config.json:**
-`bar_gap_count` and `bar_gap_session_count` must NOT go into
-`parameter_snapshot` (that is for strategy params) or
-`input_data_metadata` (that is for file hashes). Add a dedicated
-`data_quality` key at the top level of run_config:
+**Fix:** In `_entry_allowed`, add a contiguity check immediately after the
+session-date guard:
 
-```json
-"data_quality": {
-    "bar_gap_count": 781,
-    "bar_gap_session_count": 312
-}
-```
-
-This also means `write_parent_artifacts` must accept and forward these
-values. Codex should include this in the implementation, not defer it.
-
-### Part B (time-valid z-score in `indicators.py`)
-
-Span computation:
 ```python
-window_start = timestamps.groupby(session, sort=False).transform(
-    lambda g: g.shift(window - 1)
+expected_entry_time = signal_bar["DateTime_ET"] + pd.Timedelta(
+    minutes=params.BAR_INTERVAL_MINUTES
 )
-span = timestamps - window_start
-max_span = pd.Timedelta(minutes=(window - 1) * BAR_INTERVAL_MINUTES
-                                 + BAR_INTERVAL_MINUTES / 2)
+if entry_bar["DateTime_ET"] != expected_entry_time:
+    return False
 ```
-Masking `EntryZ` to NaN where `span.isna() | (span > max_span)`: correct.
 
-On gap-free data: span = 19 × 5 = 95 min < 97.5 → valid. ✓
-Single missing bar: span = 100 min > 97.5 → NaN. ✓
-First 19 bars of session: `shift(19)` returns NaN → span NaN → NaN. ✓
-(This is harmless: `min_periods=window` already makes std NaN for those bars.)
+No other changes needed. `BAR_INTERVAL_MINUTES` is already imported via `params`.
 
-**Note 2 — `DateTime_ET` must be explicit in `REQUIRED_COLUMNS`:**
-`indicators.py:REQUIRED_COLUMNS` currently lists SessionDate_ET,
-SessionMinute_ET, High, Low, Close, Volume. `DateTime_ET` is used by
-Part B but not listed. Add it to `REQUIRED_COLUMNS` so the contract is
-explicit and `_validate_required_columns` enforces it. Do not rely on it
-being present because `prepare_bars` happens to produce it.
-
-### Bundle B sequencing
-
-Parts A and B land in a single commit — they are tightly coupled
-(gap metadata from A informs the audit trail; z-score mask from B
-enforces the gap contract on signals).
-
-After the commit: pytest green, smoke rerun, discovery rerun.
-Mark `discovery_20260519T135118Z/` SUPERSEDED after discovery
-rerun completes.
+**Tests required:**
+- `test_entry_is_skipped_when_entry_bar_is_not_contiguous_with_signal_bar`: construct
+  a bar set where signal bar is at minute 95 and the next row is at minute 105 (10-min
+  gap). Assert `generate_trades` returns `[]`.
+- `test_entry_is_taken_when_entry_bar_is_contiguous`: standard signal setup, assert
+  trade is entered normally (regression guard).
 
 ---
 
-## Next action for Codex
+## Time Stop Overshoot (±5 min) — NOT A BUG, CLOSE
 
-1. Implement Bundle B (Parts A and B) in one commit per the above.
-   Apply Note 1 (data_quality section in run_config) and
-   Note 2 (DateTime_ET in REQUIRED_COLUMNS).
-2. Run full pytest.
-3. Rerun smoke — report headline delta in codexArg.
-4. Rerun discovery — mark old discovery SUPERSEDED.
-5. Claude reviews before any 4d work begins.
+With a missing bar, the code exits at the close of the first available bar after
+the 60-minute threshold. A 65-minute exit means the bar at minute 60 was missing and
+the next bar is at minute 65. This is the only correct behavior in a bar-driven
+backtester — you cannot exit at a bar that does not exist. The 5-minute overshoot
+equals one bar interval and is irreducible without tick data.
+
+This is assumption drift (the TIME_STOP_MINUTES spec assumes continuous bars), not
+a code error. Document it; do not fix it.
+
+## Multi-Contract `prepare_bars` Workaround (M4) — STILL DEFERRED
+
+Runners pre-filter RTH before `prepare_bars` to avoid the multi-contract session
+rejection. Stable workaround. No action needed now.
 
 ---
 
-## Carried-forward unresolved list
+## Next Action for Codex
 
-- **Bundle B** — implement, then smoke + discovery rerun.
-- **M3** VWAP target OHLC approximation — held for consensus.
-- **M4** prepare_bars() multi-contract rejection — deferred.
-- **L1-L3, L5-L7** documentation / structural — out of scope.
+1. Add the signal-to-entry contiguity check to `_entry_allowed` in `strategy.py`
+   per the fix above.
+2. Add the two tests listed above.
+3. Run full pytest.
+4. Rerun smoke — report delta in codexArg (expect a small reduction in trade count).
+5. Rerun discovery — mark `discovery_20260520T071619Z` SUPERSEDED.
+6. Claude reviews before any 4d work begins.
+
+---
+
+## Carried-Forward Unresolved List
+
+- **Signal-to-entry gap** — implement fix above.
+- **M3** VWAP target OHLC approximation — assumption drift, held for consensus.
+- **M4** prepare_bars() multi-contract rejection — deferred to runner layer.
+- **L1-L3, L5-L7** documentation / structural — deferred.
 - **P1, P3** structural notes — deferred.
-- **NEW-6** _last_same_session_pos perf — deferred.
-- **_exit_time trailing_stop** — when trailing stop lands.
-
-## Process check
-
-All Bundle A mechanics verified line by line. Codex's elapsed-time
-pushback is correct — acknowledged. Smoke delta is consistent with
-the changes. Bundle B proposal is sound; two implementation notes
-added. No code changes made by me.
+- **NEW-6** `_last_same_session_pos` O(N²) perf — deferred.
+- **`_exit_time` trailing_stop** — when trailing stop lands.
