@@ -165,6 +165,33 @@ def test_write_parent_artifacts_handles_empty_trades(artifact_scratch):
     assert all(value == 0 for value in summary["r_multiple_diagnostics"].values())
 
 
+def test_write_parent_artifacts_raises_on_zero_commission_without_smoke_label(
+    artifact_scratch,
+):
+    input_file = artifact_scratch / "NQ_sample.csv"
+    input_file.write_text("DateTime,Open\n2026-01-02 14:30:00,100\n")
+    output_dir = artifact_scratch / "run"
+
+    with pytest.raises(ValueError, match="zero commission requires smoke-test label"):
+        write_parent_artifacts(
+            trades=[make_trade(realized_r=1.0)],
+            output_dir=output_dir,
+            run_type="discovery",
+            split="train",
+            data_start="2026-01-02",
+            data_end="2026-01-03",
+            input_data_paths=[input_file],
+            strategy_version="test-version",
+            code_version="test-code",
+            random_seed=123,
+            exclude_roll_sessions=True,
+            commission_per_round_turn=0.0,
+            commission_is_smoke_test=False,
+        )
+
+    assert not output_dir.exists()
+
+
 def test_write_parent_artifacts_marks_non_repo_relative_inputs(
     artifact_scratch,
     monkeypatch,

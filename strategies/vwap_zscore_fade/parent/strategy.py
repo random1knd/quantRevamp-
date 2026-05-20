@@ -236,12 +236,16 @@ def _close_trade(
         bars,
         start_pos=open_trade.entry_pos,
     )
+    entry_time = bars.iloc[open_trade.entry_pos]["DateTime_ET"]
 
     for exit_pos in range(open_trade.entry_pos, last_same_session_pos + 1):
+        bar = bars.iloc[exit_pos]
+        elapsed = _bar_close_time(bar) - entry_time
         exit_result = _exit_result(
-            bars.iloc[exit_pos],
+            bar,
             open_trade=open_trade,
             bars_held=exit_pos - open_trade.entry_pos + 1,
+            elapsed=elapsed,
         )
         if exit_result is not None:
             return (
@@ -259,6 +263,8 @@ def _close_trade(
             )
 
     exit_pos = last_same_session_pos
+    is_dataset_tail = last_same_session_pos == len(bars) - 1
+    fallthrough_reason = "end_of_data" if is_dataset_tail else "session_end"
     return (
         _build_trade(
             bars,
@@ -268,7 +274,7 @@ def _close_trade(
                 bars.iloc[exit_pos]["Close"],
                 side=open_trade.side,
             ),
-            exit_reason="end_of_data",
+            exit_reason=fallthrough_reason,
             gap_through=False,
             commission_per_round_turn=commission_per_round_turn,
             commission_is_smoke_test=commission_is_smoke_test,
@@ -296,6 +302,7 @@ def _exit_result(
     *,
     open_trade: _OpenTrade,
     bars_held: int,
+    elapsed: pd.Timedelta,
 ) -> dict[str, float | str | bool] | None:
     stop_result = _stop_exit_result(bar, open_trade=open_trade)
     if stop_result is not None:
@@ -305,7 +312,7 @@ def _exit_result(
     if target_result is not None:
         return target_result
 
-    if bars_held >= params.MAX_BARS_HELD:
+    if elapsed >= pd.Timedelta(minutes=params.TIME_STOP_MINUTES):
         return {
             "exit_price": _close_exit_price(bar["Close"], side=open_trade.side),
             "exit_reason": "time_stop",
@@ -450,11 +457,13 @@ def _build_trade(
 
 def _exit_time(exit_bar: pd.Series, *, exit_reason: str) -> Any:
     if exit_reason in {"time_stop", "session_end", "end_of_data"}:
-        return exit_bar["DateTime_ET"] + pd.Timedelta(
-            minutes=params.BAR_INTERVAL_MINUTES
-        )
+        return _bar_close_time(exit_bar)
 
     return exit_bar["DateTime_ET"]
+
+
+def _bar_close_time(bar: pd.Series) -> Any:
+    return bar["DateTime_ET"] + pd.Timedelta(minutes=params.BAR_INTERVAL_MINUTES)
 
 
 def _gross_r(

@@ -2,10 +2,10 @@ from datetime import date
 
 import pandas as pd
 
+from shared.data.splits import chronological_session_splits
 from strategies.vwap_zscore_fade.parent.discovery_run import (
     COMMISSION_IS_SMOKE_TEST,
     COMMISSION_PER_ROUND_TURN,
-    discovery_split_bars,
 )
 
 
@@ -23,7 +23,7 @@ def make_prepared_bars(session_dates: list[date]) -> pd.DataFrame:
     )
 
 
-def test_discovery_split_bars_keeps_only_discovery_sessions():
+def test_discovery_run_keeps_only_discovery_sessions():
     sessions = [date(2026, 1, day) for day in range(1, 11)]
     prepared = make_prepared_bars(
         [
@@ -42,7 +42,10 @@ def test_discovery_split_bars_keeps_only_discovery_sessions():
         ]
     )
 
-    discovery, splits = discovery_split_bars(prepared)
+    splits = chronological_session_splits(prepared)
+    discovery = prepared.loc[
+        prepared["SessionDate_ET"] <= splits["discovery_end"]
+    ].copy()
 
     assert splits["discovery_end"] == date(2026, 1, 3)
     assert splits["discovery_session_count"] == 3

@@ -20,10 +20,7 @@ import subprocess
 import pandas as pd
 
 from shared.data.bars import prepare_bars
-from shared.data.splits import (
-    ChronologicalSessionSplits,
-    chronological_session_splits,
-)
+from shared.data.splits import chronological_session_splits
 from strategies.vwap_zscore_fade.parent import params
 from strategies.vwap_zscore_fade.parent.artifacts import write_parent_artifacts
 from strategies.vwap_zscore_fade.parent.strategy import generate_trades
@@ -65,7 +62,10 @@ def run_discovery() -> Path:
         strategy_timezone=params.STRATEGY_TIMEZONE,
         session_open=params.SESSION_OPEN,
     )
-    discovery_bars, _ = discovery_split_bars(prepared)
+    splits = chronological_session_splits(prepared)
+    discovery_bars = prepared.loc[
+        prepared["SessionDate_ET"] <= splits["discovery_end"]
+    ].copy()
     trades = generate_trades(
         discovery_bars,
         exclude_roll_sessions=EXCLUDE_ROLL_SESSIONS,
@@ -90,16 +90,6 @@ def run_discovery() -> Path:
         commission_is_smoke_test=COMMISSION_IS_SMOKE_TEST,
     )
     return output_dir
-
-
-def discovery_split_bars(
-    prepared_bars: pd.DataFrame,
-) -> tuple[pd.DataFrame, ChronologicalSessionSplits]:
-    splits = chronological_session_splits(prepared_bars)
-    discovery = prepared_bars.loc[
-        prepared_bars["SessionDate_ET"] <= splits["discovery_end"]
-    ].copy()
-    return discovery, splits
 
 
 def _rth_only_raw_bars(raw_bars: pd.DataFrame) -> pd.DataFrame:

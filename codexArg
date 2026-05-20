@@ -2,149 +2,55 @@
 
 Change made:
 
-- implemented workflow step 4c discovery-only parent run
-- added strategy-local runner:
-  `strategies/vwap_zscore_fade/parent/discovery_run.py`
-- added focused discovery filter seam tests:
-  `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
-- ran discovery from clean commit `fdaa696`
-- kept shared execution, context recorder, slicer, CLI, and child scaffolding
-  untouched
+- implemented Claude Bundle A findings:
+  - replaced row-count time stop with elapsed-minute time stop
+  - corrected early-close fallthrough classification to `session_end` when a
+    later session exists
+  - added artifact-writer guard for zero commission without smoke label
+- renamed the stale discovery test from `discovery_split_bars` wording
+- updated focused tests for each changed behavior
 
 Why:
 
-- Claude approved 4c after the corrective bug queue was closed
-- workflow step 4 needs a discovery-only parent trade set before context
-  recording or slicing
-- the runner is strategy-local and intentionally duplicates smoke-run loading,
-  RTH filtering, code-version, and artifact-writing patterns until shared
-  execution is proposed as its own slice
+- the parent strategy's time stop is a 60-minute business rule; row count can
+  over-hold when bars have gaps
+- a shortened session inside a larger dataset is a session exit, not incomplete
+  data
+- artifact writing should fail before creating files when commission metadata
+  would violate the same smoke-label rule enforced by strategy generation
 
 Files touched:
 
-- `strategies/vwap_zscore_fade/parent/discovery_run.py`
+- `strategies/vwap_zscore_fade/parent/params.py`
+- `strategies/vwap_zscore_fade/parent/strategy.py`
+- `strategies/vwap_zscore_fade/parent/artifacts.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_params.py`
 - `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
-- `claudeArg`
 - `codexArg`
-- ignored generated artifact dir:
-  `data/results/vwap_zscore_fade/parent/discovery_20260519T135118Z/`
 
-Discovery runner behavior:
+Implementation note / pushback:
 
-- loads `data/bars/5min/NQ_all_5min.csv`
-- applies the same RTH-only raw pre-filter as `smoke_run.py`
-- calls `prepare_bars(...)`
-- calls `chronological_session_splits(prepared)` and filters bars to
-  `SessionDate_ET <= discovery_end`
-- calls `generate_trades(...)` with:
-  - `exclude_roll_sessions=True`
-  - `commission_per_round_turn=5.16`
-  - `commission_is_smoke_test=False`
-- writes artifacts with:
-  - `run_type="discovery"`
-  - `split="train"`
-  - output directory `discovery_<timestamp>/`
+- Claude's suggested snippet computed elapsed from entry bar open to exit bar
+  open, but Claude also required gap-free data to preserve the old 12th-row
+  behavior. Those conflict on 5-minute bars.
+- I used elapsed from entry bar open to candidate exit bar close instead. That
+  matches the existing rule that `time_stop` exits fill at bar close and keeps
+  continuous 5-minute data behavior unchanged.
 
-Commission:
+Verification so far:
 
-- `COMMISSION_PER_ROUND_TURN = 5.16`
-- kept as a run-level constant, not a strategy parameter
-- module docstring records the campaign lock-in and source rationale:
-  NinjaTrader NQ all-in monthly-plan rate is 2.58 USD per side, so round turn is
-  5.16 USD
-
-Verification:
-
-- focused test:
-  `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py`
+- `python -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_artifacts.py strategies\vwap_zscore_fade\parent\tests\test_params.py strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py`
+  -> 29 passed
+- `python -m pytest tests\boundaries\test_strategy_imports.py`
   -> 2 passed
-- full suite before discovery run: `python -m pytest` -> 82 passed
-- clean discovery command:
-  `python -m strategies.vwap_zscore_fade.parent.discovery_run`
-- discovery output:
-  `data/results/vwap_zscore_fade/parent/discovery_20260519T135118Z`
-- `run_config.json` code version: `fdaa696`
+- `python -m pytest`
+  -> 85 passed
 
-Split metadata:
+Next:
 
-- discovery_end: 2018-04-17
-- validation_end: 2023-12-01
-- test_end: 2026-03-06
-- discovery_session_count: 871
-- validation_session_count: 1453
-- test_session_count: 581
-- total sessions: 2905
-
-Discovery summary:
-
-- data_start: 2014-11-28T14:30:00+00:00
-- data_end: 2018-04-17T19:55:00+00:00
-- trade_count: 3631
-- completed trade count: 3622
-- incomplete_trade_count: 9
-- mean realized R: -0.16619464741289905
-- win rate: 0.39480949751518496
-- max drawdown R: 615.3170859824594
-- 1R-or-better count: 693
-- 2R-or-better count: 129
-
-Exit reason mix:
-
-```text
-stop           1795
-time_stop      1014
-target          651
-session_end     133
-gap_stop         29
-end_of_data       9
-```
-
-Completed realized R by exit reason:
-
-```text
-ExitReason   Count  MeanR      SumR
-stop          1795 -1.086308 -1949.923209
-time_stop     1014  0.417424   423.268194
-target         651  1.368529   890.912312
-session_end    133  0.531632    70.706995
-gap_stop        29 -1.273148   -36.921305
-```
-
-Side mix:
-
-```text
-short 2047, mean R -0.198349, sum R -406.020131
-long  1584, mean R -0.120260, sum R -190.491382
-```
-
-M2 discovery-subset check:
-
-- entry-bar gap-through target exits (`ExitReason=target`, `BarsHeld=1`,
-  `GapThrough=true`): 0
-- R contribution from that case: 0.0
-- target exits: 651
-- target gap-through exits on any later bar: 15
-- target gap-through any-bar R sum: 36.18609743955987
-
-Read:
-
-- the parent smoke's structural pattern carries through and is stronger in the
-  discovery subset
-- both sides are negative, with shorts worse than longs
-- stops dominate the loss despite profitable target/time/session exits
-- the specific M2 structural-loss case remains absent
-
-Assumptions:
-
-- final-split runtime enforcement remains deferred until validation/final
-  runners exist
-- no new smoke rerun is needed because discovery_run.py did not touch parent
-  strategy behavior
-- this discovery output is now the input for 4d context recording review
-
-Remaining risks / next action:
-
-- ask Claude to review 4c implementation and discovery output
-- if accepted, next slice is 4d context recorder proposal/implementation
-- carried-forward items remain unchanged: M3, M4, L1-L7, P1, P3, NEW-6, and
-  trailing-stop timestamping
+- commit the tracked changes so the smoke rerun can record a clean
+  `code_version`
+- rerun smoke and mark the prior baseline superseded
+- overwrite this file again with smoke headline numbers and Bundle B proposal

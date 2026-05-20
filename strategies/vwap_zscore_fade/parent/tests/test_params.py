@@ -18,7 +18,7 @@ def test_parent_params_match_locked_readme_values():
     assert params.SIGNAL_MIN_BARS == 20
     assert params.ATR_WINDOW == 14
     assert params.STOP_ATR_MULTIPLE == 1.5
-    assert params.MAX_BARS_HELD == 12
+    assert params.TIME_STOP_MINUTES == 60
 
     assert params.SLIPPAGE_TICKS_PER_SIDE == 1
     assert params.NQ_TICK_SIZE == 0.25

@@ -309,7 +309,27 @@ def test_generate_trades_uses_stop_before_target_on_same_bar_conflict():
     assert trade.exit_price == pytest.approx(trade.initial_stop_price - 0.25)
 
 
-def test_generate_trades_exits_at_time_stop_after_max_bars_held():
+def test_time_stop_uses_elapsed_minutes_not_row_count():
+    hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides=hold_bar,
+        following_overrides=[hold_bar] * 11,
+    )
+    start = pd.Timestamp("2026-01-02 09:30:00", tz="America/New_York")
+    custom_minutes = [100, 105, 110, 115, 120, 125, 130, 135, 140, 155, 185, 190]
+    for row_index, minute in zip(range(20, 32), custom_minutes, strict=True):
+        bars.loc[row_index, "SessionMinute_ET"] = minute
+        bars.loc[row_index, "DateTime_ET"] = start + pd.Timedelta(minutes=minute)
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "time_stop"
+    assert trade.bars_held == 10
+    assert trade.exit_time == bars.loc[29, "DateTime_ET"] + pd.Timedelta(minutes=5)
+
+
+def test_time_stop_fires_at_row_12_when_bars_are_continuous():
     hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
     bars = make_signal_setup(
         side="long",
@@ -322,6 +342,35 @@ def test_generate_trades_exits_at_time_stop_after_max_bars_held():
     assert trade.exit_reason == "time_stop"
     assert trade.bars_held == 12
     assert trade.exit_time == bars.loc[31, "DateTime_ET"] + pd.Timedelta(minutes=5)
+
+
+def test_early_close_session_exits_as_session_end_not_end_of_data():
+    hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
+    bars = make_signal_setup(
+        side="long",
+        signal_minute=200,
+        entry_overrides=hold_bar,
+        following_overrides=[hold_bar] * 7,
+    )
+    next_session_row = make_bar(
+        minute=0,
+        roll_session=False,
+        Open=100.0,
+        High=100.0,
+        Low=100.0,
+        Close=100.0,
+    )
+    next_session_row["SessionDate_ET"] = date(2026, 1, 5)
+    next_session_row["DateTime_ET"] = pd.Timestamp(
+        "2026-01-05 09:30:00",
+        tz="America/New_York",
+    )
+    bars = pd.concat([bars, pd.DataFrame([next_session_row])], ignore_index=True)
+
+    trade = generate_smoke_trades(bars)[0]
+
+    assert trade.exit_reason == "session_end"
+    assert trade.exit_time == bars.loc[27, "DateTime_ET"] + pd.Timedelta(minutes=5)
 
 
 def test_generate_trades_exits_at_session_end_before_time_stop():
@@ -342,7 +391,7 @@ def test_generate_trades_exits_at_session_end_before_time_stop():
     assert trade.exit_time.minute == 0
 
 
-def test_generate_trades_records_end_of_data_exit_at_last_bar_close():
+def test_dataset_tail_trade_exits_as_end_of_data():
     hold_bar = {"Open": 81.0, "High": 82.0, "Low": 79.5, "Close": 81.0}
     bars = make_signal_setup(
         side="long",

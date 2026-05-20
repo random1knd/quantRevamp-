@@ -52,6 +52,9 @@ def write_parent_artifacts(
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
 ) -> None:
+    if commission_per_round_turn == 0.0 and not commission_is_smoke_test:
+        raise ValueError("zero commission requires smoke-test label")
+
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -217,7 +220,7 @@ def _parameter_snapshot(*, exclude_roll_sessions: bool | None = None) -> dict[st
         "volume_z_window": params.VOLUME_Z_WINDOW,
         "atr_window": params.ATR_WINDOW,
         "stop_atr_multiple": params.STOP_ATR_MULTIPLE,
-        "max_bars_held": params.MAX_BARS_HELD,
+        "time_stop_minutes": params.TIME_STOP_MINUTES,
         "no_entry_before_session_minute": params.NO_ENTRY_BEFORE_SESSION_MINUTE,
         "no_entry_at_or_after_session_minute": params.NO_ENTRY_AT_OR_AFTER_SESSION_MINUTE,
         "last_rth_bar_open_session_minute": params.LAST_RTH_BAR_OPEN_SESSION_MINUTE,

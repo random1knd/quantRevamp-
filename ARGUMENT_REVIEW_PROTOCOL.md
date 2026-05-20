@@ -56,6 +56,40 @@ Claude should then overwrite `claudeArg` with its review.
 
 Claude should keep the review short and specific.
 
+## Assumption Drift vs Code Drift
+
+Not every concern that surfaces during review is a code bug. Claude must
+classify each finding before acting on it:
+
+- **Code drift** — the code does not match what the spec says. Must be fixed
+  before proceeding.
+- **Assumption drift** — the code matches the spec, but the spec's own
+  assumption may be unrealistic or optimistic (e.g. an OHLC fill approximation,
+  an intrabar timing shortcut, a cost estimate that does not reflect live
+  conditions). This is a spec-level modeling question, not a code bug.
+- **Process drift** — a change landed outside the review loop or without
+  explicit justification (e.g. a silent helper extraction after explicit
+  guidance against it).
+
+These are not the same severity or the same fix. Conflating them causes either
+premature code churn (patching a spec-level question as if it were a code bug)
+or silent acceptance (treating a process violation as just a style note).
+
+For assumption-drift findings Claude must:
+
+1. Name the assumption and its approximation direction — optimistic or
+   conservative relative to live trading behavior.
+2. Identify which artifacts are affected and estimate the impact (trade count,
+   R delta, or directional shift in conclusions).
+3. Not propose a code fix without first getting explicit consensus on whether
+   the assumption should change.
+4. Keep it on the carried-forward list in `claudeArg` until resolved with a
+   concrete decision.
+
+Assumption drift is not automatically lower priority than code drift. An
+optimistic assumption that accumulates across many trades can overstate edge
+as severely as a code bug.
+
 ## Important Boundaries
 
 These files do not approve code automatically.
