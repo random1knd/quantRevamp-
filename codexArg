@@ -2,69 +2,44 @@
 
 Change made:
 
-- Completed Claude's required doc-fix pass after Phase 1 challenge review.
-- Updated all 13 requested indicator/inventory docs so they match the approved
-  implementation plan and current data constraints.
-- No indicator code, strategy code, research-indicator wiring, discovery rerun,
-  or slicing was started.
+- Completed Cycle 1: expanded `shared/indicators/zscore.py`.
+- Added session-scoped and cross-session rolling z-score functions.
+- Added EWMA z-score, robust median/MAD z-score, and rolling percentile rank.
+- Added focused tests for normal behavior, session reset behavior, flat/zero
+  denominator behavior, percentile current-bar exclusion, and causality.
+- Did not start Cycle 2 or touch strategy/research wiring.
 
-Files changed:
+Functions added:
 
-- `docs/indicators/README.md`
-- `docs/indicators/price_extension.md`
-- `docs/indicators/zscore_family.md`
-- `docs/indicators/volatility.md`
-- `docs/indicators/regime_statistical.md`
-- `docs/indicators/ou_process.md`
-- `docs/indicators/kalman.md`
-- `docs/indicators/trend_momentum.md`
-- `docs/indicators/order_flow.md`
-- `docs/indicators/absorption_volume.md`
-- `docs/indicators/candle_time.md`
-- `docs/indicators/liquidity_toxicity.md`
-- `docs/inventories/indicators.md`
-- `codexArg`
+- `rolling_zscore(...)`: `shared/indicators/zscore.py:23`
+- `rolling_zscore_cross_session(...)`: `shared/indicators/zscore.py:41`
+- `ewma_zscore(...)`: `shared/indicators/zscore.py:54`
+- `robust_zscore(...)`: `shared/indicators/zscore.py:71`
+- `rolling_percentile(...)`: `shared/indicators/zscore.py:93`
 
-What changed:
+Tests:
 
-- Added the available post-`prepare_bars` input columns to the indicator README.
-- Aligned VWAP docs with existing `session_vwap(frame, price_col, volume_col,
-  session_col)` and removed deferred anchor/slot functions from expected builds.
-- Added `gap_free_rolling_window` to z-score docs and marked `VolScaledMove`
-  blocked.
-- Removed percentile ownership from volatility docs and marked `VolRegime` and
-  `JumpRatio` blocked.
-- Marked Hurst deferred, `RegimeScore` blocked, `ADF_Stationary` threshold
-  blocked, and rolling ADF context-only/expensive.
-- Added deferred banners to O-U and Kalman docs.
-- Removed stale `atr.py` and `momentum.py` references from trend docs; marked
-  `MOM_Composite` and `TSMOM` blocked.
-- Corrected order-flow docs for `delta(bid_volume, ask_volume)` and labeled
-  true OFI not buildable from current bars.
-- Consolidated absorption into `volume.py` docs and specified NaN behavior for
-  zero price-change absorption denominators.
-- Split time-context docs into the planned functions and marked `CandleType`
-  blocked.
-- Consolidated VPIN approximation into `liquidity.py` docs and specified VPIN
-  and Kyle lambda zero-denominator behavior.
-- Added feasibility tags to the indicator inventory tables and labeled
-  time-bar approximations explicitly.
+- Test file: `tests/shared/indicators/test_zscore.py`
+- Existing Cycle 0 tests retained: 5
+- Cycle 1 tests added: 11
+- Total z-score tests now: 16
+- New test range: `tests/shared/indicators/test_zscore.py:69`
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest` -> 104 passed
-- Stale-reference scan found no remaining references to the removed module
-  names or deferred expected functions: `atr.py`, `momentum.py`,
-  `absorption.py`, `vpin.py`, `session_vwap(bars...)`, `anchored_vwap`,
-  `slot_percentile`, `delta(bars)`, `time_context(...)`, `vpin(bars...)`,
-  `hurst_estimate`, or `candle_type(...)`.
+- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_zscore.py`
+  -> 16 passed
+- `.venv\Scripts\python.exe -m pytest` -> 115 passed
 
-Confirmation:
+Spec notes:
 
-- All 13 docs now match the approved plan at the doc level.
-- True OFI and true VPIN are documented as not buildable from current time bars.
-- Time-bar approximations are labeled context-only where applicable.
-- Blocked/deferred items are labeled before any code is written.
+- `rolling_percentile` follows the function spec that fewer than `window`
+  prior bars returns NaN. Claude's test description also asked for index 3 of a
+  5-bar series with `window=4` to be 1.0, which conflicts with that rule. The
+  tests preserve the stricter API rule: with `window=4`, bars 0-3 are NaN and
+  bar 4 is 1.0. A separate `window=3` assertion verifies that bar 3 ranks 1.0
+  when exactly three prior bars are available.
+- EWMA z-score intentionally does not reset at session boundaries, as required.
 
 Carried forward:
 
@@ -73,7 +48,6 @@ Carried forward:
 
 Stopped before:
 
-- Cycle 1 z-score expansion.
-- Any new indicator implementation.
-- Research-indicator expansion.
+- Cycle 2 volatility expansion.
+- Any strategy or research-indicator wiring.
 - Discovery rerun or slicing.
