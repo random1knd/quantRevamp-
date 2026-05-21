@@ -108,3 +108,97 @@ def test_research_indicators_reject_missing_required_columns():
 
     with pytest.raises(ValueError, match="missing required columns"):
         add_research_indicators(bars)
+
+
+def test_batch1_body_ratio_and_close_position_are_bounded():
+    bars = make_bars(volumes=[100.0] * 25)
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryBodyRatio"].dropna().between(0, 1).all()
+    assert result["EntryClosePosition"].dropna().between(0, 1).all()
+    assert result["EntryBodyRatio"].iloc[0] == pytest.approx(0.25)
+    assert result["EntryClosePosition"].iloc[0] == pytest.approx(0.75)
+
+
+def test_batch1_vwap_distance_is_positive_for_rising_series():
+    bars = make_bars(volumes=[100.0] * 25)
+
+    result = add_research_indicators(bars)
+
+    assert (result["EntryVWAPDist"].dropna() > 0).all()
+
+
+def test_batch1_vwap_dist_atr_is_positive_and_eventually_non_nan():
+    bars = make_bars(volumes=[100.0] * 40)
+
+    result = add_research_indicators(bars)
+
+    non_nan = result["EntryVWAPDistATR"].dropna()
+    assert len(non_nan) > 0
+    assert (non_nan > 0).all()
+
+
+def test_batch2_vol_ratio_is_nan_before_window_and_one_for_constant_volume():
+    bars = make_bars(volumes=[100.0] * 25)
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryVolRatio"].iloc[:19].isna().all()
+    assert result["EntryVolRatio"].iloc[19] == pytest.approx(1.0)
+
+
+def test_batch2_realized_vol_is_non_negative():
+    bars = make_bars(volumes=[100.0] * 40)
+
+    result = add_research_indicators(bars)
+
+    assert (result["EntryRealizedVol"].dropna() >= 0).all()
+
+
+def test_batch2_atr_pctile_is_bounded_when_non_nan():
+    bars = make_bars(volumes=[100.0] * 50)
+
+    result = add_research_indicators(bars)
+
+    non_nan = result["EntryATRPctile"].dropna()
+    assert len(non_nan) > 0
+    assert non_nan.between(0, 1).all()
+
+
+def test_batch2_cum_delta_resets_at_session_boundary():
+    bars = make_bars(
+        volumes=[100.0] * 10,
+        session_dates=["2026-01-02"] * 5 + ["2026-01-05"] * 5,
+        session_minutes=[0, 5, 10, 15, 20, 0, 5, 10, 15, 20],
+    )
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryCumDelta"].iloc[0] == pytest.approx(20.0)
+    assert result["EntryCumDelta"].iloc[5] == pytest.approx(20.0)
+    assert result["EntryCumDelta"].iloc[4] == pytest.approx(100.0)
+
+
+def test_batch1_and_batch2_columns_are_nan_for_non_rth_rows():
+    bars = make_bars(
+        volumes=[100.0, 100.0, 100.0],
+        session_minutes=[-5, 100, 400],
+    )
+    new_columns = [
+        "EntryBodyRatio",
+        "EntryClosePosition",
+        "EntryVWAPDist",
+        "EntryVWAPDistATR",
+        "EntryRealizedVol",
+        "EntryVolRatio",
+        "EntryVolRobustZ",
+        "EntryATRPctile",
+        "EntryCumDelta",
+    ]
+
+    result = add_research_indicators(bars)
+
+    for col in new_columns:
+        assert pd.isna(result.loc[0, col]), f"{col} should be NaN for pre-RTH row"
+        assert pd.isna(result.loc[2, col]), f"{col} should be NaN for post-RTH row"
