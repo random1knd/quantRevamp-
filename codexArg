@@ -2,52 +2,65 @@
 
 Change made:
 
-- Completed Cycle 3: added `shared/indicators/trend.py`.
-- Added `adx`, `ma_slope`, `efficiency_ratio`, and `momentum`.
-- Did not add blocked `EMA_Slope`, `MOM_Composite`, or `TSMOM`.
-- Did not start Cycle 4 or wire these indicators into any strategy.
+- Completed Cycle 4: added `shared/indicators/regime.py`.
+- Added `rolling_autocorr`, `rolling_variance_ratio`, and
+  `rolling_adf_pvalue`.
+- Did not add blocked `Hurst`, `RegimeScore`, or `ADF_Stationary`.
+- Did not start Cycle 5 or wire these indicators into any strategy.
 
 New file and functions:
 
-- `shared/indicators/trend.py`
-- Constants: lines 6-11
-- `adx(...)`: lines 14-75
-- `ma_slope(...)`: lines 78-86
-- `efficiency_ratio(...)`: lines 89-100
-- `momentum(...)`: lines 103-112
-- Local Wilder smoothing helper: lines 115-149
-- Local validation helpers: lines 152-164
+- `shared/indicators/regime.py`
+- Module-level ADF context-only warning: line 7
+- Constants: lines 8-10
+- `rolling_autocorr(...)`: lines 13-26
+- `rolling_variance_ratio(...)`: lines 29-46
+- `rolling_adf_pvalue(...)`: lines 49-62
+- `_adf_pvalue(...)`: lines 65-69
+- Local validation helper: lines 72-74
 
-ADX implementation notes:
+ADF timing:
 
-- Wilder smoothing is implemented with an explicit loop in `_wilder_smooth`;
-  pandas EWM is not used.
-- Directional movement and true range are computed locally inside `adx`.
-- Raw true range leaves bar 0 as NaN. To satisfy the specified smoothed TR
-  seed at `window - 1`, the initial TR seed sums the non-null values in that
-  first seed window; ADX smoothing itself waits for a full valid DX seed
-  window, so early ADX NaNs remain intact.
-- ADX is documented in-code as multi-session and does not reset at session
-  boundaries.
+- `tests/shared/indicators/test_regime.py::test_rolling_adf_pvalue_timing_is_visible`
+  printed `ADF timing elapsed: 0.530751 seconds`.
+- This is below Claude's 30-second reporting threshold and below the test's
+  120-second guard.
 
 Tests:
 
-- Test file: `tests/shared/indicators/test_trend.py`
-- Cycle 3 tests added: 14
-- Test range: `tests/shared/indicators/test_trend.py:12-146`
-- Helper fixture: `tests/shared/indicators/test_trend.py:149-157`
+- Test file: `tests/shared/indicators/test_regime.py`
+- Cycle 4 tests added: 13
+- Test range: `tests/shared/indicators/test_regime.py:13-127`
+- Helper fixture: `tests/shared/indicators/test_regime.py:130-132`
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_trend.py`
-  -> 14 passed
-- `.venv\Scripts\python.exe -m pytest` -> 137 passed
+- `.venv\Scripts\python.exe -m pytest -s tests\shared\indicators\test_regime.py`
+  -> 13 passed, timing printed as above
+- `.venv\Scripts\python.exe -m pytest` -> 150 passed
 
 Spec notes:
 
-- No shared-indicator imports were added to `trend.py`.
-- No strategy, discovery, runner, or research wiring changed.
-- No deviations from the unlocked Cycle 3 scope.
+- `regime.py` imports only pandas and `statsmodels.tsa.stattools.adfuller`; it
+  does not import from volatility or trend.
+- `rolling_autocorr` follows the requested pandas rolling correlation against
+  a lagged copy and is named `AutoCorr`.
+- `rolling_variance_ratio` follows the requested variance-ratio formula and
+  masks zero one-bar variance to NaN.
+- `rolling_adf_pvalue` uses `adfuller(window_values, autolag="AIC")[1]`,
+  catches failures as NaN, and is named `ADF_PValue`.
+- All three functions are cross-session by design; no session reset was added.
+
+Fixture deviations from Claude's test text:
+
+- Claude's exact monotonic VR fixture `[1, 2, ..., 10]` has constant one-bar
+  returns, so `var_1 == 0` and the specified implementation correctly returns
+  NaN. The test uses a deterministic increasing series with non-constant
+  increments so the positive VR assertion can exercise the formula.
+- Claude's exact ADF random-walk text, cumulative sum of all-one increments,
+  gives a low p-value under statsmodels `adfuller(..., autolag="AIC")` in this
+  environment. The test uses a seeded deterministic random walk from normal
+  increments, which gives the intended high p-value check.
 
 Carried forward:
 
@@ -55,9 +68,10 @@ Carried forward:
   it during the indicator build; carry this forward until a dedicated cycle.
 - `robust_zscore` is missing an explicit session-reset test. Claude said to add
   it in a cleanup pass after all cycles are done.
+- `ma_slope` and `momentum` causality tests are also carried to cleanup.
 
 Stopped before:
 
-- Cycle 4.
+- Cycle 5.
 - Any strategy or research-indicator wiring.
 - Discovery rerun or slicing.
