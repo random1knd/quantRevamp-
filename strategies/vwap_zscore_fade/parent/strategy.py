@@ -78,6 +78,7 @@ def generate_trades(
 
     prepared = add_parent_indicators(bars)
     rth_bar_number = _rth_bar_number(prepared)
+    session_last_pos = _session_last_pos(prepared)
 
     trades: list[Trade] = []
     signal_pos = 0
@@ -105,6 +106,7 @@ def generate_trades(
         trade, exit_pos = _close_trade(
             prepared,
             open_trade=open_trade,
+            session_last_pos=session_last_pos,
             commission_per_round_turn=commission_per_round_turn,
             commission_is_smoke_test=commission_is_smoke_test,
         )
@@ -241,13 +243,12 @@ def _close_trade(
     bars: pd.DataFrame,
     *,
     open_trade: _OpenTrade,
+    session_last_pos: dict,
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
 ) -> tuple[Trade, int]:
-    last_same_session_pos = _last_same_session_pos(
-        bars,
-        start_pos=open_trade.entry_pos,
-    )
+    session_date = bars.iloc[open_trade.entry_pos]["SessionDate_ET"]
+    last_same_session_pos = session_last_pos[session_date]
     entry_time = bars.iloc[open_trade.entry_pos]["DateTime_ET"]
 
     for exit_pos in range(open_trade.entry_pos, last_same_session_pos + 1):
@@ -305,18 +306,11 @@ def _close_trade(
     )
 
 
-def _last_same_session_pos(
-    bars: pd.DataFrame,
-    *,
-    start_pos: int,
-) -> int:
-    session_date = bars.iloc[start_pos]["SessionDate_ET"]
-    last_pos = start_pos
-    for pos in range(start_pos, len(bars)):
-        if bars.iloc[pos]["SessionDate_ET"] != session_date:
-            break
-        last_pos = pos
-    return last_pos
+def _session_last_pos(bars: pd.DataFrame) -> dict:
+    result: dict = {}
+    for pos, session_date in enumerate(bars["SessionDate_ET"]):
+        result[session_date] = pos
+    return result
 
 
 def _exit_result(

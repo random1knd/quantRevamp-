@@ -2,59 +2,39 @@
 
 Change made:
 
-- Completed Claude's clean discovery re-run after the ADX scale fix.
-- No source code changes.
+- Completed Claude's `_last_same_session_pos` O(N^2) fix.
+- Replaced the per-trade forward session scan with one precomputed
+  `session_last_pos` map in `generate_trades`.
+- Passed `session_last_pos` into `_close_trade` and used an O(1) lookup for the
+  entry session's last position.
+- Did not run discovery.
 - Did not begin slicing.
-- Did not begin the `_last_same_session_pos` O(N^2) fix.
 
-Command run:
+Exact source changes:
 
-- `$env:PYTHONPATH=(Get-Location).Path; .venv\Scripts\python.exe strategies\vwap_zscore_fade\parent\discovery_run.py`
-  -> completed successfully
+- Added after `rth_bar_number = _rth_bar_number(prepared)`:
+  `session_last_pos = _session_last_pos(prepared)`
+- Updated `_close_trade(...)` call to pass:
+  `session_last_pos=session_last_pos`
+- Added `_close_trade` parameter:
+  `session_last_pos: dict`
+- Replaced `_last_same_session_pos(...)` call with:
+  `session_date = bars.iloc[open_trade.entry_pos]["SessionDate_ET"]`
+  `last_same_session_pos = session_last_pos[session_date]`
+- Replaced `_last_same_session_pos` helper with:
+  `_session_last_pos(bars: pd.DataFrame) -> dict`
 
-Full output directory path:
+Verification:
 
-- `C:\Users\AMD\Desktop\trading apps\trading apps\NewQuantfolder\data\results\vwap_zscore_fade\parent\discovery_20260521T160243Z`
-
-Total trade count:
-
-- 3528
-
-EntryADX sample rows:
-
-| EntryTime | EntryADX | Status |
-| --- | ---: | --- |
-| `2014-12-01T12:00:00-05:00` | 43.111529048776156 | within 0-100 |
-| `2014-12-04T11:30:00-05:00` | 24.67013819591173 | within 0-100 |
-| `2014-12-08T12:15:00-05:00` | 19.681252028736335 | within 0-100 |
-
-EntryADX range check:
-
-- Non-empty `EntryADX` rows: 3528
-- Minimum: 6.99459438556168
-- Maximum: 78.1435485874775
-- Values over 100: 0
-
-Entry* column verification:
-
-- All 22 expected research-context Entry* columns are present:
-  `EntryVolumeZ`, `EntryDelta`, `EntryDeltaPct`, `EntryBodyRatio`,
-  `EntryClosePosition`, `EntryVWAPDist`, `EntryVWAPDistATR`,
-  `EntryRealizedVol`, `EntryVolRatio`, `EntryVolRobustZ`, `EntryATRPctile`,
-  `EntryCumDelta`, `EntryDeltaROC`, `EntryOFI`, `EntryVPIN`,
-  `EntryKyleLambda`, `EntryKyleLambdaPctile`, `EntryAutoCorr`,
-  `EntryVarRatio`, `EntryADX`, `EntryEfficiencyRatio`,
-  `EntryBarsSinceOpen`.
+- `.venv\Scripts\python.exe -m pytest` -> 233 passed
+- Trade-count smoke check -> `Trade count: 3528`
 
 Errors or deviations:
 
-- No command error.
-- `run_config.json` reports `code_version` as `e452dad-dirty` because the
-  working tree already had unrelated changes in `ARGUMENT_REVIEW_PROTOCOL.md`,
-  `claudeArg`, and untracked `KNOWN_LIMITATIONS.md`.
+- None from Claude's O(N^2) fix instructions.
 
 Stopped before:
 
+- Discovery rerun.
 - Slicing.
-- The `_last_same_session_pos` O(N^2) fix.
-- Any strategy/trade-generating changes.
+- Any strategy behavior changes beyond the O(1) session-end lookup.
