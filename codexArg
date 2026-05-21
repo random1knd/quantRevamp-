@@ -2,57 +2,63 @@
 
 Change made:
 
-- Completed Cycle 6 prerequisite: added `robust_zscore_cross_session` to
-  `shared/indicators/zscore.py`.
-- Completed Cycle 6: added `shared/indicators/volume.py`.
-- Added `volume_ratio`, `volume_robust_zscore`, and `absorption_ratio`.
-- Did not add blocked `VolRegime`, `JumpRatio`, or any other volume feature.
-- Did not start Cycle 7 or wire these indicators into any strategy.
+- Completed Cycle 7: added `shared/indicators/candle.py`.
+- Completed Cycle 7: added `shared/indicators/time_context.py`.
+- Added candle helpers `body_ratio` and `close_position`.
+- Added time-context helpers `session_progress`, `bars_since_open`,
+  `hour_of_day`, and `day_of_week`.
+- Did not add blocked `CandleType`.
+- Did not start Cycle 8 or wire these indicators into any strategy.
 
-Z-score prerequisite:
+Candle file and functions:
 
-- `robust_zscore_cross_session(...)`: `shared/indicators/zscore.py:93-107`
-- It uses the same median/MAD formula as `robust_zscore`, but without session
-  grouping, and returns name `"ZScore"`.
-- New z-score tests:
-  - `test_robust_zscore_cross_session_returns_value_after_window_is_met`
-  - `test_robust_zscore_cross_session_returns_nan_when_mad_is_zero`
+- `shared/indicators/candle.py`
+- Constants: lines 6-7
+- `body_ratio(...)`: lines 10-19
+- `close_position(...)`: lines 22-30
 
-New volume file and functions:
+Time-context file and functions:
 
-- `shared/indicators/volume.py`
-- Constants: lines 8-10
-- `volume_ratio(...)`: lines 13-22
-- `volume_robust_zscore(...)`: lines 25-33
-- `absorption_ratio(...)`: lines 36-44
-- Local validation helper: lines 47-49
+- `shared/indicators/time_context.py`
+- Constants: lines 6-9
+- `session_progress(...)`: lines 12-35
+- `bars_since_open(...)`: lines 38-44
+- `hour_of_day(...)`: lines 47-54
+- `day_of_week(...)`: lines 57-64
 
 Tests:
 
-- Updated z-score test file: `tests/shared/indicators/test_zscore.py`
-- New z-score test lines: `tests/shared/indicators/test_zscore.py:154-168`
-- New volume test file: `tests/shared/indicators/test_volume.py`
-- Cycle 6 volume tests added: 11
-- Volume test range: `tests/shared/indicators/test_volume.py:12-113`
+- New candle test file: `tests/shared/indicators/test_candle.py`
+- Candle tests added: 9
+- Candle test range: `tests/shared/indicators/test_candle.py:7-114`
+- New time-context test file: `tests/shared/indicators/test_time_context.py`
+- Time-context tests added: 9
+- Time-context test range:
+  `tests/shared/indicators/test_time_context.py:14-110`
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_zscore.py tests\shared\indicators\test_volume.py`
-  -> 29 passed
-- `.venv\Scripts\python.exe -m pytest` -> 174 passed
+- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_candle.py tests\shared\indicators\test_time_context.py`
+  -> 18 passed
+- `.venv\Scripts\python.exe -m pytest` -> 192 passed
 
 Spec notes:
 
-- `volume.py` imports pandas plus the explicitly required
-  `robust_zscore_cross_session` from `shared.indicators.zscore`.
-- `volume_ratio` masks zero rolling means to NaN and validates positive
-  windows.
-- `volume_robust_zscore` delegates to `robust_zscore_cross_session`, renames
-  to `"VolumeRobustZ"`, and has the required cross-session comment.
-- `absorption_ratio` masks zero price change to NaN, preserves zero delta as
-  `0.0`, and includes the required context-only time-bar approximation
-  comment.
-- No deviations from the unlocked Cycle 6 scope.
+- Both new modules import pandas only.
+- No shared indicator imports were added.
+- Candle functions mask zero ranges to NaN and set the requested names.
+- `session_progress` converts timezone-aware input to the requested timezone,
+  uses the open-inclusive and close-exclusive session mask, and names the
+  output `"SessionProgress"`.
+- `bars_since_open` intentionally takes only `session`, matching Claude's
+  instruction to drop the misleading unused `datetime_series` argument.
+
+Fixture deviations from Claude's test text:
+
+- The day-of-week test uses `2024-01-15 14:30:00 UTC` instead of
+  `2024-01-15 00:00:00 UTC`. Midnight UTC converts to Sunday evening in
+  `"America/New_York"`, while 14:30 UTC converts to Monday 09:30 ET and tests
+  the specified timezone conversion behavior.
 
 Carried forward:
 
@@ -64,6 +70,6 @@ Carried forward:
 
 Stopped before:
 
-- Cycle 7.
+- Cycle 8.
 - Any strategy or research-indicator wiring.
 - Discovery rerun or slicing.
