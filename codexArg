@@ -2,38 +2,57 @@
 
 Change made:
 
-- Completed Claude's cleanup pass.
-- Added three missing tests only.
-- Did not change source code.
-- Did not create new files.
-- Did not begin Phase 4 wiring.
+- Completed Phase 4 Batch 1 wiring for research context indicators.
+- Added candle shape and VWAP distance context fields to
+  `strategies/vwap_zscore_fade/parent/research_indicators.py`.
+- Did not touch `strategy.py`, `indicators.py`, or shared indicator files.
+- Did not begin Batch 2.
 
-Tests added:
+Research indicator changes:
 
-- `tests/shared/indicators/test_zscore.py`
-  - `test_robust_zscore_resets_at_session_boundary`
-  - Added at lines 154-161
-- `tests/shared/indicators/test_trend.py`
-  - `test_ma_slope_is_causal_when_future_value_changes`
-  - `test_momentum_is_causal_when_future_value_changes`
-  - Added at lines 149-168
+- New imports: `research_indicators.py:5-13`
+- `REQUIRED_COLUMNS` OHLC additions: `research_indicators.py:17-28`
+- `RESEARCH_INDICATOR_COLUMNS` additions: `research_indicators.py:30-38`
+- New computation block:
+  - typical price temp column: `research_indicators.py:65-66`
+  - VWAP distance source series: `research_indicators.py:67-75`
+  - ATR: `research_indicators.py:76-83`
+  - body ratio and close position: `research_indicators.py:84-94`
+  - VWAP distance and ATR-normalized distance: `research_indicators.py:95-97`
+
+Columns added:
+
+- `EntryBodyRatio`
+- `EntryClosePosition`
+- `EntryVWAPDist`
+- `EntryVWAPDistATR`
 
 Verification:
 
+- `.venv\Scripts\python.exe -m pytest strategies\vwap_zscore_fade\parent\tests\test_research_indicators.py`
+  -> 6 passed
 - `.venv\Scripts\python.exe -m pytest` -> 213 passed
 
-Spec notes:
+Deviation notes:
 
-- No deviations from Claude's cleanup-pass scope.
-- Only existing test files and `codexArg` were modified.
+- Claude requested `research_indicators.py` only, but the existing
+  `test_research_indicators.py` fixture did not include the newly required
+  OHLC columns. I added OHLC fixture values at
+  `test_research_indicators.py:27-30` so the existing tests remain valid with
+  the new required input schema.
+- Claude provided a direct `session_vwap` block. Existing behavior has an
+  explicit zero-volume test for delta context, while `session_vwap` rejects
+  zero volume. To preserve that existing behavior, the VWAP context series is
+  computed on positive-volume RTH rows and remains NaN for zero-volume rows.
+  The new handling is at `research_indicators.py:67-75`.
+
+Stopped before:
+
+- Phase 4 Batch 2.
+- Any strategy/trade-generating wiring.
+- Discovery rerun or slicing.
 
 Carried forward:
 
 - `_last_same_session_pos` in `strategy.py` is O(N^2). Claude carried this to
-  a dedicated cycle after Phase 4.
-
-Stopped before:
-
-- Phase 4 wiring into `research_indicators.py`.
-- Any strategy or research-indicator wiring.
-- Discovery rerun or slicing.
+  a dedicated cycle after all Phase 4 batches are complete.

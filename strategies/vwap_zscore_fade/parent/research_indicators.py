@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import pandas as pd
 
+from shared.indicators.candle import body_ratio, close_position
+from shared.indicators.volatility import session_atr
+from shared.indicators.vwap import (
+    session_vwap,
+    typical_price,
+    vwap_distance,
+    vwap_distance_atr_normalized,
+)
 from shared.indicators.zscore import gap_free_rolling_window
 from strategies.vwap_zscore_fade.parent import params
 
@@ -10,6 +18,10 @@ REQUIRED_COLUMNS = (
     "SessionDate_ET",
     "SessionMinute_ET",
     "BarGapFromPrevious",
+    "Open",
+    "High",
+    "Low",
+    "Close",
     "Volume",
     "BidVolume",
     "AskVolume",
@@ -19,6 +31,10 @@ RESEARCH_INDICATOR_COLUMNS = (
     "EntryVolumeZ",
     "EntryDelta",
     "EntryDeltaPct",
+    "EntryBodyRatio",
+    "EntryClosePosition",
+    "EntryVWAPDist",
+    "EntryVWAPDistATR",
 )
 
 
@@ -46,6 +62,39 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     rth["EntryDeltaPct"] = rth["EntryDelta"] / rth["Volume"].mask(
         rth["Volume"] == 0.0
     )
+    _typical = typical_price(rth["High"], rth["Low"], rth["Close"])
+    rth["_TP"] = _typical
+    _vwap = pd.Series(index=rth.index, dtype="float64")
+    positive_volume = rth["Volume"] > 0.0
+    if positive_volume.any():
+        _vwap.loc[positive_volume] = session_vwap(
+            rth.loc[positive_volume].copy(),
+            price_col="_TP",
+            volume_col="Volume",
+            session_col="SessionDate_ET",
+        )
+    _atr = session_atr(
+        rth,
+        high_col="High",
+        low_col="Low",
+        close_col="Close",
+        session_col="SessionDate_ET",
+        window=params.ATR_WINDOW,
+    )
+    rth["EntryBodyRatio"] = body_ratio(
+        rth["Open"],
+        rth["High"],
+        rth["Low"],
+        rth["Close"],
+    )
+    rth["EntryClosePosition"] = close_position(
+        rth["High"],
+        rth["Low"],
+        rth["Close"],
+    )
+    _dist = vwap_distance(rth["Close"], _vwap)
+    rth["EntryVWAPDist"] = _dist
+    rth["EntryVWAPDistATR"] = vwap_distance_atr_normalized(_dist, _atr)
 
     result.loc[rth.index, RESEARCH_INDICATOR_COLUMNS] = rth.loc[
         :, RESEARCH_INDICATOR_COLUMNS
