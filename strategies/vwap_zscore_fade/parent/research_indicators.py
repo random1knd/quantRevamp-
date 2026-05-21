@@ -9,6 +9,9 @@ from shared.indicators.liquidity import (
     vpin_approx,
 )
 from shared.indicators.order_flow import cumulative_delta, delta_roc, ofi_approx
+from shared.indicators.regime import rolling_autocorr, rolling_variance_ratio
+from shared.indicators.time_context import bars_since_open
+from shared.indicators.trend import adx, efficiency_ratio
 from shared.indicators.volatility import (
     atr_percentile,
     realized_volatility,
@@ -56,6 +59,11 @@ RESEARCH_INDICATOR_COLUMNS = (
     "EntryVPIN",
     "EntryKyleLambda",
     "EntryKyleLambdaPctile",
+    "EntryAutoCorr",
+    "EntryVarRatio",
+    "EntryADX",
+    "EntryEfficiencyRatio",
+    "EntryBarsSinceOpen",
 )
 
 
@@ -132,6 +140,11 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     _kyle = kyle_lambda(_price_change, rth["EntryDelta"], window=20)
     rth["EntryKyleLambda"] = _kyle
     rth["EntryKyleLambdaPctile"] = kyle_lambda_percentile(_kyle, window=20)
+    rth["EntryAutoCorr"] = rolling_autocorr(rth["Close"], window=20, lag=1)
+    rth["EntryVarRatio"] = rolling_variance_ratio(rth["Close"], window=20, q=2)
+    rth["EntryADX"] = adx(rth, window=14)["ADX"]
+    rth["EntryEfficiencyRatio"] = efficiency_ratio(rth["Close"], window=20)
+    rth["EntryBarsSinceOpen"] = bars_since_open(session=rth["SessionDate_ET"])
 
     result.loc[rth.index, RESEARCH_INDICATOR_COLUMNS] = rth.loc[
         :, RESEARCH_INDICATOR_COLUMNS

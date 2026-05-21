@@ -267,3 +267,73 @@ def test_batch3_columns_are_nan_for_non_rth_rows():
     for col in batch3_columns:
         assert pd.isna(result.loc[0, col]), f"{col} should be NaN for pre-RTH row"
         assert pd.isna(result.loc[2, col]), f"{col} should be NaN for post-RTH row"
+
+
+def test_batch4_autocorr_is_nan_before_window_and_one_for_linear_trend():
+    bars = make_bars(volumes=[100.0] * 25)
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryAutoCorr"].iloc[:20].isna().all()
+    assert result["EntryAutoCorr"].iloc[20] == pytest.approx(1.0)
+
+
+def test_batch4_var_ratio_is_nan_for_constant_step_close():
+    bars = make_bars(volumes=[100.0] * 25)
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryVarRatio"].isna().all()
+
+
+def test_batch4_adx_is_nan_early_and_non_nan_eventually():
+    bars = make_bars(volumes=[100.0] * 50)
+
+    result = add_research_indicators(bars)
+
+    assert pd.isna(result["EntryADX"].iloc[0])
+    assert len(result["EntryADX"].dropna()) > 0
+
+
+def test_batch4_efficiency_ratio_is_nan_before_window_and_one_for_trend():
+    bars = make_bars(volumes=[100.0] * 25)
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryEfficiencyRatio"].iloc[:20].isna().all()
+    assert result["EntryEfficiencyRatio"].iloc[20] == pytest.approx(1.0)
+
+
+def test_batch4_bars_since_open_starts_at_zero_and_resets_at_session_boundary():
+    bars = make_bars(
+        volumes=[100.0] * 10,
+        session_dates=["2026-01-02"] * 5 + ["2026-01-05"] * 5,
+        session_minutes=[0, 5, 10, 15, 20, 0, 5, 10, 15, 20],
+    )
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryBarsSinceOpen"].iloc[0] == pytest.approx(0.0)
+    assert result["EntryBarsSinceOpen"].iloc[4] == pytest.approx(4.0)
+    assert result["EntryBarsSinceOpen"].iloc[5] == pytest.approx(0.0)
+    assert result["EntryBarsSinceOpen"].iloc[9] == pytest.approx(4.0)
+
+
+def test_batch4_columns_are_nan_for_non_rth_rows():
+    bars = make_bars(
+        volumes=[100.0, 100.0, 100.0],
+        session_minutes=[-5, 100, 400],
+    )
+    batch4_columns = [
+        "EntryAutoCorr",
+        "EntryVarRatio",
+        "EntryADX",
+        "EntryEfficiencyRatio",
+        "EntryBarsSinceOpen",
+    ]
+
+    result = add_research_indicators(bars)
+
+    for col in batch4_columns:
+        assert pd.isna(result.loc[0, col]), f"{col} should be NaN for pre-RTH row"
+        assert pd.isna(result.loc[2, col]), f"{col} should be NaN for post-RTH row"
