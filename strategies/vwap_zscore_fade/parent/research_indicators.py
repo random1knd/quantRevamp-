@@ -3,7 +3,13 @@ from __future__ import annotations
 import pandas as pd
 
 from shared.indicators.candle import body_ratio, close_position
-from shared.indicators.volatility import session_atr
+from shared.indicators.order_flow import cumulative_delta
+from shared.indicators.volatility import (
+    atr_percentile,
+    realized_volatility,
+    session_atr,
+)
+from shared.indicators.volume import volume_ratio, volume_robust_zscore
 from shared.indicators.vwap import (
     session_vwap,
     typical_price,
@@ -35,6 +41,11 @@ RESEARCH_INDICATOR_COLUMNS = (
     "EntryClosePosition",
     "EntryVWAPDist",
     "EntryVWAPDistATR",
+    "EntryRealizedVol",
+    "EntryVolRatio",
+    "EntryVolRobustZ",
+    "EntryATRPctile",
+    "EntryCumDelta",
 )
 
 
@@ -95,6 +106,15 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     _dist = vwap_distance(rth["Close"], _vwap)
     rth["EntryVWAPDist"] = _dist
     rth["EntryVWAPDistATR"] = vwap_distance_atr_normalized(_dist, _atr)
+    _returns = rth["Close"].pct_change()
+    rth["EntryRealizedVol"] = realized_volatility(_returns, window=20)
+    rth["EntryVolRatio"] = volume_ratio(rth["Volume"], window=20)
+    rth["EntryVolRobustZ"] = volume_robust_zscore(rth["Volume"], window=20)
+    rth["EntryATRPctile"] = atr_percentile(_atr, window=20)
+    rth["EntryCumDelta"] = cumulative_delta(
+        rth["EntryDelta"],
+        session=rth["SessionDate_ET"],
+    )
 
     result.loc[rth.index, RESEARCH_INDICATOR_COLUMNS] = rth.loc[
         :, RESEARCH_INDICATOR_COLUMNS

@@ -2,53 +2,52 @@
 
 Change made:
 
-- Completed Phase 4 Batch 1 wiring for research context indicators.
-- Added candle shape and VWAP distance context fields to
+- Completed Phase 4 Batch 2 wiring for research context indicators.
+- Added volatility regime, volume profile, and session delta context fields to
   `strategies/vwap_zscore_fade/parent/research_indicators.py`.
-- Did not touch `strategy.py`, `indicators.py`, or shared indicator files.
-- Did not begin Batch 2.
+- Did not touch `strategy.py`, `indicators.py`, shared indicator files, or tests.
+- Did not begin Batch 3.
 
 Research indicator changes:
 
-- New imports: `research_indicators.py:5-13`
-- `REQUIRED_COLUMNS` OHLC additions: `research_indicators.py:17-28`
-- `RESEARCH_INDICATOR_COLUMNS` additions: `research_indicators.py:30-38`
+- New/expanded imports:
+  - `cumulative_delta`: `research_indicators.py:6`
+  - `atr_percentile`, `realized_volatility`, `session_atr` import block:
+    `research_indicators.py:7-11`
+  - `volume_ratio`, `volume_robust_zscore`: `research_indicators.py:12`
+- `RESEARCH_INDICATOR_COLUMNS` additions: `research_indicators.py:44-48`
 - New computation block:
-  - typical price temp column: `research_indicators.py:65-66`
-  - VWAP distance source series: `research_indicators.py:67-75`
-  - ATR: `research_indicators.py:76-83`
-  - body ratio and close position: `research_indicators.py:84-94`
-  - VWAP distance and ATR-normalized distance: `research_indicators.py:95-97`
+  - close returns: `research_indicators.py:109`
+  - realized volatility: `research_indicators.py:110`
+  - volume ratio: `research_indicators.py:111`
+  - volume robust z-score: `research_indicators.py:112`
+  - ATR percentile: `research_indicators.py:113`
+  - cumulative delta: `research_indicators.py:114-117`
 
 Columns added:
 
-- `EntryBodyRatio`
-- `EntryClosePosition`
-- `EntryVWAPDist`
-- `EntryVWAPDistATR`
+- `EntryRealizedVol`
+- `EntryVolRatio`
+- `EntryVolRobustZ`
+- `EntryATRPctile`
+- `EntryCumDelta`
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest strategies\vwap_zscore_fade\parent\tests\test_research_indicators.py`
-  -> 6 passed
 - `.venv\Scripts\python.exe -m pytest` -> 213 passed
 
-Deviation notes:
+Spec notes:
 
-- Claude requested `research_indicators.py` only, but the existing
-  `test_research_indicators.py` fixture did not include the newly required
-  OHLC columns. I added OHLC fixture values at
-  `test_research_indicators.py:27-30` so the existing tests remain valid with
-  the new required input schema.
-- Claude provided a direct `session_vwap` block. Existing behavior has an
-  explicit zero-volume test for delta context, while `session_vwap` rejects
-  zero volume. To preserve that existing behavior, the VWAP context series is
-  computed on positive-volume RTH rows and remains NaN for zero-volume rows.
-  The new handling is at `research_indicators.py:67-75`.
+- `_atr` from Batch 1 is reused; no second `session_atr` call was added.
+- `_returns = rth["Close"].pct_change()` is cross-session on the RTH subset, as
+  Claude specified.
+- `EntryCumDelta` uses the existing `EntryDelta` column and resets by
+  `SessionDate_ET`.
+- No deviations from Claude's Batch 2 scope.
 
 Stopped before:
 
-- Phase 4 Batch 2.
+- Phase 4 Batch 3.
 - Any strategy/trade-generating wiring.
 - Discovery rerun or slicing.
 
