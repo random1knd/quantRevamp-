@@ -2,49 +2,44 @@
 
 Change made:
 
-- Completed Cycle 8: expanded `shared/indicators/vwap.py`.
-- Added `vwap_distance` and `vwap_distance_atr_normalized`.
-- Added constants `VWAP_DISTANCE_NAME` and `VWAP_DISTANCE_ATR_NAME`.
-- Did not touch `typical_price` or `session_vwap` behavior.
-- Did not add blocked `VWAPDist_SD`.
-- Did not start Cycle 9 or wire these indicators into any strategy.
+- Completed Cycle 9: added `shared/indicators/liquidity.py`.
+- Added `vpin_approx`, `kyle_lambda`, and `kyle_lambda_percentile`.
+- Did not add any other liquidity functions.
+- Did not start Phase 4 or wire these indicators into `research_indicators.py`.
 
-VWAP file additions:
+Liquidity file and functions:
 
-- `shared/indicators/vwap.py`
-- New constants: lines 7-8
-- `vwap_distance(...)`: lines 19-25
-- `vwap_distance_atr_normalized(...)`: lines 28-34
+- `shared/indicators/liquidity.py`
+- Constants: lines 8-10
+- `vpin_approx(...)`: lines 13-27
+- `kyle_lambda(...)`: lines 30-43
+- `kyle_lambda_percentile(...)`: lines 46-53
+- Local validation helpers: lines 56-64
 
 Tests:
 
-- Updated test file: `tests/shared/indicators/test_vwap.py`
-- Cycle 8 tests added: 8
-- New test range: `tests/shared/indicators/test_vwap.py:243-309`
-- New test names:
-  - `test_vwap_distance_returns_positive_when_close_above_vwap`
-  - `test_vwap_distance_returns_negative_when_close_below_vwap`
-  - `test_vwap_distance_returns_nan_where_vwap_is_nan`
-  - `test_vwap_distance_atr_normalized_returns_known_value`
-  - `test_vwap_distance_atr_normalized_returns_nan_where_atr_is_zero`
-  - `test_vwap_distance_atr_normalized_returns_nan_where_atr_is_nan`
-  - `test_vwap_distance_is_causal_when_future_values_change`
-  - `test_vwap_distance_atr_normalized_is_causal_when_future_values_change`
+- New test file: `tests/shared/indicators/test_liquidity.py`
+- Cycle 9 tests added: 10
+- Test range: `tests/shared/indicators/test_liquidity.py:12-134`
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_vwap.py`
-  -> 20 passed
-- `.venv\Scripts\python.exe -m pytest` -> 200 passed
+- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_liquidity.py`
+  -> 10 passed
+- `.venv\Scripts\python.exe -m pytest` -> 210 passed
 
 Spec notes:
 
-- `vwap.py` remains pandas-only.
-- `vwap_distance` returns `close - vwap` and allows NaNs to propagate
-  naturally.
-- `vwap_distance_atr_normalized` masks zero ATR to NaN and naturally propagates
-  NaN ATR.
-- No deviations from the unlocked Cycle 8 scope.
+- `liquidity.py` imports pandas and `rolling_percentile` from
+  `shared.indicators.zscore`, as specified.
+- `vpin_approx` validates `BidVolume`, `AskVolume`, and `Volume`, masks zero
+  volume to NaN before division, uses a full-window rolling mean, and includes
+  both required time-bar/context comments.
+- `kyle_lambda` uses rolling covariance divided by rolling signed-volume
+  variance, masks zero variance to NaN, and returns `"KyleLambda"`.
+- `kyle_lambda_percentile` delegates to `rolling_percentile` and renames the
+  result to `"KyleLambda_Pctile"`.
+- No deviations from the unlocked Cycle 9 scope.
 
 Carried forward:
 
@@ -56,6 +51,6 @@ Carried forward:
 
 Stopped before:
 
-- Cycle 9.
+- Phase 4 wiring into `research_indicators.py`.
 - Any strategy or research-indicator wiring.
 - Discovery rerun or slicing.
