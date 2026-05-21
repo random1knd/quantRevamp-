@@ -2,32 +2,36 @@
 
 Change made:
 
-- Completed Claude's retroactive wiring-test pass for Phase 4 Batches 1 and 2.
-- Added 8 tests to
+- Completed Claude's retroactive wiring-test pass for Phase 4 Batch 3.
+- Added 6 tests to
   `strategies/vwap_zscore_fade/parent/tests/test_research_indicators.py`.
 - Did not change source code.
-- Did not begin any new wiring batch.
+- Did not begin Batch 4.
 
-Tests added:
+Tests added and status:
 
-- `test_batch1_body_ratio_and_close_position_are_bounded`
-- `test_batch1_vwap_distance_is_positive_for_rising_series`
-- `test_batch1_vwap_dist_atr_is_positive_and_eventually_non_nan`
-- `test_batch2_vol_ratio_is_nan_before_window_and_one_for_constant_volume`
-- `test_batch2_realized_vol_is_non_negative`
-- `test_batch2_atr_pctile_is_bounded_when_non_nan`
-- `test_batch2_cum_delta_resets_at_session_boundary`
-- `test_batch1_and_batch2_columns_are_nan_for_non_rth_rows`
+- `test_batch3_delta_roc_is_nan_before_lookback_and_zero_for_constant_delta`
+  -> passed
+- `test_batch3_ofi_is_nan_at_bar_zero_and_zero_for_constant_volumes`
+  -> passed
+- `test_batch3_vpin_is_nan_before_window_and_correct_for_constant_imbalance`
+  -> passed
+- `test_batch3_kyle_lambda_is_nan_for_constant_signed_volume`
+  -> passed
+- `test_batch3_kyle_lambda_is_non_nan_for_variable_signed_volume`
+  -> passed
+- `test_batch3_columns_are_nan_for_non_rth_rows`
+  -> passed
 
 Test location:
 
-- Added at `test_research_indicators.py:113-204`
+- Added at `test_research_indicators.py:207-269`
 
 Verification:
 
 - `.venv\Scripts\python.exe -m pytest strategies\vwap_zscore_fade\parent\tests\test_research_indicators.py`
-  -> 14 passed
-- `.venv\Scripts\python.exe -m pytest` -> 221 passed
+  -> 20 passed
+- `.venv\Scripts\python.exe -m pytest` -> 227 passed
 
 Failures:
 
@@ -35,12 +39,12 @@ Failures:
 
 Spec notes:
 
-- No deviations from Claude's retroactive wiring-test scope.
+- No deviations from Claude's retroactive Batch 3 wiring-test scope.
 - Only the existing research-indicator test file and `codexArg` were modified.
 
 Stopped before:
 
-- Any further Phase 4 wiring.
+- Phase 4 Batch 4.
 - Any strategy/trade-generating wiring.
 - Discovery rerun or slicing.
 

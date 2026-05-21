@@ -202,3 +202,68 @@ def test_batch1_and_batch2_columns_are_nan_for_non_rth_rows():
     for col in new_columns:
         assert pd.isna(result.loc[0, col]), f"{col} should be NaN for pre-RTH row"
         assert pd.isna(result.loc[2, col]), f"{col} should be NaN for post-RTH row"
+
+
+def test_batch3_delta_roc_is_nan_before_lookback_and_zero_for_constant_delta():
+    bars = make_bars(volumes=[100.0] * 10)
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryDeltaROC"].iloc[:5].isna().all()
+    assert result["EntryDeltaROC"].iloc[5] == pytest.approx(0.0)
+
+
+def test_batch3_ofi_is_nan_at_bar_zero_and_zero_for_constant_volumes():
+    bars = make_bars(volumes=[100.0] * 5)
+
+    result = add_research_indicators(bars)
+
+    assert pd.isna(result["EntryOFI"].iloc[0])
+    assert result["EntryOFI"].iloc[1] == pytest.approx(0.0)
+    assert result["EntryOFI"].iloc[4] == pytest.approx(0.0)
+
+
+def test_batch3_vpin_is_nan_before_window_and_correct_for_constant_imbalance():
+    bars = make_bars(volumes=[100.0] * 25)
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryVPIN"].iloc[:19].isna().all()
+    assert result["EntryVPIN"].iloc[19] == pytest.approx(0.2)
+
+
+def test_batch3_kyle_lambda_is_nan_for_constant_signed_volume():
+    bars = make_bars(volumes=[100.0] * 25)
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryKyleLambda"].isna().all()
+
+
+def test_batch3_kyle_lambda_is_non_nan_for_variable_signed_volume():
+    volumes = [100.0 + index * 10.0 for index in range(25)]
+    bars = make_bars(volumes=volumes)
+
+    result = add_research_indicators(bars)
+
+    assert result["EntryKyleLambda"].iloc[20:].notna().all()
+
+
+def test_batch3_columns_are_nan_for_non_rth_rows():
+    bars = make_bars(
+        volumes=[100.0, 100.0, 100.0],
+        session_minutes=[-5, 100, 400],
+    )
+    batch3_columns = [
+        "EntryDeltaROC",
+        "EntryOFI",
+        "EntryVPIN",
+        "EntryKyleLambda",
+        "EntryKyleLambdaPctile",
+    ]
+
+    result = add_research_indicators(bars)
+
+    for col in batch3_columns:
+        assert pd.isna(result.loc[0, col]), f"{col} should be NaN for pre-RTH row"
+        assert pd.isna(result.loc[2, col]), f"{col} should be NaN for post-RTH row"
