@@ -2,45 +2,57 @@
 
 Change made:
 
-- Completed Cycle 5: added `shared/indicators/order_flow.py`.
-- Added `delta`, `cumulative_delta`, `delta_roc`, and `ofi_approx`.
-- Did not add any z-scoring or shared indicator imports; callers remain
-  responsible for z-scoring flow outputs.
-- Did not start Cycle 6 or wire these indicators into any strategy.
+- Completed Cycle 6 prerequisite: added `robust_zscore_cross_session` to
+  `shared/indicators/zscore.py`.
+- Completed Cycle 6: added `shared/indicators/volume.py`.
+- Added `volume_ratio`, `volume_robust_zscore`, and `absorption_ratio`.
+- Did not add blocked `VolRegime`, `JumpRatio`, or any other volume feature.
+- Did not start Cycle 7 or wire these indicators into any strategy.
 
-New file and functions:
+Z-score prerequisite:
 
-- `shared/indicators/order_flow.py`
-- Constants: lines 6-9
-- `delta(...)`: lines 12-18
-- `cumulative_delta(...)`: lines 21-28
-- `delta_roc(...)`: lines 31-41
-- `ofi_approx(...)`: lines 44-53
-- Local validation helper: lines 56-63
+- `robust_zscore_cross_session(...)`: `shared/indicators/zscore.py:93-107`
+- It uses the same median/MAD formula as `robust_zscore`, but without session
+  grouping, and returns name `"ZScore"`.
+- New z-score tests:
+  - `test_robust_zscore_cross_session_returns_value_after_window_is_met`
+  - `test_robust_zscore_cross_session_returns_nan_when_mad_is_zero`
+
+New volume file and functions:
+
+- `shared/indicators/volume.py`
+- Constants: lines 8-10
+- `volume_ratio(...)`: lines 13-22
+- `volume_robust_zscore(...)`: lines 25-33
+- `absorption_ratio(...)`: lines 36-44
+- Local validation helper: lines 47-49
 
 Tests:
 
-- Test file: `tests/shared/indicators/test_order_flow.py`
-- Cycle 5 tests added: 11
-- Test range: `tests/shared/indicators/test_order_flow.py:12-126`
+- Updated z-score test file: `tests/shared/indicators/test_zscore.py`
+- New z-score test lines: `tests/shared/indicators/test_zscore.py:154-168`
+- New volume test file: `tests/shared/indicators/test_volume.py`
+- Cycle 6 volume tests added: 11
+- Volume test range: `tests/shared/indicators/test_volume.py:12-113`
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_order_flow.py`
-  -> 11 passed
-- `.venv\Scripts\python.exe -m pytest` -> 161 passed
+- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_zscore.py tests\shared\indicators\test_volume.py`
+  -> 29 passed
+- `.venv\Scripts\python.exe -m pytest` -> 174 passed
 
 Spec notes:
 
-- `order_flow.py` imports pandas only.
-- `cumulative_delta` resets by caller-provided session labels using
-  `groupby(session, sort=False).cumsum()` and does not validate session labels.
-- `delta_roc` validates positive lookback and returns raw flow difference, not
-  a normalized rate.
-- `ofi_approx` validates `BidVolume` and `AskVolume`, leaves bar 0 as NaN via
-  `.diff()`, includes both required context comments, and is named
-  `OFI_Approx`.
-- No deviations from the unlocked Cycle 5 scope.
+- `volume.py` imports pandas plus the explicitly required
+  `robust_zscore_cross_session` from `shared.indicators.zscore`.
+- `volume_ratio` masks zero rolling means to NaN and validates positive
+  windows.
+- `volume_robust_zscore` delegates to `robust_zscore_cross_session`, renames
+  to `"VolumeRobustZ"`, and has the required cross-session comment.
+- `absorption_ratio` masks zero price change to NaN, preserves zero delta as
+  `0.0`, and includes the required context-only time-bar approximation
+  comment.
+- No deviations from the unlocked Cycle 6 scope.
 
 Carried forward:
 
@@ -52,6 +64,6 @@ Carried forward:
 
 Stopped before:
 
-- Cycle 6.
+- Cycle 7.
 - Any strategy or research-indicator wiring.
 - Discovery rerun or slicing.

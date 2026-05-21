@@ -5,6 +5,7 @@ from shared.indicators.zscore import (
     ewma_zscore,
     gap_free_rolling_window,
     robust_zscore,
+    robust_zscore_cross_session,
     rolling_percentile,
     rolling_zscore,
     rolling_zscore_cross_session,
@@ -146,6 +147,23 @@ def test_robust_zscore_returns_nan_when_mad_is_zero():
     session = pd.Series(["a"] * 4)
 
     result = robust_zscore(series, session=session, window=3)
+
+    assert result.isna().all()
+
+
+def test_robust_zscore_cross_session_returns_value_after_window_is_met():
+    series = pd.Series([0.0, 80.0, 100.0, 100.0, 110.0])
+
+    result = robust_zscore_cross_session(series, window=5)
+
+    assert result.name == "ZScore"
+    assert result.iloc[4] == pytest.approx(10.0 / (1.4826 * 10.0))
+
+
+def test_robust_zscore_cross_session_returns_nan_when_mad_is_zero():
+    series = pd.Series([7.0, 7.0, 7.0, 7.0])
+
+    result = robust_zscore_cross_session(series, window=3)
 
     assert result.isna().all()
 

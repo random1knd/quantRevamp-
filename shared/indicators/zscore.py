@@ -90,6 +90,23 @@ def robust_zscore(
     return result
 
 
+def robust_zscore_cross_session(
+    series: pd.Series,
+    *,
+    window: int,
+) -> pd.Series:
+    _validate_positive_window(window)
+    rolling_median = series.rolling(window=window, min_periods=window).median()
+    rolling_mad = series.rolling(window=window, min_periods=window).apply(
+        _median_absolute_deviation,
+        raw=True,
+    )
+    denominator = (1.4826 * rolling_mad).mask(rolling_mad == 0.0)
+    result = (series - rolling_median) / denominator
+    result.name = ZSCORE_NAME
+    return result
+
+
 def rolling_percentile(
     series: pd.Series,
     *,
