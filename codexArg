@@ -2,68 +2,67 @@
 
 Change made:
 
-- Completed Claude's Phase 4 Batch 4 final research-indicator wiring batch.
-- Added 5 research-context columns to
-  `strategies/vwap_zscore_fade/parent/research_indicators.py`.
-- Added 6 Batch 4 wiring tests to
-  `strategies/vwap_zscore_fade/parent/tests/test_research_indicators.py`.
-- Did not change strategy trade generation.
-- Did not run discovery.
+- Completed Claude's discovery re-run after Phase 4 research-indicator wiring.
+- No source code changes.
+- Did not begin slicing.
 
-Exact imports added:
+Command result:
 
-- `from shared.indicators.regime import rolling_autocorr, rolling_variance_ratio`
-- `from shared.indicators.time_context import bars_since_open`
-- `from shared.indicators.trend import adx, efficiency_ratio`
+- Initial command failed:
+  `.venv\Scripts\python.exe strategies\vwap_zscore_fade\parent\discovery_run.py`
+  -> `ModuleNotFoundError: No module named 'shared'`
+- Rerun command used:
+  `$env:PYTHONPATH=(Get-Location).Path; .venv\Scripts\python.exe strategies\vwap_zscore_fade\parent\discovery_run.py`
+  -> completed successfully
 
-Exact columns added:
+Full output directory path:
 
-- `EntryAutoCorr`
-- `EntryVarRatio`
-- `EntryADX`
-- `EntryEfficiencyRatio`
-- `EntryBarsSinceOpen`
+- `C:\Users\AMD\Desktop\trading apps\trading apps\NewQuantfolder\data\results\vwap_zscore_fade\parent\discovery_20260521T154002Z`
 
-Exact wiring lines added:
+Total trade row count:
 
-- `rth["EntryAutoCorr"] = rolling_autocorr(rth["Close"], window=20, lag=1)`
-- `rth["EntryVarRatio"] = rolling_variance_ratio(rth["Close"], window=20, q=2)`
-- `rth["EntryADX"] = adx(rth, window=14)["ADX"]`
-- `rth["EntryEfficiencyRatio"] = efficiency_ratio(rth["Close"], window=20)`
-- `rth["EntryBarsSinceOpen"] = bars_since_open(session=rth["SessionDate_ET"])`
+- 3528
 
-Tests added and status:
+Full column header from `context_trades.csv`:
 
-- `test_batch4_autocorr_is_nan_before_window_and_one_for_linear_trend`
-  -> passed
-- `test_batch4_var_ratio_is_nan_for_constant_step_close`
-  -> passed
-- `test_batch4_adx_is_nan_early_and_non_nan_eventually`
-  -> passed
-- `test_batch4_efficiency_ratio_is_nan_before_window_and_one_for_trend`
-  -> passed
-- `test_batch4_bars_since_open_starts_at_zero_and_resets_at_session_boundary`
-  -> passed
-- `test_batch4_columns_are_nan_for_non_rth_rows`
-  -> passed
+```csv
+EntryTime,ExitTime,Side,EntryPrice,ExitPrice,InitialStopPrice,InitialRisk,RealizedR_Gross,RealizedR_Net,RealizedR,ExitReason,BarsHeld,SignalTime,SignalATR,EntryZ,EntrySessionVWAP,EntryVWAPDeviation,Contract,CommissionIsSmokeTest,GapThrough,HoldCrossesGap,EntryVolumeZ,EntryDelta,EntryDeltaPct,EntryBodyRatio,EntryClosePosition,EntryVWAPDist,EntryVWAPDistATR,EntryRealizedVol,EntryVolRatio,EntryVolRobustZ,EntryATRPctile,EntryCumDelta,EntryDeltaROC,EntryOFI,EntryVPIN,EntryKyleLambda,EntryKyleLambdaPctile,EntryAutoCorr,EntryVarRatio,EntryADX,EntryEfficiencyRatio,EntryBarsSinceOpen
+```
 
-Verification:
+Sample rows showing all Entry* values:
 
-- `.venv\Scripts\python.exe -m pytest` -> 233 passed
+```csv
+EntryTime,EntryVolumeZ,EntryDelta,EntryDeltaPct,EntryBodyRatio,EntryClosePosition,EntryVWAPDist,EntryVWAPDistATR,EntryRealizedVol,EntryVolRatio,EntryVolRobustZ,EntryATRPctile,EntryCumDelta,EntryDeltaROC,EntryOFI,EntryVPIN,EntryKyleLambda,EntryKyleLambdaPctile,EntryAutoCorr,EntryVarRatio,EntryADX,EntryEfficiencyRatio,EntryBarsSinceOpen
+2014-12-08T12:25:00-05:00,1.2662523432354504,8.0,0.0784313725490196,0.6,0.4,-22.76925578974806,-5.848983138650877,0.0009310077657382979,2.9522431259044866,6.63249246818652,1.0,105.0,13.0,9.0,0.49664091073804373,0.0705733492650986,0.4,0.9096799714804973,1.4820459697022546,371.2616423859897,0.7277486910994765,34.0
+2014-12-08T13:30:00-05:00,-0.6260263680514818,3.0,0.2727272727272727,0.8333333333333334,0.8333333333333334,-23.91631694644275,-5.314737099209499,0.0011557378945970327,0.25085518814139107,-0.5995473417569736,0.7,82.0,-14.0,42.0,0.4572593047487928,0.10465467471293062,1.0,0.9217116741674201,1.372664332112594,613.773736101597,0.4896551724137931,47.0
+2014-12-08T13:40:00-05:00,1.3095861026249396,-40.0,-0.3125,0.34615384615384615,0.5769230769230769,-29.449903913347043,-6.0632155115714506,0.0011887979511608078,2.3315118397085612,3.4762216065332217,0.7,-24.0,-36.0,26.0,0.4523485904630785,0.0892908166180924,0.7,0.9058760282261336,1.300151711495307,653.5152300196852,0.541795665634675,49.0
+```
 
-Deviations:
+Entry* non-empty verification:
 
-- None from Claude's Batch 4 instructions.
+- All 22 expected Entry* headers are present.
+- Batch 4 columns have non-empty values:
+  `EntryAutoCorr`, `EntryVarRatio`, `EntryADX`, `EntryEfficiencyRatio`,
+  `EntryBarsSinceOpen`.
+- Existing Entry* columns also have non-empty values in the output; only
+  expected warmup-derived blanks appear in earlier rows.
 
-Assumptions:
+Errors or deviations:
 
-- Claude's specified windows and parameters are the boundary spec for this
-  wiring pass.
-- Batch 4 remains research-context only.
+- The exact command from Claude failed due the repo root not being on Python's
+  import path when running the script by file path.
+- Discovery was rerun with `PYTHONPATH` set to the repo root; no source code was
+  changed.
+- `run_config.json` reports `code_version` as `b249b1f-dirty` because the
+  working tree already had unrelated changes in `ARGUMENT_REVIEW_PROTOCOL.md`,
+  `claudeArg`, and untracked `KNOWN_LIMITATIONS.md`.
 
-Remaining risks:
+Stopped before:
 
-- New Entry* columns are wired for research context only and still require
-  downstream slicing/review before any trade-generating use.
+- Slicing.
+- Any strategy/trade-generating changes.
+
+Carried forward:
+
 - `_last_same_session_pos` in `strategy.py` remains O(N^2), carried forward by
-  Claude to a dedicated cycle after Phase 4 batches.
+  Claude to a dedicated fix cycle.
