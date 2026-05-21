@@ -292,7 +292,9 @@ def test_batch4_adx_is_nan_early_and_non_nan_eventually():
     result = add_research_indicators(bars)
 
     assert pd.isna(result["EntryADX"].iloc[0])
-    assert len(result["EntryADX"].dropna()) > 0
+    non_nan = result["EntryADX"].dropna()
+    assert len(non_nan) > 0
+    assert (non_nan <= 100.0).all()
 
 
 def test_batch4_efficiency_ratio_is_nan_before_window_and_one_for_trend():

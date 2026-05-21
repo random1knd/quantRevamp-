@@ -2,67 +2,57 @@
 
 Change made:
 
-- Completed Claude's discovery re-run after Phase 4 research-indicator wiring.
-- No source code changes.
+- Fixed Claude's ADX scale bug in `_wilder_smooth`.
+- Tightened the shared ADX unit test to require `ADX <= 100.0`.
+- Tightened the Batch 4 research wiring test to require `EntryADX <= 100.0`.
+- Did not rerun discovery.
 - Did not begin slicing.
 
-Command result:
+Exact `_wilder_smooth` lines changed:
 
-- Initial command failed:
-  `.venv\Scripts\python.exe strategies\vwap_zscore_fade\parent\discovery_run.py`
-  -> `ModuleNotFoundError: No module named 'shared'`
-- Rerun command used:
-  `$env:PYTHONPATH=(Get-Location).Path; .venv\Scripts\python.exe strategies\vwap_zscore_fade\parent\discovery_run.py`
-  -> completed successfully
+- Seed with first valid window:
+  `result.iloc[window - 1] = initial_seed.sum()`
+  -> `result.iloc[window - 1] = initial_seed.mean()`
+- Normal seed:
+  `result.iloc[window - 1] = seed_values.sum()`
+  -> `result.iloc[window - 1] = seed_values.mean()`
+- Re-seed after a NaN previous value:
+  `result.iloc[position] = seed_values.sum()`
+  -> `result.iloc[position] = seed_values.mean()`
+- Wilder update:
+  `result.iloc[position] = previous * (window - 1) / window + value`
+  -> `result.iloc[position] = previous * (window - 1) / window + value / window`
 
-Full output directory path:
+Test assertions updated:
 
-- `C:\Users\AMD\Desktop\trading apps\trading apps\NewQuantfolder\data\results\vwap_zscore_fade\parent\discovery_20260521T154002Z`
+- `test_adx_detects_monotonic_uptrend` now asserts
+  `20.0 < result["ADX"].iloc[-1] <= 100.0`.
+- `test_batch4_adx_is_nan_early_and_non_nan_eventually` now stores non-NaN
+  `EntryADX` values and asserts all are `<= 100.0`.
 
-Total trade row count:
+ADX sanity check output:
 
-- 3528
-
-Full column header from `context_trades.csv`:
-
-```csv
-EntryTime,ExitTime,Side,EntryPrice,ExitPrice,InitialStopPrice,InitialRisk,RealizedR_Gross,RealizedR_Net,RealizedR,ExitReason,BarsHeld,SignalTime,SignalATR,EntryZ,EntrySessionVWAP,EntryVWAPDeviation,Contract,CommissionIsSmokeTest,GapThrough,HoldCrossesGap,EntryVolumeZ,EntryDelta,EntryDeltaPct,EntryBodyRatio,EntryClosePosition,EntryVWAPDist,EntryVWAPDistATR,EntryRealizedVol,EntryVolRatio,EntryVolRobustZ,EntryATRPctile,EntryCumDelta,EntryDeltaROC,EntryOFI,EntryVPIN,EntryKyleLambda,EntryKyleLambdaPctile,EntryAutoCorr,EntryVarRatio,EntryADX,EntryEfficiencyRatio,EntryBarsSinceOpen
+```text
+[100.0, 100.0, 100.0]
 ```
 
-Sample rows showing all Entry* values:
+Verification:
 
-```csv
-EntryTime,EntryVolumeZ,EntryDelta,EntryDeltaPct,EntryBodyRatio,EntryClosePosition,EntryVWAPDist,EntryVWAPDistATR,EntryRealizedVol,EntryVolRatio,EntryVolRobustZ,EntryATRPctile,EntryCumDelta,EntryDeltaROC,EntryOFI,EntryVPIN,EntryKyleLambda,EntryKyleLambdaPctile,EntryAutoCorr,EntryVarRatio,EntryADX,EntryEfficiencyRatio,EntryBarsSinceOpen
-2014-12-08T12:25:00-05:00,1.2662523432354504,8.0,0.0784313725490196,0.6,0.4,-22.76925578974806,-5.848983138650877,0.0009310077657382979,2.9522431259044866,6.63249246818652,1.0,105.0,13.0,9.0,0.49664091073804373,0.0705733492650986,0.4,0.9096799714804973,1.4820459697022546,371.2616423859897,0.7277486910994765,34.0
-2014-12-08T13:30:00-05:00,-0.6260263680514818,3.0,0.2727272727272727,0.8333333333333334,0.8333333333333334,-23.91631694644275,-5.314737099209499,0.0011557378945970327,0.25085518814139107,-0.5995473417569736,0.7,82.0,-14.0,42.0,0.4572593047487928,0.10465467471293062,1.0,0.9217116741674201,1.372664332112594,613.773736101597,0.4896551724137931,47.0
-2014-12-08T13:40:00-05:00,1.3095861026249396,-40.0,-0.3125,0.34615384615384615,0.5769230769230769,-29.449903913347043,-6.0632155115714506,0.0011887979511608078,2.3315118397085612,3.4762216065332217,0.7,-24.0,-36.0,26.0,0.4523485904630785,0.0892908166180924,0.7,0.9058760282261336,1.300151711495307,653.5152300196852,0.541795665634675,49.0
-```
-
-Entry* non-empty verification:
-
-- All 22 expected Entry* headers are present.
-- Batch 4 columns have non-empty values:
-  `EntryAutoCorr`, `EntryVarRatio`, `EntryADX`, `EntryEfficiencyRatio`,
-  `EntryBarsSinceOpen`.
-- Existing Entry* columns also have non-empty values in the output; only
-  expected warmup-derived blanks appear in earlier rows.
+- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_trend.py strategies\vwap_zscore_fade\parent\tests\test_research_indicators.py`
+  -> 42 passed
+- `.venv\Scripts\python.exe -m pytest` -> 233 passed
 
 Errors or deviations:
 
-- The exact command from Claude failed due the repo root not being on Python's
-  import path when running the script by file path.
-- Discovery was rerun with `PYTHONPATH` set to the repo root; no source code was
-  changed.
-- `run_config.json` reports `code_version` as `b249b1f-dirty` because the
-  working tree already had unrelated changes in `ARGUMENT_REVIEW_PROTOCOL.md`,
-  `claudeArg`, and untracked `KNOWN_LIMITATIONS.md`.
+- None from Claude's ADX bugfix instructions.
 
 Stopped before:
 
+- Discovery rerun.
 - Slicing.
 - Any strategy/trade-generating changes.
 
 Carried forward:
 
 - `_last_same_session_pos` in `strategy.py` remains O(N^2), carried forward by
-  Claude to a dedicated fix cycle.
+  Claude to a dedicated fix cycle after this ADX fix is confirmed.

@@ -128,9 +128,9 @@ def _wilder_smooth(
             seed_values.iloc[1:] if pd.isna(seed_values.iloc[0]) else seed_values
         )
         if not initial_seed.isna().any():
-            result.iloc[window - 1] = initial_seed.sum()
+            result.iloc[window - 1] = initial_seed.mean()
     elif not seed_values.isna().any():
-        result.iloc[window - 1] = seed_values.sum()
+        result.iloc[window - 1] = seed_values.mean()
 
     for position in range(window, len(values)):
         value = values.iloc[position]
@@ -141,10 +141,10 @@ def _wilder_smooth(
         if pd.isna(previous):
             seed_values = values.iloc[position - window + 1 : position + 1]
             if not seed_values.isna().any():
-                result.iloc[position] = seed_values.sum()
+                result.iloc[position] = seed_values.mean()
             continue
 
-        result.iloc[position] = previous * (window - 1) / window + value
+        result.iloc[position] = previous * (window - 1) / window + value / window
 
     return result
 

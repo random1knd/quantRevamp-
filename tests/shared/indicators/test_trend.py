@@ -27,7 +27,7 @@ def test_adx_detects_monotonic_uptrend():
     result = adx(bars, window=5)
 
     assert result["PlusDI"].iloc[-1] > result["MinusDI"].iloc[-1]
-    assert result["ADX"].iloc[-1] > 20.0
+    assert 20.0 < result["ADX"].iloc[-1] <= 100.0
 
 
 def test_adx_returns_nan_for_first_bars():
