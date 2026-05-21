@@ -151,6 +151,16 @@ def test_robust_zscore_returns_nan_when_mad_is_zero():
     assert result.isna().all()
 
 
+def test_robust_zscore_resets_at_session_boundary():
+    series = pd.Series([1.0, 2.0, 3.0, 10.0, 11.0, 12.0])
+    session = pd.Series(["a", "a", "a", "b", "b", "b"])
+
+    result = robust_zscore(series, session=session, window=3)
+
+    assert pd.isna(result.iloc[3])
+    assert not pd.isna(result.iloc[5])
+
+
 def test_robust_zscore_cross_session_returns_value_after_window_is_met():
     series = pd.Series([0.0, 80.0, 100.0, 100.0, 110.0])
 

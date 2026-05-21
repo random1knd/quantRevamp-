@@ -146,6 +146,28 @@ def test_efficiency_ratio_is_causal_when_future_value_changes():
     assert original.iloc[4] == changed.iloc[4]
 
 
+def test_ma_slope_is_causal_when_future_value_changes():
+    series = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    mutated = series.copy()
+    mutated.iloc[5] = 10_000.0
+
+    original = ma_slope(series, window=2)
+    changed = ma_slope(mutated, window=2)
+
+    assert original.iloc[4] == changed.iloc[4]
+
+
+def test_momentum_is_causal_when_future_value_changes():
+    series = pd.Series([100.0, 105.0, 102.0, 110.0, 108.0, 115.0])
+    mutated = series.copy()
+    mutated.iloc[5] = 10_000.0
+
+    original = momentum(series, lookback=2)
+    changed = momentum(mutated, lookback=2)
+
+    assert original.iloc[4] == changed.iloc[4]
+
+
 def _monotonic_uptrend_bars(*, length: int) -> pd.DataFrame:
     close = pd.Series(range(100, 100 + length), dtype="float64")
     return pd.DataFrame(

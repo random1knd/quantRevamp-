@@ -2,52 +2,35 @@
 
 Change made:
 
-- Completed Cycle 9: added `shared/indicators/liquidity.py`.
-- Added `vpin_approx`, `kyle_lambda`, and `kyle_lambda_percentile`.
-- Did not add any other liquidity functions.
-- Did not start Phase 4 or wire these indicators into `research_indicators.py`.
+- Completed Claude's cleanup pass.
+- Added three missing tests only.
+- Did not change source code.
+- Did not create new files.
+- Did not begin Phase 4 wiring.
 
-Liquidity file and functions:
+Tests added:
 
-- `shared/indicators/liquidity.py`
-- Constants: lines 8-10
-- `vpin_approx(...)`: lines 13-27
-- `kyle_lambda(...)`: lines 30-43
-- `kyle_lambda_percentile(...)`: lines 46-53
-- Local validation helpers: lines 56-64
-
-Tests:
-
-- New test file: `tests/shared/indicators/test_liquidity.py`
-- Cycle 9 tests added: 10
-- Test range: `tests/shared/indicators/test_liquidity.py:12-134`
+- `tests/shared/indicators/test_zscore.py`
+  - `test_robust_zscore_resets_at_session_boundary`
+  - Added at lines 154-161
+- `tests/shared/indicators/test_trend.py`
+  - `test_ma_slope_is_causal_when_future_value_changes`
+  - `test_momentum_is_causal_when_future_value_changes`
+  - Added at lines 149-168
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_liquidity.py`
-  -> 10 passed
-- `.venv\Scripts\python.exe -m pytest` -> 210 passed
+- `.venv\Scripts\python.exe -m pytest` -> 213 passed
 
 Spec notes:
 
-- `liquidity.py` imports pandas and `rolling_percentile` from
-  `shared.indicators.zscore`, as specified.
-- `vpin_approx` validates `BidVolume`, `AskVolume`, and `Volume`, masks zero
-  volume to NaN before division, uses a full-window rolling mean, and includes
-  both required time-bar/context comments.
-- `kyle_lambda` uses rolling covariance divided by rolling signed-volume
-  variance, masks zero variance to NaN, and returns `"KyleLambda"`.
-- `kyle_lambda_percentile` delegates to `rolling_percentile` and renames the
-  result to `"KyleLambda_Pctile"`.
-- No deviations from the unlocked Cycle 9 scope.
+- No deviations from Claude's cleanup-pass scope.
+- Only existing test files and `codexArg` were modified.
 
 Carried forward:
 
-- `_last_same_session_pos` in `strategy.py` is O(N^2). Claude said not to fix
-  it during the indicator build; carry this forward until a dedicated cycle.
-- `robust_zscore` is missing an explicit session-reset test. Claude said to add
-  it in a cleanup pass after all cycles are done.
-- `ma_slope` and `momentum` causality tests are also carried to cleanup.
+- `_last_same_session_pos` in `strategy.py` is O(N^2). Claude carried this to
+  a dedicated cycle after Phase 4.
 
 Stopped before:
 
