@@ -2,57 +2,59 @@
 
 Change made:
 
-- Fixed Claude's ADX scale bug in `_wilder_smooth`.
-- Tightened the shared ADX unit test to require `ADX <= 100.0`.
-- Tightened the Batch 4 research wiring test to require `EntryADX <= 100.0`.
-- Did not rerun discovery.
+- Completed Claude's clean discovery re-run after the ADX scale fix.
+- No source code changes.
 - Did not begin slicing.
+- Did not begin the `_last_same_session_pos` O(N^2) fix.
 
-Exact `_wilder_smooth` lines changed:
+Command run:
 
-- Seed with first valid window:
-  `result.iloc[window - 1] = initial_seed.sum()`
-  -> `result.iloc[window - 1] = initial_seed.mean()`
-- Normal seed:
-  `result.iloc[window - 1] = seed_values.sum()`
-  -> `result.iloc[window - 1] = seed_values.mean()`
-- Re-seed after a NaN previous value:
-  `result.iloc[position] = seed_values.sum()`
-  -> `result.iloc[position] = seed_values.mean()`
-- Wilder update:
-  `result.iloc[position] = previous * (window - 1) / window + value`
-  -> `result.iloc[position] = previous * (window - 1) / window + value / window`
+- `$env:PYTHONPATH=(Get-Location).Path; .venv\Scripts\python.exe strategies\vwap_zscore_fade\parent\discovery_run.py`
+  -> completed successfully
 
-Test assertions updated:
+Full output directory path:
 
-- `test_adx_detects_monotonic_uptrend` now asserts
-  `20.0 < result["ADX"].iloc[-1] <= 100.0`.
-- `test_batch4_adx_is_nan_early_and_non_nan_eventually` now stores non-NaN
-  `EntryADX` values and asserts all are `<= 100.0`.
+- `C:\Users\AMD\Desktop\trading apps\trading apps\NewQuantfolder\data\results\vwap_zscore_fade\parent\discovery_20260521T160243Z`
 
-ADX sanity check output:
+Total trade count:
 
-```text
-[100.0, 100.0, 100.0]
-```
+- 3528
 
-Verification:
+EntryADX sample rows:
 
-- `.venv\Scripts\python.exe -m pytest tests\shared\indicators\test_trend.py strategies\vwap_zscore_fade\parent\tests\test_research_indicators.py`
-  -> 42 passed
-- `.venv\Scripts\python.exe -m pytest` -> 233 passed
+| EntryTime | EntryADX | Status |
+| --- | ---: | --- |
+| `2014-12-01T12:00:00-05:00` | 43.111529048776156 | within 0-100 |
+| `2014-12-04T11:30:00-05:00` | 24.67013819591173 | within 0-100 |
+| `2014-12-08T12:15:00-05:00` | 19.681252028736335 | within 0-100 |
+
+EntryADX range check:
+
+- Non-empty `EntryADX` rows: 3528
+- Minimum: 6.99459438556168
+- Maximum: 78.1435485874775
+- Values over 100: 0
+
+Entry* column verification:
+
+- All 22 expected research-context Entry* columns are present:
+  `EntryVolumeZ`, `EntryDelta`, `EntryDeltaPct`, `EntryBodyRatio`,
+  `EntryClosePosition`, `EntryVWAPDist`, `EntryVWAPDistATR`,
+  `EntryRealizedVol`, `EntryVolRatio`, `EntryVolRobustZ`, `EntryATRPctile`,
+  `EntryCumDelta`, `EntryDeltaROC`, `EntryOFI`, `EntryVPIN`,
+  `EntryKyleLambda`, `EntryKyleLambdaPctile`, `EntryAutoCorr`,
+  `EntryVarRatio`, `EntryADX`, `EntryEfficiencyRatio`,
+  `EntryBarsSinceOpen`.
 
 Errors or deviations:
 
-- None from Claude's ADX bugfix instructions.
+- No command error.
+- `run_config.json` reports `code_version` as `e452dad-dirty` because the
+  working tree already had unrelated changes in `ARGUMENT_REVIEW_PROTOCOL.md`,
+  `claudeArg`, and untracked `KNOWN_LIMITATIONS.md`.
 
 Stopped before:
 
-- Discovery rerun.
 - Slicing.
+- The `_last_same_session_pos` O(N^2) fix.
 - Any strategy/trade-generating changes.
-
-Carried forward:
-
-- `_last_same_session_pos` in `strategy.py` remains O(N^2), carried forward by
-  Claude to a dedicated fix cycle after this ADX fix is confirmed.
