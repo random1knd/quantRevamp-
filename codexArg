@@ -2,35 +2,33 @@
 
 Change made:
 
-- Completed Phase 4 Batch 2 wiring for research context indicators.
-- Added volatility regime, volume profile, and session delta context fields to
+- Completed Phase 4 Batch 3 wiring for research context indicators.
+- Added order-flow momentum and liquidity toxicity context fields to
   `strategies/vwap_zscore_fade/parent/research_indicators.py`.
 - Did not touch `strategy.py`, `indicators.py`, shared indicator files, or tests.
-- Did not begin Batch 3.
+- Did not begin Batch 4.
 
 Research indicator changes:
 
-- New/expanded imports:
-  - `cumulative_delta`: `research_indicators.py:6`
-  - `atr_percentile`, `realized_volatility`, `session_atr` import block:
-    `research_indicators.py:7-11`
-  - `volume_ratio`, `volume_robust_zscore`: `research_indicators.py:12`
-- `RESEARCH_INDICATOR_COLUMNS` additions: `research_indicators.py:44-48`
+- New liquidity import block: `research_indicators.py:6-10`
+- Expanded order-flow import: `research_indicators.py:11`
+- `RESEARCH_INDICATOR_COLUMNS` additions: `research_indicators.py:54-58`
 - New computation block:
-  - close returns: `research_indicators.py:109`
-  - realized volatility: `research_indicators.py:110`
-  - volume ratio: `research_indicators.py:111`
-  - volume robust z-score: `research_indicators.py:112`
-  - ATR percentile: `research_indicators.py:113`
-  - cumulative delta: `research_indicators.py:114-117`
+  - delta ROC: `research_indicators.py:128`
+  - OFI approximation: `research_indicators.py:129`
+  - VPIN approximation: `research_indicators.py:130`
+  - price change: `research_indicators.py:131`
+  - Kyle lambda local series: `research_indicators.py:132`
+  - Kyle lambda output: `research_indicators.py:133`
+  - Kyle lambda percentile: `research_indicators.py:134`
 
 Columns added:
 
-- `EntryRealizedVol`
-- `EntryVolRatio`
-- `EntryVolRobustZ`
-- `EntryATRPctile`
-- `EntryCumDelta`
+- `EntryDeltaROC`
+- `EntryOFI`
+- `EntryVPIN`
+- `EntryKyleLambda`
+- `EntryKyleLambdaPctile`
 
 Verification:
 
@@ -38,16 +36,16 @@ Verification:
 
 Spec notes:
 
-- `_atr` from Batch 1 is reused; no second `session_atr` call was added.
-- `_returns = rth["Close"].pct_change()` is cross-session on the RTH subset, as
+- `EntryDeltaROC` uses the existing `EntryDelta` column with `lookback=5`.
+- `EntryOFI` and `EntryVPIN` use the RTH frame directly.
+- `_price_change = rth["Close"].diff()` is cross-session on the RTH subset, as
   Claude specified.
-- `EntryCumDelta` uses the existing `EntryDelta` column and resets by
-  `SessionDate_ET`.
-- No deviations from Claude's Batch 2 scope.
+- `_kyle` is computed once and reused for the raw value and percentile output.
+- No deviations from Claude's Batch 3 scope.
 
 Stopped before:
 
-- Phase 4 Batch 3.
+- Phase 4 Batch 4.
 - Any strategy/trade-generating wiring.
 - Discovery rerun or slicing.
 

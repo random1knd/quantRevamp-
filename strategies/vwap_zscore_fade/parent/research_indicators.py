@@ -3,7 +3,12 @@ from __future__ import annotations
 import pandas as pd
 
 from shared.indicators.candle import body_ratio, close_position
-from shared.indicators.order_flow import cumulative_delta
+from shared.indicators.liquidity import (
+    kyle_lambda,
+    kyle_lambda_percentile,
+    vpin_approx,
+)
+from shared.indicators.order_flow import cumulative_delta, delta_roc, ofi_approx
 from shared.indicators.volatility import (
     atr_percentile,
     realized_volatility,
@@ -46,6 +51,11 @@ RESEARCH_INDICATOR_COLUMNS = (
     "EntryVolRobustZ",
     "EntryATRPctile",
     "EntryCumDelta",
+    "EntryDeltaROC",
+    "EntryOFI",
+    "EntryVPIN",
+    "EntryKyleLambda",
+    "EntryKyleLambdaPctile",
 )
 
 
@@ -115,6 +125,13 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         rth["EntryDelta"],
         session=rth["SessionDate_ET"],
     )
+    rth["EntryDeltaROC"] = delta_roc(rth["EntryDelta"], lookback=5)
+    rth["EntryOFI"] = ofi_approx(rth)
+    rth["EntryVPIN"] = vpin_approx(rth, window=20)
+    _price_change = rth["Close"].diff()
+    _kyle = kyle_lambda(_price_change, rth["EntryDelta"], window=20)
+    rth["EntryKyleLambda"] = _kyle
+    rth["EntryKyleLambdaPctile"] = kyle_lambda_percentile(_kyle, window=20)
 
     result.loc[rth.index, RESEARCH_INDICATOR_COLUMNS] = rth.loc[
         :, RESEARCH_INDICATOR_COLUMNS
