@@ -1,7 +1,12 @@
 import pandas as pd
 import pytest
 
-from shared.indicators.vwap import session_vwap, typical_price
+from shared.indicators.vwap import (
+    session_vwap,
+    typical_price,
+    vwap_distance,
+    vwap_distance_atr_normalized,
+)
 
 
 def test_typical_price_uses_high_low_close_average():
@@ -233,3 +238,72 @@ def test_session_vwap_rejects_null_session_values():
             volume_col="Volume",
             session_col="SessionDate_ET",
         )
+
+
+def test_vwap_distance_returns_positive_when_close_above_vwap():
+    result = vwap_distance(pd.Series([102.0]), pd.Series([100.0]))
+
+    assert result.name == "VWAPDist"
+    assert result.iloc[0] == 2.0
+
+
+def test_vwap_distance_returns_negative_when_close_below_vwap():
+    result = vwap_distance(pd.Series([98.0]), pd.Series([100.0]))
+
+    assert result.iloc[0] == -2.0
+
+
+def test_vwap_distance_returns_nan_where_vwap_is_nan():
+    result = vwap_distance(pd.Series([102.0]), pd.Series([float("nan")]))
+
+    assert pd.isna(result.iloc[0])
+
+
+def test_vwap_distance_atr_normalized_returns_known_value():
+    result = vwap_distance_atr_normalized(pd.Series([4.0]), pd.Series([2.0]))
+
+    assert result.name == "VWAPDist_ATR"
+    assert result.iloc[0] == 2.0
+
+
+def test_vwap_distance_atr_normalized_returns_nan_where_atr_is_zero():
+    result = vwap_distance_atr_normalized(pd.Series([4.0]), pd.Series([0.0]))
+
+    assert pd.isna(result.iloc[0])
+
+
+def test_vwap_distance_atr_normalized_returns_nan_where_atr_is_nan():
+    result = vwap_distance_atr_normalized(
+        pd.Series([4.0]),
+        pd.Series([float("nan")]),
+    )
+
+    assert pd.isna(result.iloc[0])
+
+
+def test_vwap_distance_is_causal_when_future_values_change():
+    close = pd.Series([100.0, 101.0, 102.0, 103.0])
+    vwap = pd.Series([99.0, 100.0, 101.0, 102.0])
+    mutated_close = close.copy()
+    mutated_vwap = vwap.copy()
+    mutated_close.iloc[3] = 10_000.0
+    mutated_vwap.iloc[3] = 1.0
+
+    original = vwap_distance(close, vwap)
+    changed = vwap_distance(mutated_close, mutated_vwap)
+
+    assert original.iloc[2] == changed.iloc[2]
+
+
+def test_vwap_distance_atr_normalized_is_causal_when_future_values_change():
+    distance = pd.Series([1.0, 2.0, 3.0, 4.0])
+    atr = pd.Series([1.0, 2.0, 1.5, 2.0])
+    mutated_distance = distance.copy()
+    mutated_atr = atr.copy()
+    mutated_distance.iloc[3] = 10_000.0
+    mutated_atr.iloc[3] = 0.01
+
+    original = vwap_distance_atr_normalized(distance, atr)
+    changed = vwap_distance_atr_normalized(mutated_distance, mutated_atr)
+
+    assert original.iloc[2] == changed.iloc[2]

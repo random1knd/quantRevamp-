@@ -4,6 +4,8 @@ import pandas as pd
 
 
 VWAP_NAME = "SessionVWAP"
+VWAP_DISTANCE_NAME = "VWAPDist"
+VWAP_DISTANCE_ATR_NAME = "VWAPDist_ATR"
 
 
 def typical_price(
@@ -12,6 +14,24 @@ def typical_price(
     close: pd.Series,
 ) -> pd.Series:
     return (high + low + close) / 3.0
+
+
+def vwap_distance(
+    close: pd.Series,
+    vwap: pd.Series,
+) -> pd.Series:
+    result = close - vwap
+    result.name = VWAP_DISTANCE_NAME
+    return result
+
+
+def vwap_distance_atr_normalized(
+    vwap_distance: pd.Series,
+    atr: pd.Series,
+) -> pd.Series:
+    result = vwap_distance / atr.mask(atr == 0.0)
+    result.name = VWAP_DISTANCE_ATR_NAME
+    return result
 
 
 def session_vwap(
