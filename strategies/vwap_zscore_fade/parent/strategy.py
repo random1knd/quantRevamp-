@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any, Literal
 
 import pandas as pd
@@ -70,6 +71,13 @@ def generate_trades(
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
 ) -> list[Trade]:
+    """Generate parent strategy trades.
+
+    Precondition: bars must be sorted by DateTime_ET ascending and
+    session-contiguous, as produced by prepare_bars(). Unsorted input produces
+    silent incorrect results.
+    """
+
     _validate_required_columns(bars)
     _validate_commission(
         commission_per_round_turn=commission_per_round_turn,
@@ -212,7 +220,7 @@ def _open_trade(
     target_price = signal_bar["SessionVWAP"]
     if pd.isna(target_price):
         return None
-    target_price = _round_to_tick(float(target_price))
+    target_price = _round_target_conservative(float(target_price), side=side)
 
     if side == "long":
         entry_price = float(entry_bar["Open"]) + slippage
@@ -224,7 +232,7 @@ def _open_trade(
         initial_stop_price = entry_price + params.STOP_ATR_MULTIPLE * float(
             signal_bar["ATR"]
         )
-    initial_stop_price = _round_to_tick(initial_stop_price)
+    initial_stop_price = _round_stop_conservative(initial_stop_price, side=side)
 
     initial_risk = abs(entry_price - initial_stop_price)
     if initial_risk <= 0.0:
@@ -517,5 +525,23 @@ def _slippage_points() -> float:
     return params.SLIPPAGE_TICKS_PER_SIDE * params.NQ_TICK_SIZE
 
 
-def _round_to_tick(price: float) -> float:
-    return round(price / params.NQ_TICK_SIZE) * params.NQ_TICK_SIZE
+def _round_stop_conservative(price: float, *, side: Side) -> float:
+    if side == "long":
+        return _ceil_to_tick(price)
+
+    return _floor_to_tick(price)
+
+
+def _round_target_conservative(price: float, *, side: Side) -> float:
+    if side == "long":
+        return _ceil_to_tick(price)
+
+    return _floor_to_tick(price)
+
+
+def _ceil_to_tick(price: float) -> float:
+    return math.ceil((price / params.NQ_TICK_SIZE) - 1e-12) * params.NQ_TICK_SIZE
+
+
+def _floor_to_tick(price: float) -> float:
+    return math.floor((price / params.NQ_TICK_SIZE) + 1e-12) * params.NQ_TICK_SIZE

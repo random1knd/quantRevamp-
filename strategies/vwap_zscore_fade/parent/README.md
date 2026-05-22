@@ -78,6 +78,12 @@ configuration must explicitly state whether roll sessions are excluded.
 For 5-minute bar-open timestamps, the 15:55 ET bar represents 15:55-16:00 ET.
 Forced session exit occurs at the close of that bar.
 
+On early-close market days, such as the day before Thanksgiving or Christmas
+Eve, the session ends at whatever bar the source data provides. The force-flat
+rule applies at the last available same-session bar. No exchange calendar is
+consulted. This is intentional: early-close handling is implicit in the data,
+not in strategy code.
+
 ## Indicator Definitions
 
 ### Session VWAP
@@ -223,6 +229,12 @@ Default entry fill:
 Default slippage:
 
 - 1 tick per side
+
+Stop and target prices are rounded to the NQ tick size with a conservative
+order-side policy before guard checks and fills. Long stops round up, short
+stops round down, long targets round up, and short targets round down. This
+keeps stops no farther from entry than the raw modeled stop and does not claim
+a target before the raw signal-bar VWAP has reached a valid exchange tick.
 
 Current v0 implementation note:
 

@@ -11,6 +11,7 @@ from strategies.vwap_zscore_fade.parent.discovery_run import (
     CAMPAIGN_ID,
     COMMISSION_IS_SMOKE_TEST,
     COMMISSION_PER_ROUND_TURN,
+    _validate_discovery_does_not_overlap_final_test,
     _write_context_trades_csv,
     _rth_only_raw_bars as discovery_rth_only_raw_bars,
 )
@@ -88,6 +89,20 @@ def test_discovery_run_keeps_only_discovery_sessions():
         date(2026, 1, 3),
         date(2026, 1, 3),
     ]
+
+
+def test_discovery_run_rejects_final_test_overlap():
+    sessions = [date(2026, 1, day) for day in range(1, 11)]
+    prepared = make_prepared_bars(sessions)
+    splits = chronological_session_splits(prepared)
+    partial_final_test_overlap = prepared.loc[
+        prepared["SessionDate_ET"] <= date(2026, 1, 9)
+    ].copy()
+
+    with pytest.raises(RuntimeError, match="discovery slice overlaps final-test split"):
+        _validate_discovery_does_not_overlap_final_test(
+            partial_final_test_overlap, splits=splits
+        )
 
 
 def test_discovery_run_uses_real_commission_not_smoke_label():

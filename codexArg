@@ -2,65 +2,77 @@
 
 Change made:
 
-- Completed Claude's approved fixes 3-6 after fixes 1-2 were accepted.
-- Documented the exit-bar cooldown in the parent README.
-- Split summary statistics so headline performance uses completed non-gap
-  trades only, with an explicit `headline_sample` label.
-- Added audit summary fields for all completed trades and gap-crossing trades.
-- Added a README research-question table for every `Signal*` context column.
-- Added `runner_rationale` to `run_config.json`, populated from explicit
-  runner constants rather than hard-coded in `artifacts.py`.
-- Preserved the prior approved fixes in the same green tree: tick-rounded
-  simulator stop/target prices, ADX seed correction, session-reset research
-  context fixes, campaign ids, and stale-doc cleanup.
+- Acted on Claude's independent-audit instructions.
+- Documented early-close handling as data-shaped policy in the parent README.
+- Replaced nearest-tick stop/target rounding with conservative order-side
+  rounding:
+  - long stops round up
+  - short stops round down
+  - long targets round up
+  - short targets round down
+- Documented the conservative rounding policy in the parent README.
+- Added the `generate_trades()` chronological/session-contiguous precondition.
+- Added discovery-run protection against final-test overlap.
+- Marked stale discovery artifacts superseded:
+  `discovery_20260520T111227Z`, `discovery_20260521T154002Z`,
+  `discovery_20260522T131103Z`, and intermediate
+  `discovery_20260522T142717Z`.
+- Acknowledged the weak parent discovery baseline as context only; no edge is
+  being claimed before slicing.
 
-Why:
+Implementation note:
 
-- The exit-bar cooldown was already code behavior; documenting it prevents
-  false look-ahead assumptions.
-- Gap-crossing trades can distort headline metrics, so the main sample now
-  names and uses completed non-gap trades while keeping gap data visible.
-- Research context columns need a concrete question before slicer work starts.
-- Runner rationale belongs in the artifact because cost, timezone, and RTH
-  scoping assumptions affect reproducibility.
+- I tightened Claude's sample final-test guard. The sample checked only
+  `>= splits["test_end"]`, which catches full-dataset mistakes but misses a
+  partial overlap with earlier final-test sessions. The implemented guard is
+  `max(SessionDate_ET) > splits["validation_end"]`, which directly enforces
+  "no final-test data" while staying local to `discovery_run.py`.
 
-Touched files in the current slice:
+Touched files:
 
 - `strategies/vwap_zscore_fade/parent/README.md`
-- `strategies/vwap_zscore_fade/parent/artifacts.py`
+- `strategies/vwap_zscore_fade/parent/strategy.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
 - `strategies/vwap_zscore_fade/parent/discovery_run.py`
-- `strategies/vwap_zscore_fade/parent/smoke_run.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
+- artifact `SUPERSEDED.txt` files under
+  `data/results/vwap_zscore_fade/parent/`
 
 Assumptions:
 
-- `trade_count` remains total emitted trades.
-- `completed_trade_count`, `non_gap_trade_count`, and `gap_trade_count` count
-  only completed trades for the latter two gap categories.
-- `mean_realized_r`, `win_rate`, `max_drawdown_r`, and
-  `r_multiple_diagnostics` are now headline non-gap metrics by design.
-- Smoke runs also need explicit runner rationale because the artifact writer
-  now requires the same reproducibility fields for every run type.
+- Conservative target rounding means the backtest does not claim a target touch
+  until the raw signal-bar VWAP has reached a valid exchange tick.
+- Conservative stop rounding keeps stops no farther from entry than the raw
+  modeled stop.
+- The discovery runner may use validation-era dates in split metadata, but the
+  discovery slice must not include any date after `validation_end`.
 
 Verification:
 
-- Focused artifact/discovery tests:
-  `.venv\Scripts\python.exe -m pytest strategies\vwap_zscore_fade\parent\tests\test_artifacts.py strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py`
-  -> 13 passed
+- Focused tests:
+  `.venv\Scripts\python.exe -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py`
+  -> 36 passed
 - Full suite:
-  `.venv\Scripts\python.exe -m pytest` -> 245 passed
+  `.venv\Scripts\python.exe -m pytest` -> 246 passed
+- Discovery rerun:
+  `.venv\Scripts\python.exe -m strategies.vwap_zscore_fade.parent.discovery_run`
+  -> `data/results/vwap_zscore_fade/parent/discovery_20260522T142846Z`
 
-Expected discovery impact after rerun:
+Discovery impact versus `discovery_20260522T131103Z`:
 
-- Trade generation should remain at 3570 because fixes 3-6 do not alter the
-  trading path.
-- `summary.json` headline mean/win/drawdown fields will change sample from all
-  completed trades to completed non-gap trades.
-- `run_config.json` will include `runner_rationale`.
+- Trade count: 3570 -> 3585, delta +15.
+- Exit counts: stop 1837, time_stop 1050, target 558, session_end 135,
+  gap_stop 5.
+- Headline sample remains `completed_non_gap_trades`.
+- Headline mean R: -0.17771123537415373.
+- All-completed mean R: -0.17535146598686344.
+- Tick alignment check on `EntryPrice`, `ExitPrice`, `InitialStopPrice`, and
+  `InitialRisk`: zero off-tick values.
 
 Remaining risks:
 
-- Existing downstream readers of `mean_realized_r` must respect
-  `headline_sample`; tests now pin the new semantics.
-- The clean-code-version discovery artifact should be generated only after the
-  green tree is committed.
+- The new discovery artifact has `code_version: "0336429-dirty"` because this
+  slice has not been committed. A clean comparison artifact should be generated
+  after review acceptance and commit.
+- The broad parent baseline still has no demonstrated edge; slicing should
+  treat it as a regime-discovery input, not an approved tradable strategy.

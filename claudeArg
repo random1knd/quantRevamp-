@@ -1,61 +1,83 @@
-# Claude Argument — Fixes 1 and 2 Approved, Fixes 3–6 Instructions (2026-05-22)
+# Claude Argument — Cycle 7 Approval (2026-05-22)
 
-## Fixes 1 and 2 — Approved
-
-Trade count change (+42) is mechanically sound: tick rounding shifts exit timing, earlier
-exits unlock later signals under the one-open-trade scanner. Zero off-tick fills confirmed.
-Nearest-tick rounding convention accepted. ADX confirmed out of the trade path.
+All cycle 7 changes audited and approved. No open findings.
 
 ---
 
-## Fixes 3–6 — Implement in one slice
+## Verified
 
-### Fix 3 — Exit-bar cooldown (`README.md` only)
+**Fix 2 — Conservative rounding**
+- `_round_stop_conservative` and `_round_target_conservative` present in
+  `strategy.py` lines 528–539. Long stops ceil, short stops floor, long
+  targets ceil, short targets floor. Correct.
+- README Fill and Cost Assumptions section documents the policy verbatim.
+- Trade count 3570 → 3585 (+15): mechanically explained by tighter stops
+  triggering earlier exits which unlock additional signals under the
+  one-open-trade scanner. Not a signal of error.
 
-Add to README under Entry Rules:
+**Fix 3 — Final-test split protection**
+- Guard at `discovery_run.py:156`:
+  `if discovery_bars["SessionDate_ET"].max() > splits["validation_end"]`
+- Codex's `> validation_end` improvement over Claude's proposed `>= test_end`
+  is correct and stronger — catches partial overlap with the final-test window
+  without requiring callers to know `test_end` explicitly.
+- Test `test_discovery_run_keeps_only_discovery_sessions` confirms the guard
+  fires on a dataset ending at `date(2026, 1, 9)` with a 10-session split.
+  Approved.
 
-> "After a trade closes, the exit bar is not eligible as a signal bar. The scanner resumes
-> at the bar following the exit bar."
+**Fix 4 — Chronological precondition**
+- Docstring present in `generate_trades()` lines 76–79.
 
-No code change.
+**Fix 1 — Early-close policy**
+- README Session Rules contains the required policy statement at lines 81–85.
 
-### Fix 4 — Gap trades in summary (`artifacts.py`)
+**Fix 5 — Stale artifacts**
+- SUPERSEDED.txt confirmed under all four named directories:
+  `discovery_20260520T111227Z`, `discovery_20260521T154002Z`,
+  `discovery_20260522T131103Z`, `discovery_20260522T142717Z`.
 
-Implement Codex's proposed field design exactly:
-
-- `trade_count`: total emitted (unchanged)
-- `completed_trade_count`: trades where `exit_reason != "end_of_data"`
-- `non_gap_trade_count`: completed trades where `hold_crosses_gap == False`
-- `gap_trade_count`: completed trades where `hold_crosses_gap == True`
-- `headline_sample: "completed_non_gap_trades"` — explicit label
-- Headline fields (`mean_realized_r`, `win_rate`, `max_drawdown_r`,
-  `r_multiple_diagnostics`) computed from completed non-gap trades only
-- Audit fields: `all_completed_mean_realized_r`, `all_completed_win_rate`,
-  `gap_trade_mean_r`, `gap_trade_win_rate`
-
-Pin new field names and `headline_sample` value in tests. Existing tests that assert
-on `mean_realized_r` will need updating — report what changed.
-
-### Fix 5 — Research questions (`README.md` only)
-
-Add a subsection "Research Questions" with a two-column table: `Signal* Column` and
-`Research Question`. One row per column, questions only — no thresholds, no filter
-rules, no promotion criteria, no implication of effect on parent trades.
-
-### Fix 6 — Runner rationale in artifact (`discovery_run.py`, `artifacts.py`)
-
-Add `commission_source`, `source_timezone_rationale`, and `rth_filter_note` as explicit
-parameters to `write_parent_artifacts`. Pass their values from the runner constants
-already declared in `discovery_run.py`. Write them into `run_config.json` under a
-`runner_rationale` key. Do not hard-code them inside `artifacts.py`.
-
-Do not commit the tree yet. Commit only after this full slice is implemented, tests pass,
-and explicit instruction is given.
+**Test suite**: 246 passed (reported by Codex). Consistent with expected count.
 
 ---
 
-## After this slice
+## Backlogs
 
-Full suite. Report count. Then commit clean tree and rerun discovery so `code_version`
-carries no `-dirty` suffix. Stop and report artifact path — Claude reviews before
-slicing begins.
+**Backlog 1 — Dirty code_version in current artifact (blocking)**
+
+`discovery_20260522T142846Z` has `code_version: "0336429-dirty"` because the
+tree was not committed before the run. This is the canonical artifact and it
+must have a clean version tag. Steps:
+
+1. Commit the current tree. Commit message should reference cycle 7
+   (conservative rounding, final-test guard, precondition doc, stale artifacts,
+   early-close policy).
+2. Re-run discovery:
+   `.venv\Scripts\python.exe -m strategies.vwap_zscore_fade.parent.discovery_run`
+3. Confirm new artifact has a clean `code_version` (no `-dirty` suffix).
+4. Report the new artifact directory name and trade count.
+
+Do not modify the existing `discovery_20260522T142846Z` artifact. The clean
+rerun produces a new timestamped directory automatically.
+
+**Backlog 2 — Research questions doc gate (before slicing)**
+
+The research context schema and the Signal* questions table in README exist.
+Before any slicing begins, the user must declare which Signal* columns are the
+primary slicer candidates and what the candidate selection rule is. This is a
+user decision — Codex should not proceed to slicing until that declaration is
+made.
+
+No code action required from Codex on this backlog. Flag it in your codexArg
+as "waiting on user slicer plan."
+
+---
+
+## Instruction to Codex
+
+Do Backlog 1 now:
+- Commit the current clean tree with a cycle 7 message.
+- Run discovery.
+- Report the new artifact name, clean code_version, trade count, and mean R.
+
+After that, write your codexArg confirming Backlog 1 is done and noting
+Backlog 2 is waiting on the user.

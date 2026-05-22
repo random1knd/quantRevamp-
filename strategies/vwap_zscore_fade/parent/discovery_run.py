@@ -73,6 +73,7 @@ def run_discovery() -> Path:
     discovery_bars = prepared.loc[
         prepared["SessionDate_ET"] <= splits["discovery_end"]
     ].copy()
+    _validate_discovery_does_not_overlap_final_test(discovery_bars, splits=splits)
     trades = generate_trades(
         discovery_bars,
         exclude_roll_sessions=EXCLUDE_ROLL_SESSIONS,
@@ -145,6 +146,15 @@ def _bar_gap_session_count(prepared_bars: pd.DataFrame) -> int:
             "SessionDate_ET",
         ].nunique()
     )
+
+
+def _validate_discovery_does_not_overlap_final_test(
+    discovery_bars: pd.DataFrame,
+    *,
+    splits: dict,
+) -> None:
+    if discovery_bars["SessionDate_ET"].max() > splits["validation_end"]:
+        raise RuntimeError("discovery slice overlaps final-test split - aborting")
 
 
 def _write_context_trades_csv(
