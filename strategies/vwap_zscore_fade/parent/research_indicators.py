@@ -42,28 +42,28 @@ REQUIRED_COLUMNS = (
 )
 
 RESEARCH_INDICATOR_COLUMNS = (
-    "EntryVolumeZ",
-    "EntryDelta",
-    "EntryDeltaPct",
-    "EntryBodyRatio",
-    "EntryClosePosition",
-    "EntryVWAPDist",
-    "EntryVWAPDistATR",
-    "EntryRealizedVol",
-    "EntryVolRatio",
-    "EntryVolRobustZ",
-    "EntryATRPctile",
-    "EntryCumDelta",
-    "EntryDeltaROC",
-    "EntryOFI",
-    "EntryVPIN",
-    "EntryKyleLambda",
-    "EntryKyleLambdaPctile",
-    "EntryAutoCorr",
-    "EntryVarRatio",
-    "EntryADX",
-    "EntryEfficiencyRatio",
-    "EntryBarsSinceOpen",
+    "SignalVolumeZ",
+    "SignalDelta",
+    "SignalDeltaPct",
+    "SignalBodyRatio",
+    "SignalClosePosition",
+    "SignalVWAPDist",
+    "SignalVWAPDistATR",
+    "SignalRealizedVol",
+    "SignalVolRatio",
+    "SignalVolRobustZ",
+    "SignalATRPctile",
+    "SignalCumDelta",
+    "SignalDeltaROC",
+    "SignalOFI",
+    "SignalVPIN",
+    "SignalKyleLambda",
+    "SignalKyleLambdaPctile",
+    "SignalAutoCorr",
+    "SignalVarRatio",
+    "SignalADX",
+    "SignalEfficiencyRatio",
+    "SignalBarsSinceOpen",
 )
 
 
@@ -81,14 +81,15 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         return result
 
     rth = result.loc[rth_mask].copy()
-    rth["EntryVolumeZ"] = _session_standard_zscore(
+    session = rth["SessionDate_ET"]
+    rth["SignalVolumeZ"] = _session_standard_zscore(
         rth["Volume"],
-        session=rth["SessionDate_ET"],
+        session=session,
         bar_gap=rth["BarGapFromPrevious"],
         window=params.VOLUME_Z_WINDOW,
     )
-    rth["EntryDelta"] = rth["AskVolume"] - rth["BidVolume"]
-    rth["EntryDeltaPct"] = rth["EntryDelta"] / rth["Volume"].mask(
+    rth["SignalDelta"] = rth["AskVolume"] - rth["BidVolume"]
+    rth["SignalDeltaPct"] = rth["SignalDelta"] / rth["Volume"].mask(
         rth["Volume"] == 0.0
     )
     _typical = typical_price(rth["High"], rth["Low"], rth["Close"])
@@ -110,46 +111,160 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         session_col="SessionDate_ET",
         window=params.ATR_WINDOW,
     )
-    rth["EntryBodyRatio"] = body_ratio(
+    rth["SignalBodyRatio"] = body_ratio(
         rth["Open"],
         rth["High"],
         rth["Low"],
         rth["Close"],
     )
-    rth["EntryClosePosition"] = close_position(
+    rth["SignalClosePosition"] = close_position(
         rth["High"],
         rth["Low"],
         rth["Close"],
     )
     _dist = vwap_distance(rth["Close"], _vwap)
-    rth["EntryVWAPDist"] = _dist
-    rth["EntryVWAPDistATR"] = vwap_distance_atr_normalized(_dist, _atr)
-    _returns = rth["Close"].pct_change()
-    rth["EntryRealizedVol"] = realized_volatility(_returns, window=20)
-    rth["EntryVolRatio"] = volume_ratio(rth["Volume"], window=20)
-    rth["EntryVolRobustZ"] = volume_robust_zscore(rth["Volume"], window=20)
-    rth["EntryATRPctile"] = atr_percentile(_atr, window=20)
-    rth["EntryCumDelta"] = cumulative_delta(
-        rth["EntryDelta"],
-        session=rth["SessionDate_ET"],
+    rth["SignalVWAPDist"] = _dist
+    rth["SignalVWAPDistATR"] = vwap_distance_atr_normalized(_dist, _atr)
+    rth["SignalRealizedVol"] = _session_realized_volatility(
+        rth["Close"],
+        session=session,
+        window=20,
     )
-    rth["EntryDeltaROC"] = delta_roc(rth["EntryDelta"], lookback=5)
-    rth["EntryOFI"] = ofi_approx(rth)
-    rth["EntryVPIN"] = vpin_approx(rth, window=20)
-    _price_change = rth["Close"].diff()
-    _kyle = kyle_lambda(_price_change, rth["EntryDelta"], window=20)
-    rth["EntryKyleLambda"] = _kyle
-    rth["EntryKyleLambdaPctile"] = kyle_lambda_percentile(_kyle, window=20)
-    rth["EntryAutoCorr"] = rolling_autocorr(rth["Close"], window=20, lag=1)
-    rth["EntryVarRatio"] = rolling_variance_ratio(rth["Close"], window=20, q=2)
-    rth["EntryADX"] = adx(rth, window=14)["ADX"]
-    rth["EntryEfficiencyRatio"] = efficiency_ratio(rth["Close"], window=20)
-    rth["EntryBarsSinceOpen"] = bars_since_open(session=rth["SessionDate_ET"])
+    rth["SignalVolRatio"] = volume_ratio(rth["Volume"], window=20)
+    rth["SignalVolRobustZ"] = volume_robust_zscore(rth["Volume"], window=20)
+    rth["SignalATRPctile"] = atr_percentile(_atr, window=20)
+    rth["SignalCumDelta"] = cumulative_delta(
+        rth["SignalDelta"],
+        session=session,
+    )
+    rth["SignalDeltaROC"] = _session_delta_roc(
+        rth["SignalDelta"],
+        session=session,
+        lookback=5,
+    )
+    rth["SignalOFI"] = _session_ofi_approx(rth, session=session)
+    rth["SignalVPIN"] = vpin_approx(rth, window=20)
+    _kyle = _session_kyle_lambda(
+        close=rth["Close"],
+        signed_volume=rth["SignalDelta"],
+        session=session,
+        window=20,
+    )
+    rth["SignalKyleLambda"] = _kyle
+    rth["SignalKyleLambdaPctile"] = kyle_lambda_percentile(_kyle, window=20)
+    rth["SignalAutoCorr"] = _session_return_autocorr(
+        rth["Close"],
+        session=session,
+        window=20,
+        lag=1,
+    )
+    rth["SignalVarRatio"] = _session_rolling_variance_ratio(
+        rth["Close"],
+        session=session,
+        window=20,
+        q=2,
+    )
+    rth["SignalADX"] = adx(rth, window=14)["ADX"]
+    rth["SignalEfficiencyRatio"] = efficiency_ratio(rth["Close"], window=20)
+    rth["SignalBarsSinceOpen"] = bars_since_open(session=session)
 
     result.loc[rth.index, RESEARCH_INDICATOR_COLUMNS] = rth.loc[
         :, RESEARCH_INDICATOR_COLUMNS
     ]
     return result
+
+
+def _session_realized_volatility(
+    close: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    return close.groupby(session, sort=False).transform(
+        lambda group: realized_volatility(group.pct_change(), window=window)
+    )
+
+
+def _session_kyle_lambda(
+    *,
+    close: pd.Series,
+    signed_volume: pd.Series,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    result = pd.Series(index=close.index, dtype="float64")
+    for _, group in close.groupby(session, sort=False):
+        group_signed_volume = signed_volume.loc[group.index]
+        result.loc[group.index] = kyle_lambda(
+            group.diff(),
+            group_signed_volume,
+            window=window,
+        )
+    return result
+
+
+def _session_delta_roc(
+    delta: pd.Series,
+    *,
+    session: pd.Series,
+    lookback: int,
+) -> pd.Series:
+    return delta.groupby(session, sort=False).transform(
+        lambda group: delta_roc(group, lookback=lookback)
+    )
+
+
+def _session_ofi_approx(
+    bars: pd.DataFrame,
+    *,
+    session: pd.Series,
+) -> pd.Series:
+    result = pd.Series(index=bars.index, dtype="float64")
+    for _, group in bars.groupby(session, sort=False):
+        result.loc[group.index] = ofi_approx(group)
+    return result
+
+
+def _session_rolling_autocorr(
+    values: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+    lag: int,
+) -> pd.Series:
+    return values.groupby(session, sort=False).transform(
+        lambda group: rolling_autocorr(group, window=window, lag=lag)
+    )
+
+
+def _session_return_autocorr(
+    close: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+    lag: int,
+) -> pd.Series:
+    returns = close.groupby(session, sort=False).transform(
+        lambda group: group.pct_change()
+    )
+    return _session_rolling_autocorr(
+        returns,
+        session=session,
+        window=window,
+        lag=lag,
+    )
+
+
+def _session_rolling_variance_ratio(
+    values: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+    q: int,
+) -> pd.Series:
+    return values.groupby(session, sort=False).transform(
+        lambda group: rolling_variance_ratio(group, window=window, q=q)
+    )
 
 
 def _validate_required_columns(bars: pd.DataFrame) -> None:

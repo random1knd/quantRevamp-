@@ -96,6 +96,11 @@ Shared code is not acceptable for:
 
 ## Current Status
 
-This folder currently contains documentation only. The old source tree is not
-present here. When the data folder is added, the next practical step is to build
-one isolated strategy end to end instead of rebuilding the old framework.
+The repo now has the first isolated parent strategy implemented under
+`strategies/vwap_zscore_fade/parent/`, with focused tests, bar preparation,
+shared pure indicator math, discovery-run artifacts, and the lightweight
+argument-review files.
+
+The current practical boundary is still the same: finish one explicit strategy
+path before adding broad execution, slicing, validation, or orchestration
+layers.

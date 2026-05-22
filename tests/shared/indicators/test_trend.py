@@ -30,6 +30,56 @@ def test_adx_detects_monotonic_uptrend():
     assert 20.0 < result["ADX"].iloc[-1] <= 100.0
 
 
+def test_adx_matches_wilder_seed_reference_values():
+    bars = pd.DataFrame(
+        {
+            "High": [10.0, 12.0, 13.0, 12.0, 14.0, 15.0, 14.0, 16.0],
+            "Low": [9.0, 10.0, 11.0, 10.0, 12.0, 13.0, 12.0, 14.0],
+            "Close": [9.5, 11.0, 12.0, 11.0, 13.0, 14.0, 13.0, 15.0],
+        }
+    )
+
+    result = adx(bars, window=3)
+
+    # Hand-calculated Wilder smoothing with bar 0 excluded because it has no
+    # prior bar for directional movement or true range.
+    expected = pd.DataFrame(
+        {
+            "PlusDI": [
+                float("nan"),
+                float("nan"),
+                66.66666666666667,
+                46.15384615384616,
+                54.54545454545453,
+                53.2258064516129,
+                37.07865168539326,
+                49.08180300500835,
+            ],
+            "MinusDI": [
+                float("nan"),
+                float("nan"),
+                0.0,
+                15.384615384615383,
+                9.09090909090909,
+                6.451612903225806,
+                19.662921348314605,
+                11.686143572621035,
+            ],
+            "ADX": [
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                73.80952380952381,
+                75.33247533247533,
+                60.45267332396045,
+                60.81460272879414,
+            ],
+        }
+    )
+    pd.testing.assert_frame_equal(result, expected)
+
+
 def test_adx_returns_nan_for_first_bars():
     bars = _monotonic_uptrend_bars(length=15)
 
@@ -72,6 +122,15 @@ def test_ma_slope_returns_positive_slope_on_rising_series():
 
     assert result.name == "MA_Slope"
     assert result.iloc[2] == 1.0
+
+
+def test_ma_slope_matches_one_bar_simple_moving_average_slope():
+    series = pd.Series([1.0, 5.0, 8.0, 10.0, 19.0])
+
+    result = ma_slope(series, window=3)
+    expected = series.rolling(window=3, min_periods=3).mean().diff()
+
+    pd.testing.assert_series_equal(result, expected.rename("MA_Slope"))
 
 
 def test_ma_slope_returns_nan_before_window():

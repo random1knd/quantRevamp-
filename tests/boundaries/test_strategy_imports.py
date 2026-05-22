@@ -7,6 +7,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 STRATEGY_ROOT = ROOT / "strategies"
 FORBIDDEN_SHARED_IMPORTS = ("shared.context", "shared.slicing")
+NON_TRADE_GENERATING_FILENAMES = {
+    "research_indicators.py",
+    "params.py",
+    "artifacts.py",
+    "smoke_run.py",
+    "discovery_run.py",
+}
 
 
 def test_trade_generating_strategy_files_do_not_import_forbidden_modules() -> None:
@@ -30,12 +37,30 @@ def test_strategy_local_tests_are_not_scanned_as_trade_generating_code() -> None
     )
 
 
+def test_strategy_local_helpers_are_scanned_by_default() -> None:
+    helper_path = STRATEGY_ROOT / "vwap_zscore_fade" / "parent" / "signals.py"
+    research_path = (
+        STRATEGY_ROOT / "vwap_zscore_fade" / "parent" / "research_indicators.py"
+    )
+
+    assert _is_trade_generating_python_file(helper_path)
+    assert not _is_trade_generating_python_file(research_path)
+
+
 def _trade_generating_python_files() -> list[Path]:
     return [
         path
         for path in sorted(STRATEGY_ROOT.glob("**/*.py"))
-        if path.name in {"strategy.py", "indicators.py"}
+        if _is_trade_generating_python_file(path)
     ]
+
+
+def _is_trade_generating_python_file(path: Path) -> bool:
+    relative_parts = path.relative_to(STRATEGY_ROOT).parts
+    if "tests" in relative_parts:
+        return False
+
+    return path.name not in NON_TRADE_GENERATING_FILENAMES
 
 
 def _forbidden_imports(path: Path, tree: ast.AST) -> list[str]:

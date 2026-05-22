@@ -39,6 +39,7 @@ def make_trade(
     realized_r: float,
     exit_reason: str = "target",
     side: str = "long",
+    hold_crosses_gap: bool = False,
 ) -> Trade:
     return Trade(
         entry_time=pd.Timestamp("2026-01-02 11:10:00", tz="America/New_York"),
@@ -61,6 +62,7 @@ def make_trade(
         contract="NQH26",
         commission_is_smoke_test=True,
         gap_through=False,
+        hold_crosses_gap=hold_crosses_gap,
     )
 
 
@@ -77,6 +79,10 @@ def write_artifacts(scratch_path: Path, trades: list[Trade]):
         data_start="2026-01-02",
         data_end="2026-01-03",
         input_data_paths=[input_file],
+        campaign_id="test-campaign",
+        commission_source="test commission source",
+        source_timezone_rationale="test timezone rationale",
+        rth_filter_note="test rth filter note",
         strategy_version="test-version",
         code_version="test-code",
         random_seed=123,
@@ -105,12 +111,14 @@ def test_write_parent_artifacts_writes_required_trade_columns_and_run_config(
     assert rows[0]["EntryTime"] == "2026-01-02T11:10:00-05:00"
     assert rows[0]["Side"] == "long"
     assert rows[0]["RealizedR"] == "1.25"
+    assert rows[0]["SignalZ"] == "-2.5"
     assert rows[0]["CommissionIsSmokeTest"] == "True"
     assert rows[0]["HoldCrossesGap"] == "False"
 
     run_config = json.loads((output_dir / "run_config.json").read_text())
     input_key = input_file.resolve().relative_to(artifacts.ROOT).as_posix()
     assert run_config["strategy_name"] == "vwap_zscore_fade"
+    assert run_config["campaign_id"] == "test-campaign"
     assert run_config["run_type"] == "smoke"
     assert run_config["split"] == "train"
     assert run_config["random_seed"] == 123
@@ -121,6 +129,11 @@ def test_write_parent_artifacts_writes_required_trade_columns_and_run_config(
     assert run_config["data_quality"] == {
         "bar_gap_count": 2,
         "bar_gap_session_count": 1,
+    }
+    assert run_config["runner_rationale"] == {
+        "commission_source": "test commission source",
+        "source_timezone_rationale": "test timezone rationale",
+        "rth_filter_note": "test rth filter note",
     }
     assert run_config["slippage_model"]["ticks_per_side"] == 1
     assert run_config["commission_model"]["commission_per_round_turn"] == 0.0
@@ -136,7 +149,7 @@ def test_write_parent_artifacts_writes_summary_metrics(artifact_scratch):
         trades=[
             make_trade(realized_r=1.0),
             make_trade(realized_r=-0.5, exit_reason="stop"),
-            make_trade(realized_r=2.0),
+            make_trade(realized_r=2.0, hold_crosses_gap=True),
             make_trade(realized_r=-10.0, exit_reason="end_of_data"),
         ],
     )
@@ -147,12 +160,20 @@ def test_write_parent_artifacts_writes_summary_metrics(artifact_scratch):
     assert summary["instrument"] == "NQ"
     assert summary["timeframe"] == "5min"
     assert summary["trade_count"] == 4
-    assert summary["mean_realized_r"] == pytest.approx(2.5 / 3.0)
-    assert summary["win_rate"] == pytest.approx(2.0 / 3.0)
+    assert summary["completed_trade_count"] == 3
+    assert summary["non_gap_trade_count"] == 2
+    assert summary["gap_trade_count"] == 1
+    assert summary["headline_sample"] == "completed_non_gap_trades"
+    assert summary["mean_realized_r"] == pytest.approx(0.25)
+    assert summary["win_rate"] == pytest.approx(0.5)
     assert summary["max_drawdown_r"] == 0.5
+    assert summary["all_completed_mean_realized_r"] == pytest.approx(2.5 / 3.0)
+    assert summary["all_completed_win_rate"] == pytest.approx(2.0 / 3.0)
+    assert summary["gap_trade_mean_r"] == 2.0
+    assert summary["gap_trade_win_rate"] == 1.0
     assert summary["incomplete_trade_count"] == 1
-    assert summary["r_multiple_diagnostics"]["1R_or_better"] == 2
-    assert summary["r_multiple_diagnostics"]["2R_or_better"] == 1
+    assert summary["r_multiple_diagnostics"]["1R_or_better"] == 1
+    assert summary["r_multiple_diagnostics"]["2R_or_better"] == 0
 
 
 def test_write_parent_artifacts_handles_empty_trades(artifact_scratch):
@@ -165,9 +186,17 @@ def test_write_parent_artifacts_handles_empty_trades(artifact_scratch):
 
     summary = json.loads((output_dir / "summary.json").read_text())
     assert summary["trade_count"] == 0
+    assert summary["completed_trade_count"] == 0
+    assert summary["non_gap_trade_count"] == 0
+    assert summary["gap_trade_count"] == 0
+    assert summary["headline_sample"] == "completed_non_gap_trades"
     assert summary["mean_realized_r"] is None
     assert summary["win_rate"] is None
     assert summary["max_drawdown_r"] is None
+    assert summary["all_completed_mean_realized_r"] is None
+    assert summary["all_completed_win_rate"] is None
+    assert summary["gap_trade_mean_r"] is None
+    assert summary["gap_trade_win_rate"] is None
     assert summary["incomplete_trade_count"] == 0
     assert all(value == 0 for value in summary["r_multiple_diagnostics"].values())
 
@@ -188,6 +217,10 @@ def test_write_parent_artifacts_raises_on_zero_commission_without_smoke_label(
             data_start="2026-01-02",
             data_end="2026-01-03",
             input_data_paths=[input_file],
+            campaign_id="test-campaign",
+            commission_source="test commission source",
+            source_timezone_rationale="test timezone rationale",
+            rth_filter_note="test rth filter note",
             strategy_version="test-version",
             code_version="test-code",
             random_seed=123,
@@ -227,6 +260,10 @@ def test_write_parent_artifacts_rejects_negative_gap_counts(
             data_start="2026-01-02",
             data_end="2026-01-03",
             input_data_paths=[input_file],
+            campaign_id="test-campaign",
+            commission_source="test commission source",
+            source_timezone_rationale="test timezone rationale",
+            rth_filter_note="test rth filter note",
             strategy_version="test-version",
             code_version="test-code",
             random_seed=123,
@@ -235,6 +272,37 @@ def test_write_parent_artifacts_rejects_negative_gap_counts(
             commission_is_smoke_test=False,
             bar_gap_count=bar_gap_count,
             bar_gap_session_count=bar_gap_session_count,
+        )
+
+    assert not output_dir.exists()
+
+
+def test_write_parent_artifacts_rejects_blank_campaign_id(artifact_scratch):
+    input_file = artifact_scratch / "NQ_sample.csv"
+    input_file.write_text("DateTime,Open\n2026-01-02 14:30:00,100\n")
+    output_dir = artifact_scratch / "run"
+
+    with pytest.raises(ValueError, match="campaign_id must not be blank"):
+        write_parent_artifacts(
+            trades=[make_trade(realized_r=1.0)],
+            output_dir=output_dir,
+            run_type="discovery",
+            split="train",
+            data_start="2026-01-02",
+            data_end="2026-01-03",
+            input_data_paths=[input_file],
+            campaign_id=" ",
+            commission_source="test commission source",
+            source_timezone_rationale="test timezone rationale",
+            rth_filter_note="test rth filter note",
+            strategy_version="test-version",
+            code_version="test-code",
+            random_seed=123,
+            exclude_roll_sessions=True,
+            commission_per_round_turn=5.16,
+            commission_is_smoke_test=False,
+            bar_gap_count=0,
+            bar_gap_session_count=0,
         )
 
     assert not output_dir.exists()

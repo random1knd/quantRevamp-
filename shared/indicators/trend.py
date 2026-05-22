@@ -32,10 +32,12 @@ def adx(
 
     # ADX is a multi-session trend indicator and intentionally does not reset
     # at session boundaries.
-    up_move = high.diff().fillna(0.0)
-    down_move = (low.shift(1) - low).fillna(0.0)
+    up_move = high.diff()
+    down_move = low.shift(1) - low
     plus_dm = up_move.where((up_move > 0.0) & (up_move > down_move), 0.0)
     minus_dm = down_move.where((down_move > 0.0) & (down_move >= up_move), 0.0)
+    plus_dm.iloc[0] = None
+    minus_dm.iloc[0] = None
 
     prev_close = close.shift(1)
     ranges = pd.concat(
@@ -49,8 +51,12 @@ def adx(
     true_range = ranges.max(axis=1)
     true_range.iloc[0] = None
 
-    smoothed_plus_dm = _wilder_smooth(plus_dm, window=window)
-    smoothed_minus_dm = _wilder_smooth(minus_dm, window=window)
+    smoothed_plus_dm = _wilder_smooth(
+        plus_dm, window=window, skip_seed_na=True
+    )
+    smoothed_minus_dm = _wilder_smooth(
+        minus_dm, window=window, skip_seed_na=True
+    )
     # Raw TR starts with no prior close; skip only that seed NaN so DI aligns
     # with the specified first Wilder seed position.
     smoothed_tr = _wilder_smooth(true_range, window=window, skip_seed_na=True)
@@ -80,6 +86,13 @@ def ma_slope(
     *,
     window: int,
 ) -> pd.Series:
+    """Return the one-bar slope of the simple moving average.
+
+    For an SMA, `SMA.diff()` is algebraically equivalent to
+    `(series - series.shift(window)) / window`, so this avoids materializing
+    the intermediate moving average.
+    """
+
     _validate_positive_window(window, name="window")
     result = (series - series.shift(window)) / window
     result.name = MA_SLOPE_NAME

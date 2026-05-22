@@ -27,11 +27,16 @@ ROOT = Path(__file__).resolve().parents[3]
 INPUT_DATA_PATH = ROOT / "data" / "bars" / "5min" / "NQ_all_5min.csv"
 OUTPUT_ROOT = ROOT / "data" / "results" / params.STRATEGY_NAME / "parent"
 EXCLUDE_ROLL_SESSIONS = True
+CAMPAIGN_ID = "vwap_zscore_fade_parent_smoke"
 COMMISSION_PER_ROUND_TURN = 0.0
 COMMISSION_IS_SMOKE_TEST = True
 RANDOM_SEED = 0
 STRATEGY_VERSION = "parent_v0"
 
+COMMISSION_SOURCE = (
+    "Smoke-test run uses 0.0 commission and is explicitly labeled "
+    "commission_is_smoke_test=True; not valid for comparison runs."
+)
 TIMEZONE_INFERENCE = (
     "Source DateTime is inferred as UTC: on EST dates, high NQ volume clusters "
     "around 14:30 source time, matching the 09:30 ET cash open; on an EDT date, "
@@ -71,6 +76,10 @@ def run_smoke() -> Path:
         data_start=prepared["DateTime_UTC"].min().isoformat(),
         data_end=prepared["DateTime_UTC"].max().isoformat(),
         input_data_paths=[INPUT_DATA_PATH],
+        campaign_id=CAMPAIGN_ID,
+        commission_source=COMMISSION_SOURCE,
+        source_timezone_rationale=TIMEZONE_INFERENCE,
+        rth_filter_note=RTH_FILTER_NOTE,
         strategy_version=STRATEGY_VERSION,
         code_version=_code_version(),
         random_seed=RANDOM_SEED,

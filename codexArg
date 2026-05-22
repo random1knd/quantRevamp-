@@ -2,39 +2,65 @@
 
 Change made:
 
-- Completed Claude's `_last_same_session_pos` O(N^2) fix.
-- Replaced the per-trade forward session scan with one precomputed
-  `session_last_pos` map in `generate_trades`.
-- Passed `session_last_pos` into `_close_trade` and used an O(1) lookup for the
-  entry session's last position.
-- Did not run discovery.
-- Did not begin slicing.
+- Completed Claude's approved fixes 3-6 after fixes 1-2 were accepted.
+- Documented the exit-bar cooldown in the parent README.
+- Split summary statistics so headline performance uses completed non-gap
+  trades only, with an explicit `headline_sample` label.
+- Added audit summary fields for all completed trades and gap-crossing trades.
+- Added a README research-question table for every `Signal*` context column.
+- Added `runner_rationale` to `run_config.json`, populated from explicit
+  runner constants rather than hard-coded in `artifacts.py`.
+- Preserved the prior approved fixes in the same green tree: tick-rounded
+  simulator stop/target prices, ADX seed correction, session-reset research
+  context fixes, campaign ids, and stale-doc cleanup.
 
-Exact source changes:
+Why:
 
-- Added after `rth_bar_number = _rth_bar_number(prepared)`:
-  `session_last_pos = _session_last_pos(prepared)`
-- Updated `_close_trade(...)` call to pass:
-  `session_last_pos=session_last_pos`
-- Added `_close_trade` parameter:
-  `session_last_pos: dict`
-- Replaced `_last_same_session_pos(...)` call with:
-  `session_date = bars.iloc[open_trade.entry_pos]["SessionDate_ET"]`
-  `last_same_session_pos = session_last_pos[session_date]`
-- Replaced `_last_same_session_pos` helper with:
-  `_session_last_pos(bars: pd.DataFrame) -> dict`
+- The exit-bar cooldown was already code behavior; documenting it prevents
+  false look-ahead assumptions.
+- Gap-crossing trades can distort headline metrics, so the main sample now
+  names and uses completed non-gap trades while keeping gap data visible.
+- Research context columns need a concrete question before slicer work starts.
+- Runner rationale belongs in the artifact because cost, timezone, and RTH
+  scoping assumptions affect reproducibility.
+
+Touched files in the current slice:
+
+- `strategies/vwap_zscore_fade/parent/README.md`
+- `strategies/vwap_zscore_fade/parent/artifacts.py`
+- `strategies/vwap_zscore_fade/parent/discovery_run.py`
+- `strategies/vwap_zscore_fade/parent/smoke_run.py`
+- `strategies/vwap_zscore_fade/parent/tests/test_artifacts.py`
+
+Assumptions:
+
+- `trade_count` remains total emitted trades.
+- `completed_trade_count`, `non_gap_trade_count`, and `gap_trade_count` count
+  only completed trades for the latter two gap categories.
+- `mean_realized_r`, `win_rate`, `max_drawdown_r`, and
+  `r_multiple_diagnostics` are now headline non-gap metrics by design.
+- Smoke runs also need explicit runner rationale because the artifact writer
+  now requires the same reproducibility fields for every run type.
 
 Verification:
 
-- `.venv\Scripts\python.exe -m pytest` -> 233 passed
-- Trade-count smoke check -> `Trade count: 3528`
+- Focused artifact/discovery tests:
+  `.venv\Scripts\python.exe -m pytest strategies\vwap_zscore_fade\parent\tests\test_artifacts.py strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py`
+  -> 13 passed
+- Full suite:
+  `.venv\Scripts\python.exe -m pytest` -> 245 passed
 
-Errors or deviations:
+Expected discovery impact after rerun:
 
-- None from Claude's O(N^2) fix instructions.
+- Trade generation should remain at 3570 because fixes 3-6 do not alter the
+  trading path.
+- `summary.json` headline mean/win/drawdown fields will change sample from all
+  completed trades to completed non-gap trades.
+- `run_config.json` will include `runner_rationale`.
 
-Stopped before:
+Remaining risks:
 
-- Discovery rerun.
-- Slicing.
-- Any strategy behavior changes beyond the O(1) session-end lookup.
+- Existing downstream readers of `mean_realized_r` must respect
+  `headline_sample`; tests now pin the new semantics.
+- The clean-code-version discovery artifact should be generated only after the
+  green tree is committed.

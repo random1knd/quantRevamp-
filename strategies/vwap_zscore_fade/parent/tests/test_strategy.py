@@ -3,6 +3,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
+from strategies.vwap_zscore_fade.parent import params
 from strategies.vwap_zscore_fade.parent.indicators import add_parent_indicators
 from strategies.vwap_zscore_fade.parent.strategy import generate_trades
 
@@ -107,6 +108,19 @@ def generate_smoke_trades(bars: pd.DataFrame, *, exclude_roll_sessions: bool = T
     )
 
 
+def assert_tick_aligned(value: float):
+    assert value / params.NQ_TICK_SIZE == pytest.approx(
+        round(value / params.NQ_TICK_SIZE)
+    )
+
+
+def assert_trade_prices_are_tick_aligned(trade):
+    assert_tick_aligned(trade.entry_price)
+    assert_tick_aligned(trade.exit_price)
+    assert_tick_aligned(trade.initial_stop_price)
+    assert_tick_aligned(trade.initial_risk)
+
+
 def test_generate_trades_enters_long_after_negative_zscore_and_exits_at_vwap_target():
     bars = make_signal_setup(side="long")
 
@@ -119,13 +133,14 @@ def test_generate_trades_enters_long_after_negative_zscore_and_exits_at_vwap_tar
     assert trade.signal_time == bars.loc[19, "DateTime_ET"]
     assert trade.entry_price == 80.25
     assert trade.signal_atr == pytest.approx(20.0 / 14.0)
-    assert trade.initial_stop_price == pytest.approx(78.10714285714286)
-    assert trade.initial_risk == pytest.approx(2.142857142857139)
+    assert trade.initial_stop_price == 78.0
+    assert trade.initial_risk == 2.25
     assert trade.exit_reason == "target"
     assert trade.bars_held == 1
     assert trade.entry_z <= -2.0
     assert trade.realized_r > 0.0
     assert trade.commission_is_smoke_test is True
+    assert_trade_prices_are_tick_aligned(trade)
 
 
 def test_generate_trades_enters_short_after_positive_zscore_and_exits_at_vwap_target():
@@ -140,12 +155,13 @@ def test_generate_trades_enters_short_after_positive_zscore_and_exits_at_vwap_ta
     assert trade.signal_time == bars.loc[19, "DateTime_ET"]
     assert trade.entry_price == 119.75
     assert trade.signal_atr == pytest.approx(20.0 / 14.0)
-    assert trade.initial_stop_price == pytest.approx(121.89285714285714)
-    assert trade.initial_risk == pytest.approx(2.142857142857139)
+    assert trade.initial_stop_price == 122.0
+    assert trade.initial_risk == 2.25
     assert trade.exit_reason == "target"
     assert trade.bars_held == 1
     assert trade.entry_z >= 2.0
     assert trade.realized_r > 0.0
+    assert_trade_prices_are_tick_aligned(trade)
 
 
 def test_entry_is_skipped_when_entry_bar_is_not_contiguous_with_signal_bar():
@@ -296,21 +312,18 @@ def test_generate_trades_treats_short_open_equal_stop_as_regular_stop():
     assert trade.exit_price == pytest.approx(trade.initial_stop_price + 0.25)
 
 
-def test_generate_trades_fills_long_gap_through_target_at_target_without_slippage():
+def test_generate_trades_skips_long_when_fixed_target_is_not_above_entry_price():
     bars = make_signal_setup(
         side="long",
         entry_overrides={"Open": 105.0, "High": 106.0, "Low": 104.0, "Close": 105.0},
     )
-    expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
 
-    trade = generate_smoke_trades(bars)[0]
+    trades = generate_smoke_trades(bars)
 
-    assert trade.exit_reason == "target"
-    assert trade.gap_through is True
-    assert trade.exit_price == pytest.approx(expected_target)
+    assert trades == []
 
 
-def test_generate_trades_treats_long_open_equal_target_as_regular_target():
+def test_generate_trades_skips_long_when_open_equal_target_but_slippage_worsens_entry():
     bars = make_signal_setup(
         side="long",
         entry_overrides={"Open": 99.0, "High": 101.0, "Low": 98.0, "Close": 99.0},
@@ -318,28 +331,74 @@ def test_generate_trades_treats_long_open_equal_target_as_regular_target():
     expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
     bars.loc[20, "Open"] = expected_target
 
-    trade = generate_smoke_trades(bars)[0]
+    trades = generate_smoke_trades(bars)
 
-    assert trade.exit_reason == "target"
-    assert trade.gap_through is False
-    assert trade.exit_price == pytest.approx(expected_target - 0.25)
+    assert trades == []
 
 
-def test_generate_trades_fills_short_gap_through_target_at_target_without_slippage():
-    bars = make_signal_setup(
-        side="short",
-        entry_overrides={"Open": 95.0, "High": 96.0, "Low": 94.0, "Close": 95.0},
-    )
+def test_generate_trades_skips_long_when_executable_target_has_no_edge_after_slippage():
+    bars = make_signal_setup(side="long")
     expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
+    bars.loc[20, ["Open", "High", "Low", "Close"]] = [
+        expected_target - 0.5,
+        expected_target,
+        expected_target - 1.0,
+        expected_target - 0.5,
+    ]
+
+    trades = generate_smoke_trades(bars)
+
+    assert trades == []
+
+
+def test_generate_trades_allows_long_when_executable_target_has_one_tick_edge_after_slippage():
+    bars = make_signal_setup(side="long")
+    expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
+    bars.loc[20, ["Open", "High", "Low", "Close"]] = [
+        expected_target - 0.75,
+        expected_target,
+        expected_target - 1.0,
+        expected_target - 0.75,
+    ]
+
+    trades = generate_smoke_trades(bars)
+
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "target"
+    assert trades[0].realized_r_gross > 0.0
+
+
+def test_generate_trades_fills_long_later_gap_through_target_at_target_without_slippage():
+    bars = make_signal_setup(
+        side="long",
+        entry_overrides={"Open": 98.0, "High": 98.5, "Low": 97.5, "Close": 98.0},
+        following_overrides=[
+            {"Open": 105.0, "High": 106.0, "Low": 104.0, "Close": 105.0}
+        ],
+    )
+    raw_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
+    expected_target = round(raw_target / params.NQ_TICK_SIZE) * params.NQ_TICK_SIZE
 
     trade = generate_smoke_trades(bars)[0]
 
     assert trade.exit_reason == "target"
     assert trade.gap_through is True
     assert trade.exit_price == pytest.approx(expected_target)
+    assert_trade_prices_are_tick_aligned(trade)
 
 
-def test_generate_trades_treats_short_open_equal_target_as_regular_target():
+def test_generate_trades_skips_short_when_fixed_target_is_not_below_entry_price():
+    bars = make_signal_setup(
+        side="short",
+        entry_overrides={"Open": 95.0, "High": 96.0, "Low": 94.0, "Close": 95.0},
+    )
+
+    trades = generate_smoke_trades(bars)
+
+    assert trades == []
+
+
+def test_generate_trades_skips_short_when_open_equal_target_but_slippage_worsens_entry():
     bars = make_signal_setup(
         side="short",
         entry_overrides={"Open": 101.0, "High": 102.0, "Low": 99.0, "Close": 100.0},
@@ -347,11 +406,60 @@ def test_generate_trades_treats_short_open_equal_target_as_regular_target():
     expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
     bars.loc[20, "Open"] = expected_target
 
+    trades = generate_smoke_trades(bars)
+
+    assert trades == []
+
+
+def test_generate_trades_skips_short_when_executable_target_has_no_edge_after_slippage():
+    bars = make_signal_setup(side="short")
+    expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
+    bars.loc[20, ["Open", "High", "Low", "Close"]] = [
+        expected_target + 0.5,
+        expected_target + 1.0,
+        expected_target,
+        expected_target + 0.5,
+    ]
+
+    trades = generate_smoke_trades(bars)
+
+    assert trades == []
+
+
+def test_generate_trades_allows_short_when_executable_target_has_one_tick_edge_after_slippage():
+    bars = make_signal_setup(side="short")
+    expected_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
+    bars.loc[20, ["Open", "High", "Low", "Close"]] = [
+        expected_target + 0.75,
+        expected_target + 1.0,
+        expected_target,
+        expected_target + 0.75,
+    ]
+
+    trades = generate_smoke_trades(bars)
+
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "target"
+    assert trades[0].realized_r_gross > 0.0
+
+
+def test_generate_trades_fills_short_later_gap_through_target_at_target_without_slippage():
+    bars = make_signal_setup(
+        side="short",
+        entry_overrides={"Open": 102.0, "High": 102.5, "Low": 101.5, "Close": 102.0},
+        following_overrides=[
+            {"Open": 95.0, "High": 96.0, "Low": 94.0, "Close": 95.0}
+        ],
+    )
+    raw_target = add_parent_indicators(bars).loc[19, "SessionVWAP"]
+    expected_target = round(raw_target / params.NQ_TICK_SIZE) * params.NQ_TICK_SIZE
+
     trade = generate_smoke_trades(bars)[0]
 
     assert trade.exit_reason == "target"
-    assert trade.gap_through is False
-    assert trade.exit_price == pytest.approx(expected_target + 0.25)
+    assert trade.gap_through is True
+    assert trade.exit_price == pytest.approx(expected_target)
+    assert_trade_prices_are_tick_aligned(trade)
 
 
 def test_generate_trades_uses_stop_before_target_on_same_bar_conflict():

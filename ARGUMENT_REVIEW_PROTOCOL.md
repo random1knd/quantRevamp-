@@ -90,6 +90,41 @@ Assumption drift is not automatically lower priority than code drift. An
 optimistic assumption that accumulates across many trades can overstate edge
 as severely as a code bug.
 
+## Doc Drift
+
+Bugs have occurred not from ignoring docs but from following docs that
+carried unrealistic or premature assumptions. The docs themselves can be
+wrong.
+
+Claude must treat docs as proposals, not ground truth. During any review,
+if a doc's assumption looks questionable, challenge it explicitly — do not
+defer simply because the code matches the doc.
+
+Three forms of doc drift to watch for:
+
+- **Premature specificity** — the doc prescribes a particular implementation
+  before it is clear that implementation is the right one (e.g. listing 20
+  indicators to build before knowing which ones the strategy actually needs).
+- **Accumulated assumption** — the doc encodes an optimistic or untested
+  assumption that silently compounds across many trades or decisions.
+- **Planning bias** — the doc describes what was imagined during planning,
+  not what is actually warranted by the current evidence.
+
+When Claude identifies doc drift:
+
+1. Name the specific doc and section.
+2. State what assumption is baked in and why it may not hold.
+3. Propose a concrete correction or ask Codex to challenge it in codexArg.
+4. Do not let code proceed against a doc that itself has an unresolved
+   assumption problem.
+
+Docs are not protected from the review loop. They go through it too.
+
+## Known Non-Issues
+
+Before raising a finding, check `KNOWN_LIMITATIONS.md` — items listed there
+have been investigated and closed as intentional architecture decisions.
+
 ## Important Boundaries
 
 These files do not approve code automatically.

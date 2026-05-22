@@ -132,10 +132,10 @@ Rules:
 
 ### Volume Z-Score
 
-`EntryVolumeZ` is context only. It does not affect parent strategy trades.
+`SignalVolumeZ` is context only. It does not affect parent strategy trades.
 
 ```text
-EntryVolumeZ = (Volume - rolling_mean(Volume, 20)) / rolling_std(Volume, 20)
+SignalVolumeZ = (Volume - rolling_mean(Volume, 20)) / rolling_std(Volume, 20)
 ```
 
 Rules:
@@ -150,6 +150,9 @@ Rules:
 Signals are evaluated only after a 5-minute signal bar has closed.
 
 Entry fills occur on the next bar open.
+
+After a trade closes, the exit bar is not eligible as a signal bar. The scanner
+resumes at the bar following the exit bar.
 
 Long entry:
 
@@ -259,9 +262,9 @@ Every completed trade should record at least:
 - `BarsHeld`
 - `SignalTime`
 - `SignalATR`
-- `EntryZ`
-- `EntrySessionVWAP`
-- `EntryVWAPDeviation`
+- `SignalZ`
+- `SignalSessionVWAP`
+- `SignalVWAPDeviation`
 - `Contract`
 - `CommissionIsSmokeTest`
 
@@ -274,28 +277,68 @@ exact intrabar fill time is not observable.
 
 ## Research Context To Record
 
-These fields are for post-trade slicing only. They must not affect parent
-strategy entries, exits, stops, or timing.
+These fields are closed signal-bar values joined by `SignalTime` for
+post-trade slicing only. They must not affect parent strategy entries, exits,
+stops, or timing.
 
-- `EntryHour_ET`
-- `SessionMinute_ET`
-- `EntryZ`
-- `EntryATR`
-- `EntrySessionVWAP`
-- `EntryVWAPDeviation`
-- `EntryVolume`
-- `EntryVolumeZ`
-- `EntryDelta`
-- `EntryDeltaPct`
+- `SignalVolumeZ`
+- `SignalDelta`
+- `SignalDeltaPct`
+- `SignalBodyRatio`
+- `SignalClosePosition`
+- `SignalVWAPDist`
+- `SignalVWAPDistATR`
+- `SignalRealizedVol`
+- `SignalVolRatio`
+- `SignalVolRobustZ`
+- `SignalATRPctile`
+- `SignalCumDelta`
+- `SignalDeltaROC`
+- `SignalOFI`
+- `SignalVPIN`
+- `SignalKyleLambda`
+- `SignalKyleLambdaPctile`
+- `SignalAutoCorr`
+- `SignalVarRatio`
+- `SignalADX`
+- `SignalEfficiencyRatio`
+- `SignalBarsSinceOpen`
+
+### Research Questions
+
+| Signal* Column | Research Question |
+| --- | --- |
+| `SignalVolumeZ` | Does signal-bar volume context help explain when fades work better or worse? |
+| `SignalDelta` | Does same-bar aggressive buying or selling pressure relate to fade outcomes? |
+| `SignalDeltaPct` | Does normalized same-bar order-flow imbalance relate to fade outcomes independent of raw volume? |
+| `SignalBodyRatio` | Does candle body size relative to range separate exhaustion from continuation behavior? |
+| `SignalClosePosition` | Does the signal bar's close location inside its range identify stronger or weaker fade setups? |
+| `SignalVWAPDist` | Does absolute distance from session VWAP explain realized R after entry? |
+| `SignalVWAPDistATR` | Does ATR-normalized distance from session VWAP explain realized R after entry? |
+| `SignalRealizedVol` | Does recent realized volatility regime relate to stop, target, or time-stop outcomes? |
+| `SignalVolRatio` | Does current volume relative to recent volume identify different fade behavior? |
+| `SignalVolRobustZ` | Does robust volume surprise relate to fade quality when ordinary volume z-score is noisy? |
+| `SignalATRPctile` | Does the intraday ATR percentile describe regimes where this mean-reversion thesis is more or less reliable? |
+| `SignalCumDelta` | Does cumulative same-session order-flow pressure help explain fade outcomes? |
+| `SignalDeltaROC` | Does the recent rate of change in same-session delta relate to continuation risk after the signal? |
+| `SignalOFI` | Does approximate order-flow imbalance provide useful context for fade outcomes? |
+| `SignalVPIN` | Does recent volume-synchronized imbalance describe adverse-selection conditions for the fade? |
+| `SignalKyleLambda` | Does estimated price impact relate to whether the stretched move reverts or continues? |
+| `SignalKyleLambdaPctile` | Does the percentile of estimated price impact identify distinct liquidity regimes? |
+| `SignalAutoCorr` | Does recent return autocorrelation describe trend persistence around fade signals? |
+| `SignalVarRatio` | Does recent variance-ratio context distinguish mean-reverting from trending behavior? |
+| `SignalADX` | Does broader trend strength relate to fade outcomes? |
+| `SignalEfficiencyRatio` | Does directional efficiency of recent price movement relate to fade reliability? |
+| `SignalBarsSinceOpen` | Does time elapsed since the RTH open explain differences in fade outcomes? |
 
 Delta definitions:
 
 ```text
-EntryDelta = AskVolume - BidVolume
-EntryDeltaPct = EntryDelta / Volume
+SignalDelta = AskVolume - BidVolume
+SignalDeltaPct = SignalDelta / Volume
 ```
 
-If volume is zero, `EntryDeltaPct` is missing.
+If volume is zero, `SignalDeltaPct` is missing.
 
 ## Explicit Non-Goals For Parent v0
 

@@ -212,6 +212,7 @@ def _open_trade(
     target_price = signal_bar["SessionVWAP"]
     if pd.isna(target_price):
         return None
+    target_price = _round_to_tick(float(target_price))
 
     if side == "long":
         entry_price = float(entry_bar["Open"]) + slippage
@@ -223,9 +224,14 @@ def _open_trade(
         initial_stop_price = entry_price + params.STOP_ATR_MULTIPLE * float(
             signal_bar["ATR"]
         )
+    initial_stop_price = _round_to_tick(initial_stop_price)
 
     initial_risk = abs(entry_price - initial_stop_price)
     if initial_risk <= 0.0:
+        return None
+    if side == "long" and target_price - slippage <= entry_price:
+        return None
+    if side == "short" and target_price + slippage >= entry_price:
         return None
 
     return _OpenTrade(
@@ -235,7 +241,7 @@ def _open_trade(
         entry_price=entry_price,
         initial_stop_price=initial_stop_price,
         initial_risk=initial_risk,
-        target_price=float(target_price),
+        target_price=target_price,
     )
 
 
@@ -509,3 +515,7 @@ def _gross_r(
 
 def _slippage_points() -> float:
     return params.SLIPPAGE_TICKS_PER_SIDE * params.NQ_TICK_SIZE
+
+
+def _round_to_tick(price: float) -> float:
+    return round(price / params.NQ_TICK_SIZE) * params.NQ_TICK_SIZE

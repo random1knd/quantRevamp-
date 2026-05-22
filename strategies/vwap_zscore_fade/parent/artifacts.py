@@ -27,9 +27,9 @@ REQUIRED_TRADE_COLUMNS = (
     "BarsHeld",
     "SignalTime",
     "SignalATR",
-    "EntryZ",
-    "EntrySessionVWAP",
-    "EntryVWAPDeviation",
+    "SignalZ",
+    "SignalSessionVWAP",
+    "SignalVWAPDeviation",
     "Contract",
     "CommissionIsSmokeTest",
     "GapThrough",
@@ -46,6 +46,10 @@ def write_parent_artifacts(
     data_start: str,
     data_end: str,
     input_data_paths: list[str | Path],
+    campaign_id: str,
+    commission_source: str,
+    source_timezone_rationale: str,
+    rth_filter_note: str,
     strategy_version: str,
     code_version: str,
     random_seed: int,
@@ -55,6 +59,8 @@ def write_parent_artifacts(
     bar_gap_count: int,
     bar_gap_session_count: int,
 ) -> None:
+    if not campaign_id.strip():
+        raise ValueError("campaign_id must not be blank")
     if commission_per_round_turn == 0.0 and not commission_is_smoke_test:
         raise ValueError("zero commission requires smoke-test label")
     if bar_gap_count < 0:
@@ -72,6 +78,10 @@ def write_parent_artifacts(
         data_start=data_start,
         data_end=data_end,
         input_data=input_data,
+        campaign_id=campaign_id,
+        commission_source=commission_source,
+        source_timezone_rationale=source_timezone_rationale,
+        rth_filter_note=rth_filter_note,
         strategy_version=strategy_version,
         code_version=code_version,
         random_seed=random_seed,
@@ -123,9 +133,9 @@ def _trade_row(trade: Trade) -> dict[str, Any]:
         "BarsHeld": trade.bars_held,
         "SignalTime": _serialize(trade.signal_time),
         "SignalATR": trade.signal_atr,
-        "EntryZ": trade.entry_z,
-        "EntrySessionVWAP": trade.entry_session_vwap,
-        "EntryVWAPDeviation": trade.entry_vwap_deviation,
+        "SignalZ": trade.entry_z,
+        "SignalSessionVWAP": trade.entry_session_vwap,
+        "SignalVWAPDeviation": trade.entry_vwap_deviation,
         "Contract": trade.contract,
         "CommissionIsSmokeTest": trade.commission_is_smoke_test,
         "GapThrough": trade.gap_through,
@@ -140,6 +150,10 @@ def _run_config(
     data_start: str,
     data_end: str,
     input_data: dict[str, Any],
+    campaign_id: str,
+    commission_source: str,
+    source_timezone_rationale: str,
+    rth_filter_note: str,
     strategy_version: str,
     code_version: str,
     random_seed: int,
@@ -150,7 +164,7 @@ def _run_config(
     bar_gap_session_count: int,
 ) -> dict[str, Any]:
     return {
-        "campaign_id": None,
+        "campaign_id": campaign_id,
         "strategy_name": params.STRATEGY_NAME,
         "strategy_version": strategy_version,
         "run_type": run_type,
@@ -174,6 +188,11 @@ def _run_config(
             "bar_gap_count": bar_gap_count,
             "bar_gap_session_count": bar_gap_session_count,
         },
+        "runner_rationale": {
+            "commission_source": commission_source,
+            "source_timezone_rationale": source_timezone_rationale,
+            "rth_filter_note": rth_filter_note,
+        },
         "slippage_model": _slippage_model(),
         "commission_model": _commission_model(
             commission_per_round_turn=commission_per_round_turn,
@@ -194,9 +213,16 @@ def _summary(
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
 ) -> dict[str, Any]:
-    completed_realized = [
-        trade.realized_r for trade in trades if trade.exit_reason != "end_of_data"
+    completed_trades = [
+        trade for trade in trades if trade.exit_reason != "end_of_data"
     ]
+    non_gap_realized = [
+        trade.realized_r for trade in completed_trades if not trade.hold_crosses_gap
+    ]
+    gap_realized = [
+        trade.realized_r for trade in completed_trades if trade.hold_crosses_gap
+    ]
+    all_completed_realized = [trade.realized_r for trade in completed_trades]
     return {
         "strategy_name": params.STRATEGY_NAME,
         "instrument": params.INSTRUMENT,
@@ -211,10 +237,18 @@ def _summary(
             exclude_roll_sessions=exclude_roll_sessions
         ),
         "trade_count": len(trades),
-        "mean_realized_r": _mean(completed_realized),
-        "win_rate": _win_rate(completed_realized),
-        "max_drawdown_r": _max_drawdown(completed_realized),
-        "r_multiple_diagnostics": _r_multiple_diagnostics(completed_realized),
+        "completed_trade_count": len(completed_trades),
+        "non_gap_trade_count": len(non_gap_realized),
+        "gap_trade_count": len(gap_realized),
+        "headline_sample": "completed_non_gap_trades",
+        "mean_realized_r": _mean(non_gap_realized),
+        "win_rate": _win_rate(non_gap_realized),
+        "max_drawdown_r": _max_drawdown(non_gap_realized),
+        "r_multiple_diagnostics": _r_multiple_diagnostics(non_gap_realized),
+        "all_completed_mean_realized_r": _mean(all_completed_realized),
+        "all_completed_win_rate": _win_rate(all_completed_realized),
+        "gap_trade_mean_r": _mean(gap_realized),
+        "gap_trade_win_rate": _win_rate(gap_realized),
         "incomplete_trade_count": sum(
             1 for trade in trades if trade.exit_reason == "end_of_data"
         ),

@@ -27,7 +27,7 @@ Build only:
 - session VWAP
 - VWAP deviation z-score
 - ATR stop
-- tracking VWAP target
+- fixed signal-bar VWAP target
 - 12-bar time stop
 - simple trades artifact
 - simple summary artifact

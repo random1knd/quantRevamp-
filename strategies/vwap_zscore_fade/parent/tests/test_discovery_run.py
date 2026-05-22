@@ -8,6 +8,7 @@ import pytest
 
 from shared.data.splits import chronological_session_splits
 from strategies.vwap_zscore_fade.parent.discovery_run import (
+    CAMPAIGN_ID,
     COMMISSION_IS_SMOKE_TEST,
     COMMISSION_PER_ROUND_TURN,
     _write_context_trades_csv,
@@ -90,6 +91,7 @@ def test_discovery_run_keeps_only_discovery_sessions():
 
 
 def test_discovery_run_uses_real_commission_not_smoke_label():
+    assert CAMPAIGN_ID == "vwap_zscore_fade_parent_c001"
     assert COMMISSION_PER_ROUND_TURN == 5.16
     assert COMMISSION_IS_SMOKE_TEST is False
 
@@ -131,16 +133,16 @@ def test_discovery_context_trades_append_research_fields(discovery_scratch):
             "DateTime_ET": [
                 pd.Timestamp("2026-01-02 11:05:00", tz="America/New_York")
             ],
-            "EntryVolumeZ": [1.5],
-            "EntryDelta": [42.0],
-            "EntryDeltaPct": [0.2],
+            "SignalVolumeZ": [1.5],
+            "SignalDelta": [42.0],
+            "SignalDeltaPct": [0.2],
         }
     )
 
     _write_context_trades_csv(
         output_dir=output_dir,
         context_bars=context_bars,
-        research_indicator_columns=("EntryVolumeZ", "EntryDelta", "EntryDeltaPct"),
+        research_indicator_columns=("SignalVolumeZ", "SignalDelta", "SignalDeltaPct"),
     )
 
     with (output_dir / "context_trades.csv").open(newline="", encoding="utf-8") as file:
@@ -150,11 +152,11 @@ def test_discovery_context_trades_append_research_fields(discovery_scratch):
         "EntryTime",
         "SignalTime",
         "RealizedR",
-        "EntryVolumeZ",
-        "EntryDelta",
-        "EntryDeltaPct",
+        "SignalVolumeZ",
+        "SignalDelta",
+        "SignalDeltaPct",
     ]
     assert rows[0]["SignalTime"] == "2026-01-02T11:05:00-05:00"
-    assert rows[0]["EntryVolumeZ"] == "1.5"
-    assert rows[0]["EntryDelta"] == "42.0"
-    assert rows[0]["EntryDeltaPct"] == "0.2"
+    assert rows[0]["SignalVolumeZ"] == "1.5"
+    assert rows[0]["SignalDelta"] == "42.0"
+    assert rows[0]["SignalDeltaPct"] == "0.2"
