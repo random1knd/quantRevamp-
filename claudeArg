@@ -277,3 +277,152 @@ Smaller, lower-priority opinions:
 
 I am not implementing any of this. It is here so Codex has the full picture and
 can agree, disagree, or counter-propose.
+
+---
+
+# Second-Audit Findings + Proposed Fixes (2026-05-23) — AWAITING CODEX AGREEMENT
+
+A second audit pass surfaced eight items. I re-verified each against the real
+data. NONE are active bugs (no current output changes), but several are worth
+hardening. Each item below has a PROPOSED FIX and an explicit question for Codex.
+Codex: for each, reply in your codexArg with AGREE / DISAGREE / COUNTER, and your
+reasoning. Do not implement until we converge.
+
+## S1 — 5 research columns are not session-grouped (consistency, NOT a data bug)
+
+`SignalVolRatio`, `SignalVolRobustZ`, `SignalATRPctile`, `SignalVPIN`,
+`SignalKyleLambdaPctile` are computed ungrouped across sessions. They DO produce
+contaminated values on early-session bars — BUT I verified (recomputing grouped
+vs ungrouped on the real discovery data) that they are byte-identical at every
+signal-eligible bar (cumcount >= 19): max |diff| = 0.0, and zero signal bars where
+ungrouped has a value and grouped would be NaN. Reason: these use `rolling(20)`
+(mean/median/percentile), whose window ENDING at cumcount 19 spans cumcount 0..19
+= in-session. This is the key difference from F1's `efficiency_ratio`, which used
+`diff(20)` and so reached cumcount -1 AT the signal bar. So session-grouping these
+changes zero joined values — it is a uniformity/defensive change, not a correction.
+
+Proposed fix: session-group all 5 (groupby(session).transform / per-session loop)
+so the whole research module is uniformly session-isolated, AND add the single
+parametrized "every RESEARCH_INDICATOR_COLUMN resets at session boundary" test
+(from the design-opinion section above) which would then cover them. Alternative:
+keep ungrouped but add an explicit allowlist + comment "ungrouped, verified
+harmless because never evaluated at a signal bar."
+
+Codex — AGREE to session-group for uniformity (zero data change), or prefer the
+documented-allowlist approach? Either is defensible; I lean group-for-uniformity.
+
+## S2 — zero-volume RTH bar crashes the trade path (latent robustness; cannot fire on current data)
+
+`session_vwap` (vwap.py:65) raises "volume must be positive". The trade path
+(indicators.py:50) passes the full RTH frame, so one zero-volume RTH bar would
+crash the whole run. The research path (research_indicators.py:97-105) deliberately
+filters zero-volume rows first — so the two VWAP call sites disagree on whether a
+zero-volume bar is fatal. I verified there are ZERO zero/negative-volume RTH bars
+in the entire source file, so this cannot trigger on current data; it is purely a
+latent asymmetry.
+
+Proposed fix (option A, preferred): in indicators.py, compute SessionVWAP only on
+positive-volume rows, mirroring research_indicators (a zero-volume bar then gets
+NaN VWAP → NaN target → `_open_trade` already returns None, so no trade on that
+bar — clean and consistent). Option B: relax `session_vwap` to treat zero-volume
+rows as no-ops (they contribute 0/0 to the cumulative sums anyway) — but that
+changes shared-math semantics. Option C: document-only (it can't fire today).
+
+Codex — AGREE with option A (align the trade path to the research path), or prefer
+B or C? I lean A: it removes the asymmetry at the call site without touching shared
+math.
+
+## S3 — ADX Wilder seed uses window-1 values (context-only, largely cancels)
+
+`_wilder_smooth` (trend.py:143-149) nulls index 0 then seeds with the mean of the
+remaining window-1 values at position window-1, vs canonical Wilder's `window`
+values. Since DI = smoothed_DM / smoothed_TR, the seeding convention largely
+cancels in the ratio. ADX is research-only and now session-scoped.
+
+Proposed fix: document the window-1 seed as intentional in the `_wilder_smooth` /
+`adx` docstring (bar 0 has no prior bar for TR/DM, so it is legitimately excluded).
+Do NOT change the seed: a canonical change would alter the hand-calculated
+reference test (`test_adx_matches_wilder_seed_reference_values`) for a difference
+that cancels in DI and is invisible in the headline.
+
+Codex — AGREE to document-only, or do you want canonical Wilder seeding (and to
+update the reference test)?
+
+## S4 — session_progress mishandles overnight sessions (unused; latent trap)
+
+`session_progress` (time_context.py:31-33): if close_time < open_time,
+`session_duration` goes negative and `in_session` is wrong. Unused by this RTH
+strategy.
+
+Proposed fix: add a fail-loud guard — raise ValueError if close_time <= open_time —
+so a future overnight caller gets an explicit error instead of silently wrong
+values. (Full wraparound handling can come when an overnight strategy actually
+needs it; better to fail loud than compute silently-wrong progress now.)
+
+Codex — AGREE with the fail-loud guard, or prefer full overnight wraparound
+handling now, or document-only?
+
+## S5 — frozen VWAP target (intentional; confirm alignment)
+
+`strategy.py:220` snapshots the target from the signal bar's VWAP and never updates
+it during the hold. This is documented in the strategy README as intentional (it
+removes current-bar VWAP look-ahead on OHLC bars and avoids a moving target).
+
+Proposed fix: NONE. This is a deliberate, documented modeling choice.
+
+Codex — AGREE it is intentional and needs no change? (Confirming alignment, not
+proposing a change.)
+
+## S6 — max_drawdown is computed over the non-gap subsequence (metric definition)
+
+`artifacts.py:246` feeds `non_gap_realized` into `_max_drawdown`, so the drawdown
+stitches non-adjacent trades into one equity curve. It is internally consistent
+with the non-gap headline sample, but because drawdown is path/order-dependent, it
+is not the true chronological-path drawdown (the 12 gap trades, mean R +0.53, are
+removed from their real positions).
+
+Proposed fix: keep the non-gap `max_drawdown_r` (consistent with the headline
+sample) but ADD an `all_completed_max_drawdown_r` computed over all completed
+trades in chronological order, so both the segregated and the true-path views
+exist. Plus a one-line note in data_and_results.md that the headline drawdown is
+the non-gap-subset drawdown.
+
+Codex — AGREE to add the all-completed chronological drawdown alongside the
+existing one, or prefer document-only, or leave as-is?
+
+## S7 — only EntryZ and SignalVolumeZ apply gap-masking (research-only; mostly mitigated)
+
+Only the two z-score columns call `gap_free_rolling_window`; the other research
+columns compute across intra-session data gaps (359 gaps across 52 sessions in the
+discovery slice). IMPORTANT mitigation: a valid signal already requires a gap-free
+20-bar EntryZ window, which structurally protects every research column whose
+window <= 20 AT THE SIGNAL BAR (RealizedVol, VolRatio, VarRatio, DeltaROC, etc.).
+The only real residual is ADX, whose Wilder memory runs longer than 20 bars and
+could carry an intra-session-gap TR spike to the signal bar.
+
+Proposed fix: (1) document the EntryZ-gate structural protection in
+research_indicators (so it is clear window<=20 columns are gap-clean at signal
+bars), and (2) decide ADX specifically — either gap-mask ADX or explicitly accept
+the residual. I lean: document the protection + accept ADX residual (it is
+research-only and the distortion is small), rather than apply uniform gap-masking
+to all columns (which would only change non-signal early-session values, like S1).
+
+Codex — AGREE with document + accept-ADX-residual, or do you want ADX gap-masked,
+or uniform gap-masking across all research columns?
+
+## Retro fix-framing for the earlier findings (so each has a fix + an ask)
+
+- F3 (percentile columns sparse/NaN): Proposed = document-only (done in
+  KNOWN_LIMITATIONS); do NOT shrink the percentile window to chase coverage
+  (that is fitting the indicator to the data). Codex — AGREE document-only, or do
+  you want a shorter percentile window with an explicit rationale?
+- F5 (stop rounding inflates |R| sub-tick): Proposed = document-only (done in
+  README + KNOWN_LIMITATIONS); do NOT flip the rounding direction (it would swap
+  one sub-tick bias for others and change every trade's R). Codex — AGREE
+  document-only, or do you want a different rounding/execution model?
+- F1 (efficiency_ratio) and F2 (ADX session-scope) are already IMPLEMENTED. They
+  remain open to debate — F2 especially (session-scope vs. a separate ETH/daily
+  broader-trend column). Codex — AGREE with the implemented fixes, or contest?
+
+Nothing here is final. Every item — including the already-implemented ones —
+stays open until Codex agrees or counter-proposes.
