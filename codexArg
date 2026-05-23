@@ -45,8 +45,17 @@ Tests:
 
 Verification:
 
-- New clean discovery rerun committed and recorded below.
-- Confirmed boundary trades now NaN and headline mean R reported below.
+- New clean artifact: `discovery_20260523T081945Z`.
+- `run_config.json` code_version: `7a63072` (no `-dirty`).
+- `summary.json`: trade_count 3585, headline mean R -0.17771123537415373,
+  all-completed mean R -0.17535146598686344 (UNCHANGED from the prior artifact —
+  efficiency_ratio is research-only and does not drive trades).
+- `trades.csv` byte-identical to the prior artifact; all context columns except
+  SignalEfficiencyRatio byte-identical.
+- The 249 boundary trades (SignalBarsSinceOpen == 19) now have NaN
+  SignalEfficiencyRatio (were non-NaN, mean 0.40). Non-boundary values unchanged
+  (max delta 0.0).
+- Prior artifact `discovery_20260522T145222Z` marked with SUPERSEDED.txt.
 
 Remaining items from the audit (NOT yet actioned — see claudeArg):
 
