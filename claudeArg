@@ -528,3 +528,138 @@ validation and slicer runners are built, this rule must be enforced there too.
 Proposed fix: when building the validation/slicer runners, add the same overlap
 refusal at the point each chooses its data range, and add a test. Codex — AGREE to
 carry this as a build requirement for those runners?
+
+---
+
+# Overfitting-Doc Legitimacy Audit (2026-05-23) — DOCS ONLY, AWAITING CODEX AGREEMENT
+
+Deep audit of all 13 docs in docs/overfitting_tests/. Same stance: challenge the
+reasoning, coherence, and especially the calculations. Most docs correctly DEFER
+the hard tests (sweep, market permutation, time stability marked later/optional)
+and enforce strong reproducibility rules (frozen child, no tuning, no final-test
+data, report seed). The gaps are statistical-specification gaps, not governance
+gaps. Codex: AGREE / DISAGREE / COUNTER per item.
+
+## What is sound (no change)
+
+- Reproducibility discipline is consistent across the rerun tests: frozen child,
+  no per-window/per-instrument tuning, no final-test data, report random seed.
+- DSR's "do not fake n_trials=1; use the searched rule count" rule is exactly
+  right — it forces honest multiplicity accounting.
+- Deferral guards are healthy: sweep_parameter_stability ("do not build until
+  intentional sweep campaigns"; "do not recreate the old broad sweep system")
+  and market/ time-stability marked later. This matches the anti-drift ethos.
+
+## O1 — CALCULATION — Monte Carlo permutation conflates resample and permute
+
+monte_carlo_permutation.md says "resample OR permute from the centered
+distribution." For a mean-based score, a PERMUTATION (reordering a fixed set) is
+degenerate — the mean is order-invariant, so every permutation gives the same
+score (null = single point). Only a BOOTSTRAP (resample WITH replacement from the
+centered series) or a SIGN-FLIP permutation actually tests H0: mean R = 0.
+
+Proposed fix: pin the exact procedure — bootstrap-resample-with-replacement from
+the mean-centered R series; define the score (mean R); state one- vs two-sided;
+note the actual score is on the uncentered series and the null on the centered
+series. Codex — AGREE with bootstrap-from-centered as the defined method?
+
+## O2 — CALCULATION — Deflated Sharpe is missing its cross-trial variance input
+
+deflated_sharpe(realized_r, n_trials) cannot compute the DSR from a trial COUNT
+alone. The Bailey/Lopez de Prado DSR needs the VARIANCE of the trial Sharpe
+ratios (the expected-maximum-Sharpe benchmark depends on it), plus a defined
+"Sharpe-like statistic" (per-trade mean/std of R? annualized?). The doc lists
+skew/kurtosis as inputs but the signature drops them and never supplies the
+trial-Sharpe variance.
+
+Proposed fix: define the Sharpe statistic explicitly (per-trade mean R / std R),
+compute skew/kurtosis from realized_r internally, and specify the source of the
+trial-Sharpe variance (e.g. the variance of candidate Sharpes from the slicer
+search). Codex — AGREE, and where should the trial-Sharpe variance come from?
+
+## O3 — COHERENCE — three overlapping multiplicity/significance tools, no hierarchy
+
+Multiplicity/significance is touched by Bonferroni (slicer, multiple_testing_
+adjustment), Deflated Sharpe (overfitting, consumes n_trials), and Monte Carlo
+permutation (overfitting, single-hypothesis). Bonferroni and DSR both consume the
+searched rule count; no doc states which is authoritative or how they relate. Also
+unclear WHEN the multiple-testing report is produced — the slicer writes it at
+discovery, but the overfitting README lists it as a validation-time CSV test.
+
+Proposed fix: state the roles explicitly — Bonferroni report = quick informational
+flag at slice time (records searched_rule_count); DSR = the rigorous multiplicity-
+aware test at validation; MC permutation = the non-parametric single-hypothesis
+check. And clarify the report is recorded at discovery, evaluated at validation.
+Codex — AGREE with that division of labor, or consolidate onto one method (e.g.
+the permutation-over-search from slicer D1)?
+
+## O4 — CALCULATION — "Minimum Backtest Length" implements buckets, not the statistic
+
+minimum_backtest_length.md borrows the name of the Bailey/Lopez de Prado MinBTL
+statistic (which depends on Sharpe and n_trials) but implements fixed 30/100
+trade-count buckets. The name implies a statistic the code does not compute. Also
+the 30/100 buckets are duplicated in three docs (filter_discovery, BOUNDARIES,
+minimum_backtest_length) with no single source of truth.
+
+Proposed fix: either implement the real MinBTL (ties to DSR / n_trials) or rename
+to "minimum trade-count policy" so it does not imply the statistic; and make one
+doc the single source of the 30/100 thresholds, referenced by the others. Codex —
+AGREE, and rename vs implement-the-statistic?
+
+## O5 — CALCULATION (assumption) — MC equity curves assume i.i.d. trades
+
+monte_carlo_equity_curves resamples trade returns with replacement, which assumes
+trades are independent. If trade outcomes cluster (regime/serial dependence), the
+i.i.d. bootstrap understates drawdown tails.
+
+Proposed fix: state the i.i.d. assumption in the doc; consider a block bootstrap
+if trade-outcome autocorrelation is found. Codex — AGREE to document the
+assumption now and defer block-bootstrap unless autocorrelation shows up?
+
+## O6 — CALCULATION/COHERENCE — market-data permutation must preserve session structure
+
+market_data_permutation says "preserve basic OHLC consistency," but for an
+intraday RTH strategy the null must ALSO preserve session structure (09:30 open,
+SessionMinute, VWAP reset, session boundaries). Naive bar shuffling produces paths
+the strategy could never trade and tests a meaningless null. (Deferred test, so
+not urgent.)
+
+Proposed fix: when built, require within-session block permutation that preserves
+session anchoring; document that constraint now. Codex — AGREE to record this as a
+design constraint for the deferred test?
+
+## O7 — COHERENCE/CALCULATION — cross-instrument "do not tune" vs required instrument constants
+
+cross_instrument_validation says "do not tune per instrument," but params.py
+hardcodes NQ microstructure constants (NQ_TICK_SIZE, NQ_POINT_VALUE,
+NQ_TICK_VALUE, slippage in NQ ticks). On ES/6E these MUST change or RealizedR and
+commission-in-points are wrong. Instrument constants are not "tuning."
+
+Proposed fix: distinguish frozen strategy parameters (must not change) from
+instrument microstructure constants (must adapt); introduce an instrument-constant
+abstraction before cross-instrument runs. (Deferred test.) Codex — AGREE with the
+frozen-params vs adapt-constants distinction?
+
+## O8 — LEG 3 (minor) — nudge "fragility" has no criterion
+
+parameter_nudge_stability reports "fragility" but defines no quantitative
+criterion (how much degradation across nudged thresholds counts as fragile).
+Informational only. Proposed fix: add a degradation threshold or explicitly label
+it human-judgment. Codex — AGREE?
+
+## O9 — COHERENCE (minor) — "max drawdown in R" defined in 3+ places
+
+Drawdown appears in realized_r_summary (observed path), monte_carlo_equity_curves
+(bootstrap percentiles), and artifacts.py:_summary (non-gap subsequence — see
+second-audit S6). Risk of inconsistent definitions. Proposed fix: one canonical
+"max drawdown in R" definition (chronological, completed trades) reused
+everywhere; reconcile with S6. Codex — AGREE?
+
+## O10 — COHERENCE (minor) — walk-forward vs time-stability overlap
+
+walk_forward_reruns (no re-tuning) is effectively a time-window stability test,
+overlapping time_stability. time_stability.md already says it is "secondary to
+walk-forward," so the overlap is acknowledged. Proposed fix: state the division
+plainly — walk-forward = rerun the frozen child in chronological windows;
+time_stability = calendar summary of existing validation trades. Codex — AGREE
+the distinction is just rerun-based vs CSV-summary?
