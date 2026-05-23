@@ -166,12 +166,20 @@ strict, not contrarian: when the existing code is right, say so.)
 ## Verification
 
 - Full suite: 248 passed (246 baseline + F1 reset test + F2 reset test).
-- Discovery reran on the clean commit. New artifact, code_version, and the
-  SignalADX delta vs. the F1 artifact are recorded in the follow-up codexArg
-  entry below once the rerun completes.
-- F1/F2 change ONLY research context columns joined by SignalTime; trades.csv
-  (entries/exits/R) is unaffected — confirmed for F1 (byte-identical) and
-  expected for F2.
+- Discovery reran twice on clean commits:
+  - F1 fix: artifact `discovery_20260523T081945Z`, code_version `7a63072`.
+  - F2 + docs: artifact `discovery_20260523T083241Z`, code_version `feba4b0`
+    (current canonical artifact).
+- Canonical artifact `discovery_20260523T083241Z`: trade_count 3585, headline
+  mean R -0.177711 (UNCHANGED from baseline — F1/F2 touch only research columns).
+- `trades.csv` byte-identical across all three artifacts (engine untouched).
+- F2 effect isolated: every context column except SignalADX is byte-identical to
+  the F1 artifact. SignalADX now has 598 NaN (was 0) — the early-session trades
+  whose within-session ADX warmup is unmet — and clean in-range values elsewhere
+  (4.11–93.10). No cross-session contamination.
+- Prior artifacts superseded: `discovery_20260522T145222Z` (by F1),
+  `discovery_20260523T081945Z` (by F2). Artifacts are gitignored; reproducibility
+  is via code_version in run_config.json.
 
 ## Remaining gate before slicing
 
