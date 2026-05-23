@@ -1,78 +1,64 @@
-# Codex Argument
+# Codex Argument — F1 fix (efficiency_ratio session isolation)
+
+NOTE: This change was implemented directly by Claude at the user's explicit
+request ("I fix it now"), overriding the normal audit-only role for this one
+task. The audit that produced F1 is recorded in claudeArg (2026-05-23 full
+broad audit).
 
 Change made:
 
-- Acted on Claude's independent-audit instructions.
-- Documented early-close handling as data-shaped policy in the parent README.
-- Replaced nearest-tick stop/target rounding with conservative order-side
-  rounding:
-  - long stops round up
-  - short stops round down
-  - long targets round up
-  - short targets round down
-- Documented the conservative rounding policy in the parent README.
-- Added the `generate_trades()` chronological/session-contiguous precondition.
-- Added discovery-run protection against final-test overlap.
-- Marked stale discovery artifacts superseded:
-  `discovery_20260520T111227Z`, `discovery_20260521T154002Z`,
-  `discovery_20260522T131103Z`, and intermediate
-  `discovery_20260522T142717Z`.
-- Acknowledged the weak parent discovery baseline as context only; no edge is
-  being claimed before slicing.
+- `research_indicators.py`: `SignalEfficiencyRatio` was computed via
+  `efficiency_ratio(rth["Close"], window=20)` on the multi-session RTH series
+  WITHOUT session grouping. Because `efficiency_ratio` uses `series.diff(20)`,
+  the first eligible signal bar (`SignalBarsSinceOpen == 19` == `SIGNAL_MIN_BARS`)
+  reached one position back into the prior session, injecting the overnight gap.
+  Fixed by adding `_session_efficiency_ratio` and computing it with
+  `close.groupby(session).transform(...)`, matching the existing
+  `_session_realized_volatility` / `_session_kyle_lambda` /
+  `_session_return_autocorr` / `_session_rolling_variance_ratio` pattern.
+- `tests/test_research_indicators.py`: added
+  `test_efficiency_ratio_research_context_resets_at_session_boundary`, a
+  two-session regression test. Verified it FAILS on the pre-fix code (boundary
+  bar = 1.0, not NaN) and PASSES on the fix (boundary bar NaN). Single-session
+  tests cannot catch this class of cross-session leak.
 
-Implementation note:
+Why:
 
-- I tightened Claude's sample final-test guard. The sample checked only
-  `>= splits["test_end"]`, which catches full-dataset mistakes but misses a
-  partial overlap with earlier final-test sessions. The implemented guard is
-  `max(SessionDate_ET) > splits["validation_end"]`, which directly enforces
-  "no final-test data" while staying local to `discovery_run.py`.
+- Same Method-2 substrate family already fixed for RealizedVol / AutoCorr /
+  VarRatio / Kyle. efficiency_ratio was the one price-change-derived column that
+  was missed: no "does not reset" comment, no session-grouped caller.
+- Measured impact on the prior clean artifact (discovery_20260522T145222Z):
+  249/3585 trades (6.9%) at the boundary bar had a contaminated
+  SignalEfficiencyRatio (mean 0.40 vs 0.30). Those are the SAME 249 trades where
+  SignalRealizedVol is correctly NaN.
 
-Touched files:
+Effect of the fix:
 
-- `strategies/vwap_zscore_fade/parent/README.md`
-- `strategies/vwap_zscore_fade/parent/strategy.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_strategy.py`
-- `strategies/vwap_zscore_fade/parent/discovery_run.py`
-- `strategies/vwap_zscore_fade/parent/tests/test_discovery_run.py`
-- artifact `SUPERSEDED.txt` files under
-  `data/results/vwap_zscore_fade/parent/`
+- The 249 boundary trades now get NaN SignalEfficiencyRatio (correct — no full
+  in-session 20-bar window yet), instead of a value biased high by the overnight
+  gap. No other trade or any non-research column changes (efficiency_ratio is a
+  research-only column joined by SignalTime; it does not drive entries/exits).
 
-Assumptions:
+Tests:
 
-- Conservative target rounding means the backtest does not claim a target touch
-  until the raw signal-bar VWAP has reached a valid exchange tick.
-- Conservative stop rounding keeps stops no farther from entry than the raw
-  modeled stop.
-- The discovery runner may use validation-era dates in split metadata, but the
-  discovery slice must not include any date after `validation_end`.
+- Full suite: 247 passed (was 246 + 1 new regression test).
 
 Verification:
 
-- Focused tests:
-  `.venv\Scripts\python.exe -m pytest strategies\vwap_zscore_fade\parent\tests\test_strategy.py strategies\vwap_zscore_fade\parent\tests\test_discovery_run.py`
-  -> 36 passed
-- Full suite:
-  `.venv\Scripts\python.exe -m pytest` -> 246 passed
-- Discovery rerun:
-  `.venv\Scripts\python.exe -m strategies.vwap_zscore_fade.parent.discovery_run`
-  -> `data/results/vwap_zscore_fade/parent/discovery_20260522T142846Z`
+- New clean discovery rerun committed and recorded below.
+- Confirmed boundary trades now NaN and headline mean R reported below.
 
-Discovery impact versus `discovery_20260522T131103Z`:
+Remaining items from the audit (NOT yet actioned — see claudeArg):
 
-- Trade count: 3570 -> 3585, delta +15.
-- Exit counts: stop 1837, time_stop 1050, target 558, session_end 135,
-  gap_stop 5.
-- Headline sample remains `completed_non_gap_trades`.
-- Headline mean R: -0.17771123537415373.
-- All-completed mean R: -0.17535146598686344.
-- Tick alignment check on `EntryPrice`, `ExitPrice`, `InitialStopPrice`, and
-  `InitialRisk`: zero off-tick values.
+- F2 (SignalADX non-reset / overnight-gap TR) — needs an explicit user/design
+  decision; left unchanged.
+- F3 (percentile columns heavily NaN) — surface to user for the slicer plan.
+- F4 (final-test overlap guard cannot fire) — defensive-only, no action taken.
+- F5 (conservative stop rounding shrinks InitialRisk one-directionally) — no
+  action taken.
 
-Remaining risks:
+Remaining gate before slicing:
 
-- The new discovery artifact has `code_version: "0336429-dirty"` because this
-  slice has not been committed. A clean comparison artifact should be generated
-  after review acceptance and commit.
-- The broad parent baseline still has no demonstrated edge; slicing should
-  treat it as a regime-discovery input, not an approved tradable strategy.
+- Waiting on user slicer plan. F1 is now fixed so SignalEfficiencyRatio is a
+  valid candidate; F2/F3 still need a decision before naming ADX or the
+  percentile columns.

@@ -212,6 +212,33 @@ def test_price_change_research_context_resets_at_session_boundary():
     )
 
 
+def test_efficiency_ratio_research_context_resets_at_session_boundary():
+    # SignalEfficiencyRatio derives from Close via diff(window); like the other
+    # price-change context columns it must be session-isolated. A single-session
+    # test cannot catch a cross-session leak because the prior session does not
+    # exist, so this uses two sessions and asserts the second session's first
+    # `window` bars are NaN and are unaffected by mutating the first session.
+    session_dates = ["2026-01-02"] * 25 + ["2026-01-05"] * 25
+    session_minutes = [index * 5 for index in range(25)] * 2
+    volumes = [100.0 + index * 10.0 for index in range(50)]
+    bars = make_bars(
+        volumes=volumes,
+        session_dates=session_dates,
+        session_minutes=session_minutes,
+    )
+    mutated = bars.copy()
+    mutated.loc[:24, "Close"] = [1000.0 + index * 20.0 for index in range(25)]
+
+    original_result = add_research_indicators(bars)
+    mutated_result = add_research_indicators(mutated)
+
+    assert original_result.loc[25:44, "SignalEfficiencyRatio"].isna().all()
+    pd.testing.assert_series_equal(
+        original_result.loc[25:, "SignalEfficiencyRatio"],
+        mutated_result.loc[25:, "SignalEfficiencyRatio"],
+    )
+
+
 def test_flow_change_research_context_resets_at_session_boundary():
     session_dates = ["2026-01-02"] * 10 + ["2026-01-05"] * 10
     session_minutes = [index * 5 for index in range(10)] * 2

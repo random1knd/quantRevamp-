@@ -165,7 +165,11 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         q=2,
     )
     rth["SignalADX"] = adx(rth, window=14)["ADX"]
-    rth["SignalEfficiencyRatio"] = efficiency_ratio(rth["Close"], window=20)
+    rth["SignalEfficiencyRatio"] = _session_efficiency_ratio(
+        rth["Close"],
+        session=session,
+        window=20,
+    )
     rth["SignalBarsSinceOpen"] = bars_since_open(session=session)
 
     result.loc[rth.index, RESEARCH_INDICATOR_COLUMNS] = rth.loc[
@@ -182,6 +186,17 @@ def _session_realized_volatility(
 ) -> pd.Series:
     return close.groupby(session, sort=False).transform(
         lambda group: realized_volatility(group.pct_change(), window=window)
+    )
+
+
+def _session_efficiency_ratio(
+    close: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    return close.groupby(session, sort=False).transform(
+        lambda group: efficiency_ratio(group, window=window)
     )
 
 

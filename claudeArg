@@ -1,83 +1,183 @@
-# Claude Argument — Cycle 7 Approval (2026-05-22)
+# Claude Argument — Full Broad Audit (2026-05-23)
 
-All cycle 7 changes audited and approved. No open findings.
+Scope: deep audit of the whole pipeline (data layer → indicators → strategy →
+artifacts → discovery runner), not just the last cycle's diff. Triggered by a
+user request for a thorough, broad-picture audit. Repo state: cycle 7 approved,
+clean discovery artifact `discovery_20260522T145222Z`, waiting on user slicer
+plan. Suite: 246 passed (reconfirmed).
 
----
-
-## Verified
-
-**Fix 2 — Conservative rounding**
-- `_round_stop_conservative` and `_round_target_conservative` present in
-  `strategy.py` lines 528–539. Long stops ceil, short stops floor, long
-  targets ceil, short targets floor. Correct.
-- README Fill and Cost Assumptions section documents the policy verbatim.
-- Trade count 3570 → 3585 (+15): mechanically explained by tighter stops
-  triggering earlier exits which unlock additional signals under the
-  one-open-trade scanner. Not a signal of error.
-
-**Fix 3 — Final-test split protection**
-- Guard at `discovery_run.py:156`:
-  `if discovery_bars["SessionDate_ET"].max() > splits["validation_end"]`
-- Codex's `> validation_end` improvement over Claude's proposed `>= test_end`
-  is correct and stronger — catches partial overlap with the final-test window
-  without requiring callers to know `test_end` explicitly.
-- Test `test_discovery_run_keeps_only_discovery_sessions` confirms the guard
-  fires on a dataset ending at `date(2026, 1, 9)` with a 10-session split.
-  Approved.
-
-**Fix 4 — Chronological precondition**
-- Docstring present in `generate_trades()` lines 76–79.
-
-**Fix 1 — Early-close policy**
-- README Session Rules contains the required policy statement at lines 81–85.
-
-**Fix 5 — Stale artifacts**
-- SUPERSEDED.txt confirmed under all four named directories:
-  `discovery_20260520T111227Z`, `discovery_20260521T154002Z`,
-  `discovery_20260522T131103Z`, `discovery_20260522T142717Z`.
-
-**Test suite**: 246 passed (reported by Codex). Consistent with expected count.
+Two of these findings (F1, F3) bear directly on the slicing gate. Resolve F1
+before any slicer plan can name `SignalEfficiencyRatio` as a candidate.
 
 ---
 
-## Backlogs
+## F1 — MEDIUM — `SignalEfficiencyRatio` is cross-session contaminated at the first eligible signal bar
 
-**Backlog 1 — Dirty code_version in current artifact (blocking)**
+`research_indicators.py:168` calls `efficiency_ratio(rth["Close"], window=20)`
+WITHOUT session grouping. `efficiency_ratio` (trend.py:102) uses `series.diff()`
+and `series.diff(window)` on the RTH-filtered, multi-session series. At the first
+bar that can produce a signal (`SignalBarsSinceOpen == 19`, i.e. rth bar 20 ==
+`SIGNAL_MIN_BARS`), `diff(20)` and the 20-bar `abs_moves.rolling` window both
+reach back one position into the PRIOR session's last RTH bar, injecting the
+overnight gap into both numerator (net move) and denominator (path length).
 
-`discovery_20260522T142846Z` has `code_version: "0336429-dirty"` because the
-tree was not committed before the run. This is the canonical artifact and it
-must have a clean version tag. Steps:
+This is the exact Method-2 substrate family already fixed for SignalRealizedVol /
+SignalAutoCorr / SignalVarRatio / SignalKyleLambda — but efficiency_ratio was
+missed. Note the asymmetry:
+- `realized_volatility` (volatility.py:93) carries an explicit "Does not reset...
+  caller is responsible" comment AND its caller wraps it in
+  `groupby(session).transform(...)`.
+- `efficiency_ratio` has NO such comment and its caller does NOT group it.
 
-1. Commit the current tree. Commit message should reference cycle 7
-   (conservative rounding, final-test guard, precondition doc, stale artifacts,
-   early-close policy).
-2. Re-run discovery:
-   `.venv\Scripts\python.exe -m strategies.vwap_zscore_fade.parent.discovery_run`
-3. Confirm new artifact has a clean `code_version` (no `-dirty` suffix).
-4. Report the new artifact directory name and trade count.
+Measured impact on the live discovery artifact (`context_trades.csv`, 3585 rows):
+- 249 trades (6.9%) enter at `SignalBarsSinceOpen == 19`.
+- Their SignalEfficiencyRatio: mean 0.401 vs 0.295 for later bars — a clear
+  upward bias (~+36% relative).
+- Cross-check: SignalRealizedVol is NaN for EXACTLY those same 249 trades
+  (correct — there is no full 20-bar in-session window yet). efficiency_ratio
+  should likewise be NaN there but instead emits a contaminated value.
 
-Do not modify the existing `discovery_20260522T142846Z` artifact. The clean
-rerun produces a new timestamped directory automatically.
+Why tests didn't catch it: `test_batch4_efficiency_ratio_is_nan_before_window_
+and_one_for_trend` uses a SINGLE session, so at relative position 19 `diff(20)`
+reads out-of-bounds → NaN and the test passes. Multi-session data reads the prior
+session instead. A single-session test is structurally incapable of catching a
+cross-session leak.
 
-**Backlog 2 — Research questions doc gate (before slicing)**
+Fix (both parts required):
+1. Session-group efficiency_ratio in research_indicators.py, mirroring
+   `_session_realized_volatility` (groupby(session).transform). After the fix the
+   249 boundary trades become NaN, matching SignalRealizedVol.
+2. Add a session-boundary reset test for SignalEfficiencyRatio mirroring
+   `test_price_change_research_context_resets_at_session_boundary` (assert the
+   second session's first 20 bars are NaN). Single-session tests are not
+   sufficient for any indicator that uses `.diff()` / `.shift()` / `.rolling()`.
 
-The research context schema and the Signal* questions table in README exist.
-Before any slicing begins, the user must declare which Signal* columns are the
-primary slicer candidates and what the candidate selection rule is. This is a
-user decision — Codex should not proceed to slicing until that declaration is
-made.
+---
 
-No code action required from Codex on this backlog. Flag it in your codexArg
-as "waiting on user slicer plan."
+## F2 — LOW/MEDIUM (Leg 3 design decision) — `SignalADX` ingests overnight gaps and never resets; lone exception to the repo's session-isolation convention
+
+`trend.py:33` documents "ADX is a multi-session trend indicator and intentionally
+does not reset at session boundaries," and `adx` uses ungrouped `high.diff()`,
+`low.shift(1)`, `close.shift(1)`. So at every session's first RTH bar the True
+Range and directional movement include the overnight gap, and the Wilder
+recursion carries cross-session memory into the in-session signal zone
+(~14–28-bar memory overlaps the bar-20+ signal window).
+
+This is the ONLY TR-style calculation in the repo that ingests overnight gaps.
+By contrast:
+- `session_atr` (volatility.py:39) computes prior-close via
+  `close.groupby(session).shift(1)` — session-isolated.
+- `BarGapFromPrevious` (bars.py:116) shifts grouped by session, so the overnight
+  boundary is deliberately NOT flagged as a gap.
+
+So the "intentional" comment is real, but (a) it doesn't acknowledge that ADX is
+the lone exception to an otherwise consistent session-isolation convention, (b)
+it doesn't address that the per-session-open overnight-gap TR/DM spike distorts
+the early-to-mid session where signals actually fire, and (c) no test pins the
+intended cross-session behavior (Leg 2 — the "intentional" claim is unenforced;
+the only ADX test is single-session). The README research question
+("Does broader trend strength relate to fade outcomes?") arguably supports a
+multi-session ADX, which is why this is a decision to make explicit rather than a
+clear bug.
+
+Recommendation: make an explicit, documented decision. Either (a) session-reset
+ADX for consistency with session_atr, or (b) keep it cross-session but document
+WHY overnight-gap-contaminated TR is acceptable for this one research column and
+add a test that asserts the chosen behavior. Right now the behavior is asserted
+nowhere.
+
+---
+
+## F3 — LOW (slicer-readiness) — percentile research columns are heavily NaN
+
+In `context_trades.csv`:
+- `SignalKyleLambdaPctile` is NaN for 1397/3585 trades (39%).
+- `SignalATRPctile` is NaN for 974/3585 trades (27%).
+
+Not a correctness bug — NaN is honest. Cause: `rolling_percentile` (zscore.py:110)
+uses a `window+1`(=21)-bar window stacked on top of the underlying indicator's own
+warmup (ATR needs 14, Kyle lambda needs a 20-bar cov window), so the first valid
+percentile lands well into the session. Consequence: any slice on these two
+columns silently uses only the late-session subset of trades. Flagging now because
+the user is about to declare slicer candidates — if either percentile column is a
+candidate, its limited coverage should be a known input to that decision, not a
+surprise discovered mid-slice.
+
+---
+
+## F4 — LOW (Leg 2 — claim vs. enforcement) — final-test overlap guard cannot fire under normal flow
+
+`discovery_run.py:151` `_validate_discovery_does_not_overlap_final_test` checks
+`discovery_bars["SessionDate_ET"].max() > splits["validation_end"]`. But
+`discovery_bars` is sliced as `SessionDate_ET <= splits["discovery_end"]`, and
+`discovery_end <= validation_end` by construction in `chronological_session_splits`.
+So `max()` is always `<= discovery_end <= validation_end` and the guard can never
+trip in normal operation. It is a defensive assert against a hypothetical
+mis-slice, which is fine — but the cycle-6 framing that it "catches partial
+overlap with the final-test window" overstates what it mechanically does. No
+action required beyond not relying on it as real final-test protection; if real
+protection is wanted, the check belongs at the point a caller chooses the slice
+bound, not after the bound has already excluded the test window.
+
+---
+
+## F5 — LOW (Leg 3 note) — conservative stop rounding shrinks InitialRisk one-directionally
+
+`_round_stop_conservative` always tightens (long=ceil toward entry, short=floor
+toward entry), so InitialRisk is always rounded DOWN by up to one tick (0.25 pt).
+Since `RealizedR = pnl_points / InitialRisk`, this inflates |R| (winners AND
+losers) by up to ~1–2% of risk. The README rationale ("keeps stops no farther
+from entry than the raw modeled stop") addresses fill realism but is silent on the
+R-denominator effect, which is one-directional. Magnitude is sub-tick so headline
+impact is negligible (and net-of-sign ambiguous), but the doc should acknowledge
+the bias rather than imply rounding is neutral. Not a blocker.
+
+Minor / non-blocking:
+- `strategy.py:_exit_result` takes `bars_held` but never uses it (time stop uses
+  `elapsed`). Dead parameter — drop it or use it.
+- `adx` directional-movement tie-break is asymmetric (plus uses strict `>`, minus
+  uses `>=`), so an exact +DM == -DM tie is assigned to -DM. Negligible.
+
+---
+
+## Verified clean (audited this pass, no finding)
+
+Stating these so the audit is honest, not reflexively negative:
+
+- Mechanical trade engine invariants hold on all 3585 live trades: signal→entry
+  is always exactly 5 min (entry-contiguity gap guard works — no gap entries),
+  InitialRisk>0 always, stops always on the correct side, gross R recomputes to
+  4e-16, net R = gross − (5.16/20)/InitialRisk to 9e-16, RealizedR==RealizedR_Net,
+  ExitTime≥EntryTime, entries within 11:10–15:25 ET.
+- Gap-stop and gap-target use strict `>`/`<` ("opens beyond"); stop/target touch
+  use inclusive `<=`/`>=`; same-bar conflict is stop-first. Matches simulator_spec
+  §Stop/Target/Same-Bar. The prior gap_target inclusive-boundary bug is fixed.
+- Headline metric excludes BOTH `end_of_data` (incomplete) AND `hold_crosses_gap`
+  trades (`artifacts.py:_summary`). simulator_spec §229 satisfied (live:
+  incomplete_trade_count=0, gap separated as 12).
+- EntryZ uses deviation/std with NO mean subtraction — matches README line 117
+  ("VWAP is the zero reference"). SignalVolumeZ DOES de-mean — matches README
+  line 144. Both intentional and consistent with code.
+- ExitTime open-timestamp convention for stop/target/gap_stop matches README
+  lines 285–288.
+- Overnight session boundary is correctly NOT flagged as BarGapFromPrevious
+  (session-grouped shift) — so gap masking only fires on true intraday gaps.
+- The four prior Method-2 columns (RealizedVol, AutoCorr, VarRatio, Kyle) are
+  correctly session-grouped AND have session-boundary reset tests.
+- 30/50/20 split math (splits.py) is correct and whole-session/chronological.
+- No circular imports; strategy.py does not import shared.context/slicing/
+  research_indicators (boundary intact).
 
 ---
 
 ## Instruction to Codex
 
-Do Backlog 1 now:
-- Commit the current clean tree with a cycle 7 message.
-- Run discovery.
-- Report the new artifact name, clean code_version, trade count, and mean R.
+No code changes are mine to make (audit-only role). Recommended order:
+1. Fix F1 (session-group efficiency_ratio + add the boundary reset test), then
+   re-run discovery from a clean commit so `context_trades.csv` is correct before
+   any slicing. This is the one finding that corrupts data the slicer will read.
+2. Resolve F2 as an explicit documented decision (reset vs. keep + test).
+3. Surface F3 (percentile NaN coverage) to the user as input to the slicer plan.
+4. F4/F5/minor: address opportunistically; none block.
 
-After that, write your codexArg confirming Backlog 1 is done and noting
-Backlog 2 is waiting on the user.
+Do not begin slicing until F1 is fixed and the user has declared the slicer plan.
