@@ -1,73 +1,182 @@
-# Codex Argument — F1 fix (efficiency_ratio session isolation)
+# Codex Argument — Full Session Changelog (2026-05-23)
 
-NOTE: This change was implemented directly by Claude at the user's explicit
-request ("I fix it now"), overriding the normal audit-only role for this one
-task. The audit that produced F1 is recorded in claudeArg (2026-05-23 full
-broad audit).
+IMPORTANT FOR CODEX: All changes below were implemented directly by Claude at
+the user's explicit request ("implement and change things as you see fit"),
+overriding the normal audit-only role for this session. The user asked that
+every change be recorded here with reasoning so you can review and, if you
+disagree, push back via your own codexArg and we re-debate. Nothing here is
+sacred — challenge any of it.
 
-Change made:
+The originating audit (findings F1–F5) is in claudeArg.
 
-- `research_indicators.py`: `SignalEfficiencyRatio` was computed via
-  `efficiency_ratio(rth["Close"], window=20)` on the multi-session RTH series
-  WITHOUT session grouping. Because `efficiency_ratio` uses `series.diff(20)`,
-  the first eligible signal bar (`SignalBarsSinceOpen == 19` == `SIGNAL_MIN_BARS`)
-  reached one position back into the prior session, injecting the overnight gap.
-  Fixed by adding `_session_efficiency_ratio` and computing it with
-  `close.groupby(session).transform(...)`, matching the existing
-  `_session_realized_volatility` / `_session_kyle_lambda` /
-  `_session_return_autocorr` / `_session_rolling_variance_ratio` pattern.
-- `tests/test_research_indicators.py`: added
-  `test_efficiency_ratio_research_context_resets_at_session_boundary`, a
-  two-session regression test. Verified it FAILS on the pre-fix code (boundary
-  bar = 1.0, not NaN) and PASSES on the fix (boundary bar NaN). Single-session
-  tests cannot catch this class of cross-session leak.
+Commits this session:
+- `7a63072` Fix efficiency_ratio session isolation (audit F1)
+- `9fd80a9` Record clean discovery rerun after F1 fix
+- (this commit) F2/F5/F3 + minors, see below
+- (follow-up) Record discovery rerun after F2
 
-Why:
+---
 
-- Same Method-2 substrate family already fixed for RealizedVol / AutoCorr /
-  VarRatio / Kyle. efficiency_ratio was the one price-change-derived column that
-  was missed: no "does not reset" comment, no session-grouped caller.
-- Measured impact on the prior clean artifact (discovery_20260522T145222Z):
-  249/3585 trades (6.9%) at the boundary bar had a contaminated
-  SignalEfficiencyRatio (mean 0.40 vs 0.30). Those are the SAME 249 trades where
-  SignalRealizedVol is correctly NaN.
+## Change 1 — F1: SignalEfficiencyRatio session isolation (BUG FIX)
 
-Effect of the fix:
+Files: `research_indicators.py`, `tests/test_research_indicators.py`
 
-- The 249 boundary trades now get NaN SignalEfficiencyRatio (correct — no full
-  in-session 20-bar window yet), instead of a value biased high by the overnight
-  gap. No other trade or any non-research column changes (efficiency_ratio is a
-  research-only column joined by SignalTime; it does not drive entries/exits).
+What: `efficiency_ratio(rth["Close"], window=20)` was called ungrouped on the
+multi-session RTH frame. `efficiency_ratio` uses `series.diff(20)`, so at the
+first eligible signal bar (`SignalBarsSinceOpen == 19 == SIGNAL_MIN_BARS`) the
+20-bar lookback reached one row back into the prior session, injecting the
+overnight gap into both the net-move numerator and the path-length denominator.
+Fixed by adding `_session_efficiency_ratio` and computing via
+`groupby(session).transform(...)`, matching `_session_realized_volatility`.
 
-Tests:
+Why: This is the Method-2 substrate-leak family already fixed for RealizedVol /
+AutoCorr / VarRatio / Kyle. efficiency_ratio was the one price-change-derived
+column missed — it had no "does not reset" comment and no session-grouped caller.
 
-- Full suite: 247 passed (was 246 + 1 new regression test).
+Evidence: On the pre-fix artifact, 249/3585 trades (6.9%) at the boundary bar had
+a contaminated value (mean 0.40 vs 0.30). Those are the SAME 249 trades where the
+correctly-grouped SignalRealizedVol is NaN. After the fix they are NaN too.
 
-Verification:
+Test: Added `test_efficiency_ratio_research_context_resets_at_session_boundary`
+(two sessions). Verified it FAILS pre-fix (boundary bar = 1.0) and PASSES post-fix
+(NaN). Single-session tests cannot catch cross-session leaks by construction.
 
-- New clean artifact: `discovery_20260523T081945Z`.
-- `run_config.json` code_version: `7a63072` (no `-dirty`).
-- `summary.json`: trade_count 3585, headline mean R -0.17771123537415373,
-  all-completed mean R -0.17535146598686344 (UNCHANGED from the prior artifact —
-  efficiency_ratio is research-only and does not drive trades).
-- `trades.csv` byte-identical to the prior artifact; all context columns except
-  SignalEfficiencyRatio byte-identical.
-- The 249 boundary trades (SignalBarsSinceOpen == 19) now have NaN
-  SignalEfficiencyRatio (were non-NaN, mean 0.40). Non-boundary values unchanged
-  (max delta 0.0).
-- Prior artifact `discovery_20260522T145222Z` marked with SUPERSEDED.txt.
+---
 
-Remaining items from the audit (NOT yet actioned — see claudeArg):
+## Change 2 — F2: SignalADX is now session-scoped (DESIGN DECISION + implementation)
 
-- F2 (SignalADX non-reset / overnight-gap TR) — needs an explicit user/design
-  decision; left unchanged.
-- F3 (percentile columns heavily NaN) — surface to user for the slicer plan.
-- F4 (final-test overlap guard cannot fire) — defensive-only, no action taken.
-- F5 (conservative stop rounding shrinks InitialRisk one-directionally) — no
-  action taken.
+Files: `shared/indicators/trend.py`, `research_indicators.py`,
+`tests/test_research_indicators.py`, strategy `README.md`
 
-Remaining gate before slicing:
+What: `SignalADX` was computed via `adx(rth, window=14)` ungrouped. `adx` uses
+`high.diff()`, `low.shift(1)`, `close.shift(1)` and Wilder smoothing, none of
+which reset at session boundaries. So every session open injected the overnight
+gap as a huge spurious true range / directional movement, and the Wilder
+recursion carried prior-session state into the in-session signal zone. Changed to
+session-scoped via a new `_session_adx` caller loop (mirrors `_session_ofi_approx`
+/ `_session_kyle_lambda`), so ADX is computed independently per session.
 
-- Waiting on user slicer plan. F1 is now fixed so SignalEfficiencyRatio is a
-  valid candidate; F2/F3 still need a decision before naming ADX or the
-  percentile columns.
+Decision rationale (this is the debatable one): The repo's entire convention is
+session isolation — `session_atr`'s true range is session-grouped, and
+`BarGapFromPrevious` deliberately does NOT flag the overnight boundary. ADX was
+the lone TR-style calc that ingested overnight gaps. The old code carried a
+comment claiming "intentionally multi-session," but (a) no spec doc backed that,
+(b) a cross-session ADX computed on RTH-only bars is not a clean multi-session
+trend anyway — it is RTH bars stitched with overnight gaps treated as 5-min
+moves, so the "broader trend" reading was illusory, and (c) for an intraday
+RTH fade, intraday trend strength is the relevant context. I judged session-scope
+correct and consistent. Counter-argument for Codex to weigh: if you want a TRUE
+broader/overnight trend feature, that needs ETH or daily data, not this hybrid —
+so the right answer is "session-scope this one and add a separate daily-trend
+column later if wanted," which is what I did.
+
+Cost (documented honestly): session-scoped ADX is NaN until its ~2x14 warmup is
+satisfied within the session, so early-session signals now get NaN SignalADX
+instead of a contaminated value. NaN beats contaminated for slicing.
+
+Also updated the `adx` docstring/comment in trend.py from "intentionally
+multi-session" to "pure math, does not reset; caller scopes by session"
+(matching the realized_volatility convention), and changed the README research
+question from "broader trend strength" to "intraday (session-scoped) trend
+strength."
+
+Test: Added `test_adx_research_context_resets_at_session_boundary` (two 40-bar
+sessions). Verified it FAILS on the old ungrouped code (session-2 ADX changes
+when session-1 is mutated) and PASSES with session scoping.
+
+---
+
+## Change 3 — minor: canonical Wilder DM tie-break in `adx`
+
+File: `shared/indicators/trend.py`
+
+What: `minus_dm` used `down_move >= up_move` (inclusive) while `plus_dm` used
+`up_move > down_move` (strict), so an exact +DM == -DM tie was assigned to -DM.
+Changed `minus_dm` to strict `>` so a tie is discarded from both (canonical
+Wilder).
+
+Why: Removes a latent asymmetry and matches Wilder's textbook definition.
+Provably safe — verified the hand-calculated reference test
+(`test_adx_matches_wilder_seed_reference_values`) has no +DM == -DM ties, so its
+expected values are unchanged. Negligible numerically; pure consistency.
+
+---
+
+## Change 4 — minor: remove dead `bars_held` parameter from `_exit_result`
+
+File: `strategy.py`
+
+What: `_exit_result(...)` accepted `bars_held` but never used it (the time stop
+uses `elapsed`). Removed the parameter and the argument at the call site.
+
+Why: Dead parameter; removing it prevents future readers from assuming bars_held
+participates in exit logic. No behavior change. Confirmed no test calls
+`_exit_result` with `bars_held` (the `trade.bars_held` assertions are a different
+attribute and are unaffected).
+
+---
+
+## Change 5 — F3: document percentile-column coverage (DOC ONLY, no code change)
+
+File: `KNOWN_LIMITATIONS.md`
+
+What: Added a section recording that `SignalATRPctile` (~27% NaN) and
+`SignalKyleLambdaPctile` (~39% NaN) are sparse early in each session because
+`rolling_percentile` needs `window+1` observations stacked on the underlying
+indicator's own warmup.
+
+Why: This is NOT a bug — NaN is the honest output. I deliberately did NOT change
+the percentile or window math to reduce NaN, because tuning an indicator to
+increase coverage would be fitting it to the data (the exact drift this repo
+guards against). The right action is to document the coverage limit so the slicer
+plan treats these as lower-coverage candidates.
+
+---
+
+## Change 6 — F5: document the R-denominator side effect of stop rounding (DOC ONLY)
+
+Files: strategy `README.md` ("Fill And Cost Assumptions"), `KNOWN_LIMITATIONS.md`
+
+What: Added an "acknowledged side effect" note: because stops always round toward
+entry, `InitialRisk` is rounded down by up to one tick, and since R divides by
+InitialRisk this inflates |R| by ~1-2% of risk (both tails).
+
+Why: I did NOT change the rounding direction. The current direction has a
+defensible fill-realism rationale, and flipping it (round stops away from entry)
+would just trade one bias for another (wider risk deflates |R| and makes stops
+trigger less often). The honest fix is to make the doc complete rather than imply
+the rounding is R-neutral. Sub-tick magnitude, accepted for v0.
+
+---
+
+## F4 — RETRACTED (no change)
+
+My audit (claudeArg) flagged the `_validate_discovery_does_not_overlap_final_test`
+guard as effectively dead code because the production discovery slice
+(`SessionDate_ET <= discovery_end`) can never reach `> validation_end`. On
+re-reading `test_discovery_run_rejects_final_test_overlap`, that test deliberately
+feeds the guard an overlapping slice and proves it fires. The guard is a
+legitimate defensive INPUT validator with real coverage; the production path
+simply never trips it because the slice is pre-built correctly. That is
+defense-in-depth, not dead code. Retracting the finding — no change made. (Being
+strict, not contrarian: when the existing code is right, say so.)
+
+---
+
+## Verification
+
+- Full suite: 248 passed (246 baseline + F1 reset test + F2 reset test).
+- Discovery reran on the clean commit. New artifact, code_version, and the
+  SignalADX delta vs. the F1 artifact are recorded in the follow-up codexArg
+  entry below once the rerun completes.
+- F1/F2 change ONLY research context columns joined by SignalTime; trades.csv
+  (entries/exits/R) is unaffected — confirmed for F1 (byte-identical) and
+  expected for F2.
+
+## Remaining gate before slicing
+
+Waiting on user slicer plan. With F1 fixed and F2 session-scoped,
+SignalEfficiencyRatio and SignalADX are now clean intraday columns. F3 means
+SignalATRPctile / SignalKyleLambdaPctile are lower-coverage candidates. The user
+must still declare which Signal* columns are primary slicer candidates and the
+candidate selection rule before slicing begins.

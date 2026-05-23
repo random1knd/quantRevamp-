@@ -271,7 +271,6 @@ def _close_trade(
         exit_result = _exit_result(
             bar,
             open_trade=open_trade,
-            bars_held=exit_pos - open_trade.entry_pos + 1,
             elapsed=elapsed,
         )
         if exit_result is not None:
@@ -331,7 +330,6 @@ def _exit_result(
     bar: pd.Series,
     *,
     open_trade: _OpenTrade,
-    bars_held: int,
     elapsed: pd.Timedelta,
 ) -> dict[str, float | str | bool] | None:
     stop_result = _stop_exit_result(bar, open_trade=open_trade)

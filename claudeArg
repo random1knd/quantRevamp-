@@ -9,6 +9,18 @@ plan. Suite: 246 passed (reconfirmed).
 Two of these findings (F1, F3) bear directly on the slicing gate. Resolve F1
 before any slicer plan can name `SignalEfficiencyRatio` as a candidate.
 
+> RESOLUTION STATUS (updated 2026-05-23, after user authorized implementation):
+> - F1 — FIXED (efficiency_ratio session-grouped + two-session regression test).
+> - F2 — IMPLEMENTED as session-scoped ADX (decision recorded in codexArg; open
+>   to debate). Tie-break also aligned to canonical Wilder.
+> - F3 — DOCUMENTED in KNOWN_LIMITATIONS (no code change; NaN is correct).
+> - F4 — RETRACTED. The guard is a real defensive input validator with a test
+>   (`test_discovery_run_rejects_final_test_overlap`) that proves it fires; my
+>   "dead code" framing was too strong. No change.
+> - F5 — DOCUMENTED in README + KNOWN_LIMITATIONS (no rounding change).
+> - Minor (dead `bars_held` param) — REMOVED.
+> Full per-change reasoning is in codexArg. Suite now 248 passed.
+
 ---
 
 ## F1 — MEDIUM — `SignalEfficiencyRatio` is cross-session contaminated at the first eligible signal bar

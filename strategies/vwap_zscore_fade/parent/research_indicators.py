@@ -164,7 +164,7 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         window=20,
         q=2,
     )
-    rth["SignalADX"] = adx(rth, window=14)["ADX"]
+    rth["SignalADX"] = _session_adx(rth, session=session, window=14)
     rth["SignalEfficiencyRatio"] = _session_efficiency_ratio(
         rth["Close"],
         session=session,
@@ -237,6 +237,23 @@ def _session_ofi_approx(
     result = pd.Series(index=bars.index, dtype="float64")
     for _, group in bars.groupby(session, sort=False):
         result.loc[group.index] = ofi_approx(group)
+    return result
+
+
+def _session_adx(
+    bars: pd.DataFrame,
+    *,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    # Session-scoped intraday trend strength. ADX uses high.diff() / low.shift()
+    # / close.shift() and Wilder smoothing, so an ungrouped call would inject the
+    # overnight-gap true range at each session open and carry the smoothing state
+    # across sessions. Group per session so SignalADX is a clean intraday measure,
+    # consistent with session_atr and the other reset research columns.
+    result = pd.Series(index=bars.index, dtype="float64")
+    for _, group in bars.groupby(session, sort=False):
+        result.loc[group.index] = adx(group, window=window)["ADX"]
     return result
 
 

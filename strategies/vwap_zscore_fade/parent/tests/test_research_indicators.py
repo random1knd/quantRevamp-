@@ -239,6 +239,36 @@ def test_efficiency_ratio_research_context_resets_at_session_boundary():
     )
 
 
+def test_adx_research_context_resets_at_session_boundary():
+    # SignalADX is session-scoped intraday trend strength. ADX uses
+    # high.diff()/low.shift()/close.shift() and Wilder smoothing, so an ungrouped
+    # computation would carry the prior session's state (and the overnight-gap
+    # true range) into this session. Like the price-change columns it needs a
+    # two-session test; a single-session test cannot expose cross-session carry.
+    session_dates = ["2026-01-02"] * 40 + ["2026-01-05"] * 40
+    session_minutes = [index * 5 for index in range(40)] * 2
+    volumes = [100.0 + index * 10.0 for index in range(80)]
+    bars = make_bars(
+        volumes=volumes,
+        session_dates=session_dates,
+        session_minutes=session_minutes,
+    )
+    mutated = bars.copy()
+    mutated.loc[:39, "Close"] = [1000.0 + index * 20.0 for index in range(40)]
+    mutated.loc[:39, "High"] = mutated.loc[:39, "Close"] + 5.0
+    mutated.loc[:39, "Low"] = mutated.loc[:39, "Close"] - 5.0
+
+    original_result = add_research_indicators(bars)
+    mutated_result = add_research_indicators(mutated)
+
+    assert pd.isna(original_result.loc[40, "SignalADX"])
+    assert original_result.loc[40:, "SignalADX"].notna().any()
+    pd.testing.assert_series_equal(
+        original_result.loc[40:, "SignalADX"],
+        mutated_result.loc[40:, "SignalADX"],
+    )
+
+
 def test_flow_change_research_context_resets_at_session_boundary():
     session_dates = ["2026-01-02"] * 10 + ["2026-01-05"] * 10
     session_minutes = [index * 5 for index in range(10)] * 2

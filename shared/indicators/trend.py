@@ -30,12 +30,17 @@ def adx(
     low = bars["Low"]
     close = bars["Close"]
 
-    # ADX is a multi-session trend indicator and intentionally does not reset
-    # at session boundaries.
+    # Pure math: operates on the series as given and does not itself reset at
+    # session boundaries. Callers that need session-scoped ADX must group by
+    # session before calling (see research_indicators._session_adx). Kept
+    # session-agnostic so the shared helper stays reusable, matching the
+    # realized_volatility / kyle_lambda convention.
     up_move = high.diff()
     down_move = low.shift(1) - low
+    # Canonical Wilder directional movement: the larger positive move wins and an
+    # exact +DM == -DM tie is discarded (both strict `>`).
     plus_dm = up_move.where((up_move > 0.0) & (up_move > down_move), 0.0)
-    minus_dm = down_move.where((down_move > 0.0) & (down_move >= up_move), 0.0)
+    minus_dm = down_move.where((down_move > 0.0) & (down_move > up_move), 0.0)
     plus_dm.iloc[0] = None
     minus_dm.iloc[0] = None
 

@@ -236,6 +236,14 @@ stops round down, long targets round up, and short targets round down. This
 keeps stops no farther from entry than the raw modeled stop and does not claim
 a target before the raw signal-bar VWAP has reached a valid exchange tick.
 
+Acknowledged side effect: because stops always round toward entry, `InitialRisk`
+is rounded down by up to one tick (0.25 pt). Since `RealizedR` divides by
+`InitialRisk`, this slightly inflates the magnitude of every R (winners and
+losers alike) by at most ~1-2% of risk. The effect is one-directional but
+sub-tick, applies to both tails, and is accepted for v0; the fill-realism
+benefit of never modeling a stop wider than intended is judged to outweigh it.
+This is documented so the rounding is not mistaken for R-neutral.
+
 Current v0 implementation note:
 
 - `strategy.py` temporarily performs mechanical fills, slippage, and
@@ -339,7 +347,7 @@ stops, or timing.
 | `SignalKyleLambdaPctile` | Does the percentile of estimated price impact identify distinct liquidity regimes? |
 | `SignalAutoCorr` | Does recent return autocorrelation describe trend persistence around fade signals? |
 | `SignalVarRatio` | Does recent variance-ratio context distinguish mean-reverting from trending behavior? |
-| `SignalADX` | Does broader trend strength relate to fade outcomes? |
+| `SignalADX` | Does intraday (session-scoped) trend strength relate to fade outcomes? |
 | `SignalEfficiencyRatio` | Does directional efficiency of recent price movement relate to fade reliability? |
 | `SignalBarsSinceOpen` | Does time elapsed since the RTH open explain differences in fade outcomes? |
 
