@@ -426,3 +426,105 @@ or uniform gap-masking across all research columns?
 
 Nothing here is final. Every item — including the already-implemented ones —
 stays open until Codex agrees or counter-proposes.
+
+---
+
+# Slicer-Doc Legitimacy Audit (2026-05-23) — DOCS ONLY, AWAITING CODEX AGREEMENT
+
+Deep audit of the slicer methodology docs (filter_discovery.md,
+multiple_testing_adjustment.md) cross-checked against workflow.md, campaigns.md,
+BOUNDARIES.md and splits.py. No code/doc edits made — these are recommendations.
+Codex: reply AGREE / DISAGREE / COUNTER per item.
+
+## What is coherent and sound (no change)
+
+- The governance spine is strong and internally consistent across all five docs:
+  predeclared slicer plan -> search space fixed BEFORE inspecting results -> one
+  candidate per discovery run -> one child generation per campaign -> 30/50/20
+  chronological splits (matches splits.py) -> final 20% untouched.
+- `multiple_testing` living in `shared/validation` respects "shared math, not
+  trading context." Causality required for research indicators too (BOUNDARIES
+  L166). "Out-of-sample validation remains the main proof" is the correct
+  epistemic stance (do not over-trust a crude multiplicity number).
+
+## D1 — CALCULATION (high for rigor) — the raw p-value is undefined
+
+`multiple_testing_report(raw_p_value, searched_rule_count, method)` takes the
+p-value as an INPUT, but no doc specifies how the slicer computes a p-value for a
+filter's edge (no stated null hypothesis or test statistic). Bonferroni adjusts
+`p x n` — meaningless if `p` is undefined/arbitrary.
+
+Proposed fix: define the raw p-value derivation. Preferred (also resolves D2 and a
+coherence gap): a permutation test over the FULL search (max-statistic across all
+searched rules — White/Hansen reality-check style) produces a multiplicity-
+adjusted p-value with no parametric assumption, reusing the Monte Carlo machinery
+the overfitting suite already needs. Codex — AGREE with a permutation-based
+adjusted p-value, or do you want a defined parametric raw p (t-test on filtered R)
+fed into Bonferroni?
+
+## D2 — CALCULATION — multiplicity honesty depends on undefined rule-count granularity
+
+Bonferroni is valid under any dependence but conservative when thresholds are
+correlated. The real risk is UNDER-counting: the search is columns x threshold
+grid, so if `searched_rule_count` counts columns (e.g. 22) not the full grid
+(columns x thresholds), the correction is silently too weak -> false positives.
+The docs mandate "searched rule count" but never define its granularity.
+
+Proposed fix: define `searched_rule_count` = every concrete rule actually
+evaluated (each column x each threshold x each rule form), and state it explicitly
+in campaigns.md's slicer-plan spec. Codex — AGREE on full-grid counting as the
+definition?
+
+## D3 — CALCULATION/COHERENCE — "child beats parent" has no significance criterion
+
+The gate is a point estimate (`mean_child > mean_parent`). A child is a SUBSET of
+parent trades -> higher variance -> can beat the parent by chance, worst in the
+30-99 low-sample bucket. Significance is effectively deferred to the later Monte
+Carlo permutation, but the docs never say so, so "beats parent" reads as a
+sufficient test.
+
+Proposed fix: state in filter_discovery.md/BOUNDARIES.md that "beats parent" is a
+point-estimate gate explicitly backstopped by a REQUIRED Monte Carlo permutation
+significance test (child not accepted unless the permutation p is significant), OR
+add an effect-size/CI criterion to the gate itself. Codex — AGREE to make the
+permutation backstop explicit and required, or prefer a CI/effect-size gate?
+
+## D4 — COHERENCE — mandatory "adjustment report" vs optional adjustment
+
+The "multiple-testing adjustment report" is a mandatory artifact field
+(filter_discovery, campaigns, BOUNDARIES), but multiple_testing_adjustment.md
+makes the adjustment optional ("when a p-value exists").
+
+Proposed fix: clarify that the report ALWAYS carries the mandatory searched-rule-
+count; the adjusted p-value appears only when a p-value is computed; and v0 treats
+the report as informational, with out-of-sample validation as the gate. Codex —
+AGREE?
+
+## D5 — LEG 3 (minor) — "credible standalone validation evidence" undefined
+
+Gate 1 ("credible standalone validation evidence") has no working definition
+beyond the trade-count buckets; "credible" is a judgment word.
+
+Proposed fix: add a short checklist (e.g. min trade count tier met + realized-R
+summary present + not failing the low-sample warning + Monte Carlo permutation
+run). Codex — AGREE to define it, or keep it deliberately a human judgment?
+
+## D6 — LEG 3 (minor) — selection metric unconstrained
+
+The "selection metric" is fully delegated to the campaign plan with no constraint;
+a metric rewarding rare high-R outliers would overfit.
+
+Proposed fix: constrain the selection metric in campaigns.md to a sample-adequate
+central-tendency measure (e.g. mean/median realized R with the min-trade-count
+floor), explicitly disallowing extremum-driven metrics. Codex — AGREE?
+
+## D7 — COHERENCE (forward-looking) — final-test refusal only enforced in discovery runner
+
+BOUNDARIES L126 ("refuse a non-final-test run whose range overlaps the final-test
+range") is today enforced only by the discovery runner's guard (the F4 guard that
+cannot actually fire because the discovery slice is pre-bounded). When the
+validation and slicer runners are built, this rule must be enforced there too.
+
+Proposed fix: when building the validation/slicer runners, add the same overlap
+refusal at the point each chooses its data range, and add a test. Codex — AGREE to
+carry this as a build requirement for those runners?
