@@ -193,3 +193,87 @@ No code changes are mine to make (audit-only role). Recommended order:
 4. F4/F5/minor: address opportunistically; none block.
 
 Do not begin slicing until F1 is fixed and the user has declared the slicer plan.
+
+---
+
+# Follow-up Addendum (2026-05-23) — audit coverage, latent risks, and a design opinion
+
+The user asked me to record context that was discussed in chat but not yet in the
+protocol files, so Codex can react to it. None of the items below were actioned;
+they are evidence and opinion for debate.
+
+## Audit coverage evidence (negative space — things I checked and found clean)
+
+- `smoke_run.py`: shares `generate_trades` and `prepare_bars` and does NOT call
+  `add_research_indicators` (smoke runs carry no research context). So there is no
+  duplicated/divergent logic and no parallel copy of the F1/F2 bugs. Clean.
+- `simulator_spec.md` "Test Requirements": every v0-applicable item is present in
+  `test_strategy.py` (long/short win, long/short stop, gap-through stop both
+  sides, gap-through target both sides, stop-before-target same bar, time stop
+  elapsed + row-12, session_end, end_of_data tail, equality boundaries, roll
+  exclusion, smoke-label guard). The only uncovered items are the trailing-stop
+  ones, which are correctly N/A — trailing stops are not implemented in v0.
+- Conclusion: beyond F1 (true bug) and F2 (design inconsistency), no other
+  correctness bug was found in the core path; the trade engine is verified clean
+  on all 3585 live trades.
+
+## Latent risks (NOT bugs, NOT actioned)
+
+- `SIGNAL_MIN_BARS == Z_WINDOW == VOLUME_Z_WINDOW == 20`: implicit coupling with
+  no guard. Self-protecting today (if the z-window exceeded the gate, EntryZ would
+  be NaN → `_entry_side` returns None → no signal, never a wrong trade). After the
+  F1 fix it can no longer cause contamination either. Latent fragility / clarity
+  issue only.
+- Research-indicator windows are hardcoded literals (`20`/`5`/`14`) rather than
+  named params. Values are correct and internally consistent; pure maintainability.
+- Dormant unused library functions: `rolling_adf_pvalue`, `ma_slope`, `momentum`.
+  Not wired into the strategy or research, so cannot cause runtime bugs.
+  Correction to an earlier note: `ma_slope` and `momentum` DO have full tests
+  including causality tests in `test_trend.py` — they are not under-tested, just
+  unwired.
+
+## Design opinion for Codex to weigh (architecture, not a defect)
+
+This is the one thing I'd argue should have been built differently. Stated as
+opinion — Codex should push back if it disagrees.
+
+Root observation: the repo handles "don't bleed across session boundaries" with
+TWO inconsistent conventions:
+- Functions that take `session` and group internally: `session_atr`,
+  `rolling_zscore`, `robust_zscore`, `gap_free_rolling_window`, `cumulative_delta`.
+- Functions that are session-agnostic and rely on the CALLER to wrap them:
+  `realized_volatility`, `efficiency_ratio`, `adx`, `kyle_lambda`,
+  `rolling_autocorr`, `rolling_variance_ratio`.
+Both F1 (efficiency_ratio) and F2 (adx) were in the second group — the caller
+forgot to wrap.
+
+I do NOT think the fix is "make `session` a required arg everywhere." That would
+push a trading concept (sessions) down into the shared-math layer, violating the
+repo's founding rule "shared math, not shared trading context." `realized_volatility`
+should be computable on any return series and should not know what a session is.
+
+So my opinion is: the convention is fine; the missing piece is a safety net that
+does not compromise the principle. Two changes would do it:
+1. Make "unscoped" visible at the call site by extending the `_cross_session`
+   naming idiom the repo ALREADY invented in `zscore.py` (`rolling_zscore` vs
+   `rolling_zscore_cross_session`) to every session-agnostic indicator. A reviewer
+   then sees `efficiency_ratio_cross_session(...)` in the wiring and immediately
+   asks "should this be scoped?"
+2. Replace the per-column reset tests with ONE parametrized test that iterates
+   over every `RESEARCH_INDICATOR_COLUMN`, mutates session 1, and asserts session
+   2 is unchanged — with an explicit allowlist for any column that is
+   intentionally cross-session. This would have failed the day F1/F2 landed and
+   cannot be "forgotten" the way a hand-written per-column test was for
+   efficiency_ratio and adx.
+
+Smaller, lower-priority opinions:
+- Derive the warmup from the window — e.g. `SIGNAL_MIN_BARS = Z_WINDOW` (or
+  `max(Z_WINDOW, ...)`) — so the gate cannot silently drift out of step with the
+  z-score window. Two independent constants that "happen to be 20" is the smell.
+- Promote the hardcoded research windows to named params, mainly so a future
+  window sweep is a one-line change and the magic-number coupling is removed.
+- Mark dormant library functions as "built, not yet wired" so nobody assumes they
+  have been exercised on real data.
+
+I am not implementing any of this. It is here so Codex has the full picture and
+can agree, disagree, or counter-propose.
