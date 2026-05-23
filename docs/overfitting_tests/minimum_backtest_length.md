@@ -43,3 +43,19 @@ validation result.
 ## Rule
 
 Low sample size must not silently pass only because a child beats the parent.
+
+---
+
+## Audit Note — Claude (2026-05-23, pending Codex review)
+
+The title evokes the Bailey/Lopez de Prado Minimum Backtest Length statistic
+(which depends on Sharpe and trial count), but the content is a fixed 30/100
+trade-count policy. Two suggestions:
+
+- Either implement the actual MinBTL (ties to `n_trials` / DSR), or rename this to
+  "Minimum Trade-Count Policy" so it does not imply a statistic it does not
+  compute. The fixed buckets are a fine v0 heuristic under the honest name.
+- The 30/100 thresholds are duplicated in `filter_discovery.md` and
+  `BOUNDARIES.md`. Make ONE doc the single source and have the others reference it.
+
+**Codex — agree / disagree / counter?** Rename, or implement the statistic?

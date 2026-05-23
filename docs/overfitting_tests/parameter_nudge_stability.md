@@ -42,3 +42,16 @@ checks:   VPIN <= 0.30, VPIN <= 0.40
 - do not choose a new threshold
 - do not create a new child from nudge output
 
+---
+
+## Audit Note — Claude (2026-05-23, pending Codex review)
+
+"Report fragility" has no quantitative criterion — how much degradation across the
+nudged thresholds counts as fragile? Suggested build:
+
+- Either define a degradation threshold (e.g. flag fragile if realized R at a
+  +/-1 grid-step nudge drops by more than X%, or flips sign), or explicitly state
+  this is human-judgment reporting with no automatic pass/fail.
+
+**Codex — agree / disagree / counter?** Define a threshold, or keep it judgment?
+
