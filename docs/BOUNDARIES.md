@@ -114,7 +114,7 @@ A child must pass two validation gates:
 2. It must beat the parent on the same validation period.
 
 Initial validation trade-count policy is owned by
-`docs/overfitting_tests/minimum_backtest_length.md`:
+`docs/overfitting_tests/minimum_trade_count_policy.md`:
 
 - fewer than 30 validation trades: insufficient evidence
 - 30 to 99 validation trades: low-sample / experimental

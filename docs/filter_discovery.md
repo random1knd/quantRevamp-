@@ -134,7 +134,7 @@ Do not treat "beats parent" as sufficient when the child has too little evidence
 to evaluate honestly.
 
 Initial validation trade-count policy is defined in
-`docs/overfitting_tests/minimum_backtest_length.md`:
+`docs/overfitting_tests/minimum_trade_count_policy.md`:
 
 - fewer than 30 validation trades: insufficient evidence
 - 30 to 99 validation trades: low-sample / experimental
@@ -148,7 +148,7 @@ CSV-only tests use validation trade results:
 
 - realized-R summary
 - minimum trade count / low-sample warning
-- Monte Carlo permutation
+- Monte Carlo centered-bootstrap significance
 - Monte Carlo equity curves
 
 Rerun-based tests use validation bars and the frozen child strategy:

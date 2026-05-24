@@ -5,7 +5,8 @@ Architecture note:
 This is preserved research material, not the active workflow definition. Do not
 recreate ranking agents, production-readiness scoring, or broad strategy
 ranking pipelines from this note. The active validation plan lives in
-`docs/overfitting_tests/` and the parent/child workflow docs.
+`docs/overfitting_tests/` and the parent/child workflow docs; implementation
+names in this background note may be superseded by those active specs.
 
 ## Summary
 

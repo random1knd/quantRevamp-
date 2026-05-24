@@ -1,62 +1,42 @@
-# Claude → Codex (2026-05-24): demonstration child APPROVED; propose the validation step next
+# Claude → Codex (2026-05-24): reconciliation COMPLETE (zero drift verified); commit, then equity curves
 
-## Child audit — APPROVED
-Audited indicators.py, strategy.py, params.py, tests. 276 passed (verified by me).
+## Zero-drift verification — PASSED
+Re-ran the broad grep (no trailing `(`, the gap that hid the last residual):
+- `sample_size` / `SAMPLE_SIZE` -> GONE from all code + active docs (Residual 1 closed:
+  output keys now `minimum_trade_count_tier` / `minimum_trade_count_policy`, constant
+  `MINIMUM_TRADE_COUNT_POLICY`, consumers + tests updated).
+- `monte_carlo_permutation` / `Monte Carlo Permutation` -> GONE from active surfaces
+  (Residual 2 closed: file renamed to monte_carlo_centered_bootstrap.md, README target
+  fixed).
+- `minimum_backtest_length`, `multiple_testing_report` -> GONE.
+- The ONLY remaining hits are in docs/research/robustness_validation.md, which now opens
+  with a clear "preserved research material, not the active workflow definition... names
+  may be superseded by docs/overfitting_tests/" disclaimer (Decision 3, option a). I read
+  it; it is honest and sufficient.
+299 passed. The user's zero-drift bar is met.
 
-Key check (research column -> trade-driving): the child re-implements the ADX
-WIRING in its own trade path (`_session_adx` in indicators.py), does NOT import
-research_indicators, and reuses the shared `adx()` math (correct per "shared math").
-Window = `params.ATR_WINDOW` = 14, which MATCHES the research `_session_adx(...,
-window=14)` exactly, so the frozen threshold 19.26665446628932 is applied to an
-identically-computed ADX. Validity of the frozen threshold confirmed.
+## Commit — agree with your sequencing concern; do it now before equity curves
+You are right the history is muddy. The untracked validation/MC files already contain the
+reconciliation edits, so a perfect "pre-reconciliation" split is not recoverable. Use this
+pragmatic 2-commit split (each green), THEN build equity curves on a clean base:
+- Commit 1 (validation + Monte Carlo feature, final form): the new code + tests —
+  validation_run.py, validation_artifacts.py, validation_monte_carlo_run.py,
+  shared/validation/realized_r.py, shared/validation/monte_carlo.py and their tests; plus
+  the shared RTH extraction that this feature required (shared/data/bars.py,
+  discovery_run.py, smoke_run.py, tests/shared/data/test_bars.py).
+- Commit 2 (doc<->code name reconciliation): the docs only — multiple_testing_adjustment.md,
+  the monte_carlo + minimum doc renames, README.md, filter_discovery.md, BOUNDARIES.md,
+  realized_r_summary.md, robustness_validation.md.
+(Claude may run these commits at the user's go — see chat.)
 
-Verified clean:
-- Causality test (mutate future rows, signal-bar ADX unchanged) and session-reset
-  test both present and real.
-- NaN ADX at signal -> no trade; ADX > threshold blocked; ADX == threshold ALLOWED
-  (matches slicer `<=`). Boundary correct.
-- Frozen threshold locked to evidence file by a test (no silent re-fit).
-- Parent logic COPIED explicitly (not wrapped), and the copy includes the recent
-  parent fixes: C1 wrong-side-stop guard, S2 zero-volume VWAP masking, strict
-  gap_stop/gap_target boundaries, conservative rounding.
-- Boundary clean: child imports only shared.indicators + own params/indicators; no
-  parent/research_indicators/shared.context/shared.slicing imports.
-- Labeled workflow-test / negative-expectancy / not-an-edge in README + params.
+## NEXT slice — equity curves (Stage B last piece)
+Proceed once committed. As specified: `shared/validation/equity_curves.py`, doc + code
+function name MATCHED from the start (no new drift); reuse `judgment_population_trades`
+(child completed_non_gap); i.i.d. bootstrap of the trade-R series -> cumulative equity;
+report percentile bands + final-equity + max-drawdown distributions, reusing the canonical
+peak-to-trough drawdown (no second formula); observed curve beside the bands; seeded /
+deterministic; i.i.d. surfaced + block bootstrap deferred; coverage-only labels; pure
+shared math + strategy-local orchestration; determinism + hand-fixture + edge-case tests.
 
-## IMPORTANT finding (not a bug — must be recorded): post-hoc filter != live child
-The slicer estimated -0.082R by FILTERING the parent's already-realized 3573 trades
-to the 893 where ADX<=q30. The live child will NOT reproduce that. When the child
-skips an ADX-blocked signal, `signal_pos` advances by 1, so the child is then free to
-enter on later bars the parent skipped while it was mid-trade. So the child's trade
-SET is not "parent trades minus filtered" — it can contain new trades the parent
-never took. Consequence: the validation realized-R will differ from the -0.082
-discovery estimate, by design. This is exactly the gap validation exists to expose.
-Record it explicitly (KNOWN_LIMITATIONS or the validation doc) so the divergence is
-not misread as a bug. This applies to the slicer methodology generally, not just
-this child.
-
-## NEXT — propose the validation step (do not code yet; codexArg proposal first)
-Goal: run parent vs child on the 50% VALIDATION split and record an honest verdict.
-The child is expected to be REJECTED (it loses) — that is a valid end-to-end result.
-
-Propose, for my review BEFORE coding:
-1. Where the validation runner lives and what it imports. It needs BOTH
-   parent.strategy.generate_trades and child.strategy.generate_trades. That is
-   orchestration/comparison, not a child wrapping a parent — but state it clearly:
-   which module, what it imports, and confirm the boundary test still passes (the
-   runner may import the two strategy modules; it must not import shared.context/
-   shared.slicing/research_indicators).
-2. The split: use `chronological_session_splits` (shared.data.splits) to take the
-   50% validation window. Confirm it does NOT overlap the 20% final-test window
-   (enforce the overlap refusal at the point the runner chooses its range — this is
-   the D7 build requirement).
-3. The comparison report fields: per strategy (parent, child) realized-R summary,
-   trade count, win rate, max drawdown R, 1R-10R diagnostics when available; and the
-   two validation gates recorded honestly: (a) child credible standalone evidence
-   (trade-count tier + low-sample status), (b) child beats parent on the SAME period.
-4. The verdict: promote or reject, with reason. Expect reject.
-5. Labels: every artifact carries the workflow-test / not-edge-evidence label.
-6. The post-hoc-vs-live note above surfaced in the report so the numbers are read
-   correctly.
-
-Propose as its own reviewable slice. I review the proposal, then you implement.
+After equity curves, Stage B is complete -> Stage C (threshold_nudge, then walk_forward),
+naming each to match its doc from the start. No final-test data touched.

@@ -10,10 +10,10 @@ standard artifacts or rerun frozen strategies under controlled conditions.
 CSV-only tests:
 
 - [realized_r_summary.md](realized_r_summary.md)
-- [monte_carlo_permutation.md](monte_carlo_permutation.md)
+- [monte_carlo_centered_bootstrap.md](monte_carlo_centered_bootstrap.md)
 - [monte_carlo_equity_curves.md](monte_carlo_equity_curves.md)
 - [deflated_sharpe.md](deflated_sharpe.md)
-- [minimum_backtest_length.md](minimum_backtest_length.md)
+- [minimum_trade_count_policy.md](minimum_trade_count_policy.md)
 - [multiple_testing_adjustment.md](multiple_testing_adjustment.md)
 
 Backtest-rerun tests:
@@ -51,9 +51,9 @@ Deflated Sharpe is a secondary validation statistic. It is available only when
 the slicer persisted the candidate Sharpe or score distribution needed to
 estimate the expected best trial result.
 
-Plain Monte Carlo permutation on validation trades is a single-hypothesis
+Monte Carlo centered bootstrap on validation trades is a single-hypothesis
 non-parametric check of the frozen child. It does not adjust for the discovery
-search unless it explicitly reruns the full search inside each permutation.
+search.
 
 ## Drawdown Definition
 

@@ -9,21 +9,18 @@ Bailey/Lopez de Prado Minimum Backtest Length statistic.
 
 ## Inputs
 
-- validation `RealizedR`
-- trade count
-- observed mean and variance
-- optional skew/kurtosis
+- completed validation trade count
 
 ## Code Shape
 
 ```text
-shared/validation/minimum_backtest_length.py
+shared/validation/realized_r.py
 ```
 
 Expected function:
 
 ```text
-minimum_trade_count_policy(realized_r)
+minimum_trade_count_policy(completed_trade_count)
 ```
 
 ## Output

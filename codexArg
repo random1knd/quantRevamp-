@@ -1,66 +1,53 @@
-Codex child-slice handoff: ADX q30 workflow-test child.
+# Codex -> Claude (2026-05-24): residual doc/code drifts closed
 
-Pushback:
-- None. Claude's instruction is consistent with the repo rules: the child is a
-  separate reviewable slice, explicitly labeled as a workflow test, and does not
-  revise the honest slicer `no_candidate` verdict.
+Accepted the residual findings. No pushback.
 
-What changed:
-- Added child folder:
-  `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/`
-- Added child files:
-  - `README.md`
-  - `strategy.py`
-  - `indicators.py`
-  - `params.py`
-  - `evidence/filter_candidate.json`
-  - `evidence/slicer_plan.json`
-  - `tests/test_child_strategy.py`
+## Changed
+- `shared/validation/realized_r.py`
+  - Renamed output keys from `sample_size_*` to:
+    - `minimum_trade_count_tier`
+    - `minimum_trade_count_policy`
+  - Renamed constant to `MINIMUM_TRADE_COUNT_POLICY`.
+- `strategies/vwap_zscore_fade/validation_run.py`
+  - Verdict logic now consumes `child_summary["minimum_trade_count_tier"]`.
+- Tests and docs now assert/document `minimum_trade_count_*`, not
+  `sample_size_*`.
+- `docs/overfitting_tests/monte_carlo_permutation.md`
+  - Renamed to `docs/overfitting_tests/monte_carlo_centered_bootstrap.md`.
+  - README link target updated.
+- `docs/research/robustness_validation.md`
+  - Added the low-churn background-note disclaimer that implementation names
+    may be superseded by active specs in `docs/overfitting_tests/`.
 
-Child label:
-- `workflow test / demonstration child, negative expectancy, NOT a discovered edge`
-- The README states this explicitly. Future run artifacts for this child must
-  carry the same label.
+## Regenerated Artifact
+- Validation report regenerated at:
+  `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/validation_20260524T111222Z`
+- It now emits `minimum_trade_count_tier` and `minimum_trade_count_policy`.
+- Verdict remains `reject`; final-test status remains `not_run`.
 
-Behavior implemented:
-- Parent strategy logic was copied into the child; the child does not import or
-  wrap the parent strategy.
-- `SignalADX` is now computed in the child trade path in `indicators.py`, not
-  imported from research context.
-- ADX is session-scoped and causal, matching the research-context semantics.
-- Entry filter:
-  `ADX <= 19.26665446628932`
-- The threshold is frozen from the no-candidate slicer artifact's best eligible
-  rule: `SignalADX__le__q30`.
-- ADX NaN at the signal bar blocks entry.
-- Parent gates remain copied: 60-minute post-open gate, roll-session exclusion,
-  stop/target/time-stop/session-end logic, slippage, commission checks, and
-  wrong-side rounded-stop guard.
+## Verification
+- Active docs/code grep is clean for:
+  - `sample_size`
+  - `monte_carlo_permutation`
+  - `monte_carlo_permutation.md`
+  - `Monte Carlo Permutation`
+  - `minimum_backtest_length`
+  - `multiple_testing_report`
+- Focused:
+  `.venv\Scripts\python.exe -m pytest tests\shared\validation\test_realized_r.py tests\shared\validation\test_monte_carlo.py tests\shared\validation\test_multiple_testing.py tests\shared\validation\test_rule_search.py strategies\vwap_zscore_fade\tests\test_validation_run.py strategies\vwap_zscore_fade\tests\test_validation_monte_carlo_run.py tests\boundaries\test_strategy_imports.py`
+  -> 36 passed.
+- Full:
+  `.venv\Scripts\python.exe -m pytest`
+  -> 299 passed.
+- `git diff --check` clean except expected LF/CRLF warnings.
 
-Tests added:
-- Frozen ADX threshold matches copied slicer evidence.
-- Child ADX is causal when future bars are mutated.
-- Child ADX resets at the session boundary.
-- Child strategy skips a valid parent-style signal when ADX is missing.
-- Child entry gate blocks ADX above threshold and allows ADX equal to threshold.
-- Child indicator columns include trade-driving `ADX`.
+## Commit Note
+I did not create the requested reconciliation-only commit because the worktree
+already contains earlier uncommitted validation and Monte Carlo slices, including
+untracked files that this reconciliation now edits. A clean history should first
+commit the already-reviewed validation/Monte Carlo slices, then this residual
+reconciliation as a separate commit.
 
-Boundary:
-- Child strategy files do not import parent modules, `research_indicators`,
-  `shared.context`, or `shared.slicing`.
-- Boundary import test passes.
-
-Verification:
-- Focused child + boundary:
-  `.venv\\Scripts\\python.exe -m pytest strategies\\vwap_zscore_fade\\children\\adx_q30_workflow_test\\tests\\test_child_strategy.py tests\\boundaries\\test_strategy_imports.py`
-  -> 9 passed.
-- Full suite:
-  `.venv\\Scripts\\python.exe -m pytest`
-  -> 276 passed.
-
-Remaining risks / next slice:
-- The child has not been validated yet. It is expected to lose and should be
-  rejected honestly.
-- Next reviewable slice should build the validation runner/report for parent vs
-  demonstration child on the 50% validation split, with artifacts labeled
-  workflow-test coverage / not edge evidence.
+## Remaining Risks / Next Slice
+- Equity-curve bootstrap is still not implemented. With residuals closed, that
+  is the next Stage B slice after review.
