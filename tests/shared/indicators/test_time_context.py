@@ -99,6 +99,21 @@ def test_session_progress_returns_nan_at_session_close_boundary():
     assert pd.isna(result.iloc[0])
 
 
+def test_session_progress_rejects_close_before_open():
+    timestamps = pd.Series([pd.Timestamp("2024-01-15 14:30:00", tz="UTC")])
+
+    with pytest.raises(
+        ValueError,
+        match="session_close_time must be after session_open_time",
+    ):
+        session_progress(
+            timestamps,
+            session_open_time=datetime.time(16, 0),
+            session_close_time=datetime.time(9, 30),
+            timezone="America/New_York",
+        )
+
+
 def test_bars_since_open_is_causal_when_future_session_changes():
     session = pd.Series(["a", "a", "a", "b", "b"])
     mutated = session.copy()

@@ -100,6 +100,54 @@ def make_bar(
     }
 
 
+def make_tiny_atr_wrong_side_stop_setup(*, side: str) -> pd.DataFrame:
+    rows = []
+    for index in range(19):
+        rows.append(
+            make_bar(
+                minute=index * 5,
+                roll_session=False,
+                Open=100.0,
+                High=100.01,
+                Low=99.99,
+                Close=100.0,
+            )
+        )
+
+    if side == "long":
+        signal_values = {
+            "Open": 99.95,
+            "High": 100.0,
+            "Low": 99.9,
+            "Close": 99.9,
+        }
+        entry_values = {
+            "Open": 99.4,
+            "High": 99.5,
+            "Low": 99.3,
+            "Close": 99.4,
+        }
+    elif side == "short":
+        signal_values = {
+            "Open": 100.05,
+            "High": 100.1,
+            "Low": 100.0,
+            "Close": 100.1,
+        }
+        entry_values = {
+            "Open": 100.6,
+            "High": 100.7,
+            "Low": 100.5,
+            "Close": 100.6,
+        }
+    else:
+        raise ValueError(f"unsupported side: {side}")
+
+    rows.append(make_bar(minute=95, roll_session=False, **signal_values))
+    rows.append(make_bar(minute=100, roll_session=False, **entry_values))
+    return pd.DataFrame(rows)
+
+
 def generate_smoke_trades(bars: pd.DataFrame, *, exclude_roll_sessions: bool = True):
     return generate_trades(
         bars,
@@ -321,6 +369,15 @@ def test_generate_trades_treats_short_open_equal_stop_as_regular_stop():
     assert trade.exit_reason == "stop"
     assert trade.gap_through is False
     assert trade.exit_price == pytest.approx(trade.initial_stop_price + 0.25)
+
+
+@pytest.mark.parametrize("side", ["long", "short"])
+def test_generate_trades_rejects_trade_when_stop_rounds_to_wrong_side(side):
+    bars = make_tiny_atr_wrong_side_stop_setup(side=side)
+
+    trades = generate_smoke_trades(bars)
+
+    assert trades == []
 
 
 def test_generate_trades_skips_long_when_fixed_target_is_not_above_entry_price():

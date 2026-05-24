@@ -36,3 +36,6 @@ Expected outputs:
 
 `RealizedR` is the headline metric. Touch-rate diagnostics do not replace it.
 
+Max drawdown in R is max peak-to-trough decline of cumulative `RealizedR` in
+chronological trade order. Reports must name whether they use
+`completed_non_gap`, `all_completed`, or another explicit population.

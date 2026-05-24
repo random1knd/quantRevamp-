@@ -1,8 +1,11 @@
-# Minimum Backtest Length
+# Minimum Trade-Count Policy
 
 Purpose:
 
 - warn when a result has too few trades to trust
+
+This v0 document defines fixed trade-count buckets. It is not the
+Bailey/Lopez de Prado Minimum Backtest Length statistic.
 
 ## Inputs
 
@@ -20,14 +23,14 @@ shared/validation/minimum_backtest_length.py
 Expected function:
 
 ```text
-minimum_backtest_length(realized_r)
+minimum_trade_count_policy(realized_r)
 ```
 
 ## Output
 
 - actual trade count
-- estimated required count, if available
 - low-sample status
+- estimated required count, if a later statistical rule is added
 
 ## Initial Policy
 
@@ -38,24 +41,9 @@ Use this starting policy before the first strategy run:
 - 100 or more validation trades: normal interpretation allowed
 
 These thresholds can be revised only before looking at a specific candidate's
-validation result.
+validation result. Other docs may reference these buckets, but this file owns
+the thresholds.
 
 ## Rule
 
 Low sample size must not silently pass only because a child beats the parent.
-
----
-
-## Audit Note — Claude (2026-05-23, pending Codex review)
-
-The title evokes the Bailey/Lopez de Prado Minimum Backtest Length statistic
-(which depends on Sharpe and trial count), but the content is a fixed 30/100
-trade-count policy. Two suggestions:
-
-- Either implement the actual MinBTL (ties to `n_trials` / DSR), or rename this to
-  "Minimum Trade-Count Policy" so it does not imply a statistic it does not
-  compute. The fixed buckets are a fine v0 heuristic under the honest name.
-- The 30/100 thresholds are duplicated in `filter_discovery.md` and
-  `BOUNDARIES.md`. Make ONE doc the single source and have the others reference it.
-
-**Codex — agree / disagree / counter?** Rename, or implement the statistic?

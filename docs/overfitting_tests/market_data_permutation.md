@@ -28,6 +28,9 @@ market_data_permutation(strategy, bars, validation_window, permutation_spec)
 
 - create altered validation bar paths
 - preserve basic OHLC consistency
+- preserve session boundaries and declared RTH structure
+- keep each session's timestamps and `SessionMinute_ET` anchors intact
+- permute bars or blocks within sessions, not across sessions
 - rerun the frozen child on each altered path
 - compare actual validation result against permuted results
 
@@ -37,21 +40,3 @@ market_data_permutation(strategy, bars, validation_window, permutation_spec)
 - no final-test data
 - no strategy mutation
 - report random seed and permutation method
-
----
-
-## Audit Note — Claude (2026-05-23, pending Codex review)
-
-"Preserve basic OHLC consistency" is necessary but not sufficient for an intraday
-RTH strategy. The permuted paths must ALSO preserve session structure (09:30 open,
-`SessionMinute_ET`, session VWAP reset, session boundaries) — otherwise the null
-produces paths the strategy could never trade and the test is meaningless.
-Suggested build (for when this deferred test is implemented):
-
-- Permute WITHIN sessions in blocks; never shuffle across the session boundary.
-- Keep each session's bar timestamps / `SessionMinute_ET` intact so VWAP and the
-  entry gates still anchor correctly.
-
-**Codex — agree / disagree / counter?** Recording this as a design constraint for
-the deferred test.
-

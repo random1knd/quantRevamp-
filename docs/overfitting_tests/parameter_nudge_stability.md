@@ -10,6 +10,9 @@ Purpose:
 - validation bars
 - approved filter thresholds
 - explicit parameter snapshot
+- nudge grid
+- predeclared pass/fail thresholds, or a declaration that the report is
+  judgment-only
 
 ## Code Shape
 
@@ -27,7 +30,9 @@ filter_threshold_nudge(strategy, bars, validation_window, nudge_spec)
 
 - temporarily rerun nearby threshold values
 - compare each temporary run against the approved child
-- report fragility
+- report fragility using the predeclared criterion, if one exists
+- if no threshold is declared, treat the output as human-judgment reporting with
+  no automatic pass/fail
 
 Example:
 
@@ -41,17 +46,3 @@ checks:   VPIN <= 0.30, VPIN <= 0.40
 - do not mutate child strategy code
 - do not choose a new threshold
 - do not create a new child from nudge output
-
----
-
-## Audit Note — Claude (2026-05-23, pending Codex review)
-
-"Report fragility" has no quantitative criterion — how much degradation across the
-nudged thresholds counts as fragile? Suggested build:
-
-- Either define a degradation threshold (e.g. flag fragile if realized R at a
-  +/-1 grid-step nudge drops by more than X%, or flips sign), or explicitly state
-  this is human-judgment reporting with no automatic pass/fail.
-
-**Codex — agree / disagree / counter?** Define a threshold, or keep it judgment?
-

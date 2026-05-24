@@ -130,11 +130,17 @@ Do not force every strategy to record every possible indicator.
 
 ## Context Trades CSV
 
-`context_trades.csv` is for slicing. It contains the completed trades plus
-recorded research indicators.
+`context_trades.csv` is for slicing. It contains all written trades plus
+recorded research indicators; do not drop `end_of_data` rows or gap-crossing
+rows while writing this artifact.
 
 These context columns must not affect the parent strategy's trade decisions.
 They are used only after the run is complete.
+
+The slicer is responsible for applying the campaign's declared input
+population. The current default headline/slicer population is
+`completed_non_gap`: rows where `ExitReason != end_of_data` and
+`HoldCrossesGap == false`.
 
 ## Summary JSON
 
@@ -159,9 +165,16 @@ Minimum summary fields:
 - parent comparison status, when validating a child
 
 Headline performance fields (`mean_realized_r`, `win_rate`,
-`max_drawdown_r`, and `r_multiple_diagnostics`) are computed from completed
-trades only, excluding `ExitReason = end_of_data`. `trade_count` still counts
-all written trades, and `incomplete_trade_count` reports those incomplete rows.
+`max_drawdown_r`, and `r_multiple_diagnostics`) are computed from
+`completed_non_gap` trades only: completed trades excluding
+`ExitReason = end_of_data` and rows where `HoldCrossesGap == true`.
+`trade_count` still counts all written trades, and `incomplete_trade_count`
+reports incomplete rows.
+
+When a summary also reports `all_completed_*` fields, those fields use all
+completed trades including gap-crossing holds. `all_completed_max_drawdown_r`
+uses the same drawdown definition as the headline field: max peak-to-trough of
+cumulative `RealizedR` in chronological trade order.
 
 ## Run Config JSON
 
@@ -224,13 +237,16 @@ Minimum fields:
 - discovery run id
 - selected filter rule
 - selection metric
+- slicer input population
 - searched columns
 - searched rule count
+- per-candidate selection-metric distribution
 - multiple-testing adjustment report
 - before-filter and after-filter trade count
 - realized-R summary
 - 1R through 10R diagnostics when available
 - approval status
 
-`searched rule count` is mandatory. If the slicer cannot report it, the filter
-candidate artifact is incomplete.
+`searched rule count` and the per-candidate selection-metric distribution are
+mandatory. If the slicer cannot report them, the filter candidate artifact is
+incomplete and cannot support DSR or full-search permutation validation.

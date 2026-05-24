@@ -71,6 +71,19 @@ def test_parent_indicators_scope_to_rth_rows_and_reset_by_session():
     assert result.loc[5, "SessionVWAP"] == 40.0
 
 
+def test_parent_indicators_leave_zero_volume_vwap_missing():
+    bars = make_bars(
+        closes=[10.0, 20.0, 40.0],
+        volumes=[0.0, 10.0, 30.0],
+    )
+
+    result = add_parent_indicators(bars)
+
+    assert pd.isna(result.loc[0, "SessionVWAP"])
+    assert result.loc[1, "SessionVWAP"] == 20.0
+    assert result.loc[2, "SessionVWAP"] == 35.0
+
+
 def test_parent_indicators_use_full_windows_for_zscores_and_atr():
     closes = [100.0 + index for index in range(21)]
     volumes = [100.0 + index * 10.0 for index in range(21)]

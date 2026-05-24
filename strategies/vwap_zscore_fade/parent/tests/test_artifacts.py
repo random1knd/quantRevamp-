@@ -169,6 +169,7 @@ def test_write_parent_artifacts_writes_summary_metrics(artifact_scratch):
     assert summary["max_drawdown_r"] == 0.5
     assert summary["all_completed_mean_realized_r"] == pytest.approx(2.5 / 3.0)
     assert summary["all_completed_win_rate"] == pytest.approx(2.0 / 3.0)
+    assert summary["all_completed_max_drawdown_r"] == 0.5
     assert summary["gap_trade_mean_r"] == 2.0
     assert summary["gap_trade_win_rate"] == 1.0
     assert summary["incomplete_trade_count"] == 1
@@ -195,6 +196,7 @@ def test_write_parent_artifacts_handles_empty_trades(artifact_scratch):
     assert summary["max_drawdown_r"] is None
     assert summary["all_completed_mean_realized_r"] is None
     assert summary["all_completed_win_rate"] is None
+    assert summary["all_completed_max_drawdown_r"] is None
     assert summary["gap_trade_mean_r"] is None
     assert summary["gap_trade_win_rate"] is None
     assert summary["incomplete_trade_count"] == 0

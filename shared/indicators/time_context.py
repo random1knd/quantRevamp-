@@ -28,6 +28,9 @@ def session_progress(
         + session_close_time.minute * 60
         + session_close_time.second
     )
+    if close_seconds <= open_seconds:
+        raise ValueError("session_close_time must be after session_open_time")
+
     session_duration = close_seconds - open_seconds
     in_session = (local_seconds >= open_seconds) & (local_seconds < close_seconds)
     result = ((local_seconds - open_seconds) / session_duration).where(in_session)

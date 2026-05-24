@@ -234,6 +234,11 @@ def _open_trade(
         )
     initial_stop_price = _round_stop_conservative(initial_stop_price, side=side)
 
+    if side == "long" and initial_stop_price >= entry_price:
+        return None
+    if side == "short" and initial_stop_price <= entry_price:
+        return None
+
     initial_risk = abs(entry_price - initial_stop_price)
     if initial_risk <= 0.0:
         return None

@@ -68,10 +68,12 @@ The slicer consumes only discovery `context_trades.csv`.
 The slicer must:
 
 - use the campaign's predeclared slicer plan
+- apply the campaign's predeclared input population at the slicer
 - propose at most one filter candidate per discovery run
 - write searched rule count
 - write searched columns
 - write the selection metric
+- write every searched candidate's selection score
 - write a multiple-testing adjustment report
 - write realized-R and 1R through 10R diagnostics when available
 
@@ -111,7 +113,8 @@ A child must pass two validation gates:
 1. It must have credible standalone validation evidence.
 2. It must beat the parent on the same validation period.
 
-Initial validation trade-count policy:
+Initial validation trade-count policy is owned by
+`docs/overfitting_tests/minimum_backtest_length.md`:
 
 - fewer than 30 validation trades: insufficient evidence
 - 30 to 99 validation trades: low-sample / experimental

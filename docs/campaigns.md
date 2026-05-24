@@ -55,8 +55,11 @@ Before discovery slicing, the campaign must define a slicer plan.
 
 The slicer plan must state:
 
+- input population
 - searchable columns
 - threshold grid or candidate rules
+- rule form and direction set
+- missing-value handling
 - selection metric
 - minimum post-filter trade count
 - maximum searched rule count, if a cap is used
@@ -64,18 +67,41 @@ The slicer plan must state:
 
 The slicer must not choose its search space after inspecting results.
 
+The current default input population is `completed_non_gap`: rows where
+`ExitReason != end_of_data` and `HoldCrossesGap == false`. A campaign may use a
+different population only if that choice is documented before slicing.
+
+`searched rule count` means every concrete evaluated rule. For threshold
+searches, one concrete rule is the full tuple that defines a decision boundary,
+such as `(column, threshold, direction, rule form)`. A five-column search with
+seven thresholds and two directions is therefore `5 * 7 * 2 = 70` searched
+rules. Rules that are evaluated and then fail eligibility, such as a minimum
+trade-count floor, still count as searched rules.
+
+Selection metrics must be sample-adequate central-tendency or risk-adjusted
+measures. Examples include mean `RealizedR`, median `RealizedR`, Sharpe-like
+statistics, or drawdown-adjusted return when predeclared. Extremum-driven
+metrics are not allowed for slicer selection: do not optimize on max single
+trade, best tail event, highest 10R touch, or any objective where one outlier can
+choose the child.
+
 ## Filter Candidate Artifact
 
 The selected candidate must record:
 
 - campaign id
+- slicer input population
 - selected rule
 - selection metric
 - searched columns
 - searched rule count
+- per-candidate selection-metric distribution
 - multiple-testing adjustment report
 - pre-filter and post-filter trade count
 - realized-R summary
 - 1R through 10R diagnostics when available
 
-`searched rule count` is mandatory.
+`searched rule count` and the per-candidate selection-metric distribution are
+mandatory. The distribution must include every searched rule's selection score,
+not just the selected winner, so DSR and full-search permutation validation can
+be reproduced.

@@ -247,6 +247,7 @@ def _summary(
         "r_multiple_diagnostics": _r_multiple_diagnostics(non_gap_realized),
         "all_completed_mean_realized_r": _mean(all_completed_realized),
         "all_completed_win_rate": _win_rate(all_completed_realized),
+        "all_completed_max_drawdown_r": _max_drawdown(all_completed_realized),
         "gap_trade_mean_r": _mean(gap_realized),
         "gap_trade_win_rate": _win_rate(gap_realized),
         "incomplete_trade_count": sum(

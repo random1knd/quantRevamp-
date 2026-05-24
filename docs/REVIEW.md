@@ -112,10 +112,12 @@ The filter candidate should state:
 
 - parent strategy
 - discovery split used
+- slicer input population
 - selected filter rule
 - selection metric
 - searched columns
 - searched rule count
+- per-candidate selection-metric distribution
 - multiple-testing adjustment report
 - trade count before and after filter
 - realized-R summary

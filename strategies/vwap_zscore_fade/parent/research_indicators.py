@@ -82,6 +82,10 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
 
     rth = result.loc[rth_mask].copy()
     session = rth["SessionDate_ET"]
+    # Research context is joined only at parent signal bars. EntryZ already
+    # requires a gap-free 20-bar window, so 20-bar context columns are protected
+    # at signal rows. ADX has longer memory; keep that residual as research-only
+    # v0 context rather than using it to drive trades.
     rth["SignalVolumeZ"] = _session_standard_zscore(
         rth["Volume"],
         session=session,
@@ -130,9 +134,21 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         session=session,
         window=20,
     )
-    rth["SignalVolRatio"] = volume_ratio(rth["Volume"], window=20)
-    rth["SignalVolRobustZ"] = volume_robust_zscore(rth["Volume"], window=20)
-    rth["SignalATRPctile"] = atr_percentile(_atr, window=20)
+    rth["SignalVolRatio"] = _session_volume_ratio(
+        rth["Volume"],
+        session=session,
+        window=20,
+    )
+    rth["SignalVolRobustZ"] = _session_volume_robust_zscore(
+        rth["Volume"],
+        session=session,
+        window=20,
+    )
+    rth["SignalATRPctile"] = _session_atr_percentile(
+        _atr,
+        session=session,
+        window=20,
+    )
     rth["SignalCumDelta"] = cumulative_delta(
         rth["SignalDelta"],
         session=session,
@@ -143,7 +159,7 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         lookback=5,
     )
     rth["SignalOFI"] = _session_ofi_approx(rth, session=session)
-    rth["SignalVPIN"] = vpin_approx(rth, window=20)
+    rth["SignalVPIN"] = _session_vpin_approx(rth, session=session, window=20)
     _kyle = _session_kyle_lambda(
         close=rth["Close"],
         signed_volume=rth["SignalDelta"],
@@ -151,7 +167,11 @@ def add_research_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         window=20,
     )
     rth["SignalKyleLambda"] = _kyle
-    rth["SignalKyleLambdaPctile"] = kyle_lambda_percentile(_kyle, window=20)
+    rth["SignalKyleLambdaPctile"] = _session_kyle_lambda_percentile(
+        _kyle,
+        session=session,
+        window=20,
+    )
     rth["SignalAutoCorr"] = _session_return_autocorr(
         rth["Close"],
         session=session,
@@ -189,6 +209,39 @@ def _session_realized_volatility(
     )
 
 
+def _session_volume_ratio(
+    volume: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    return volume.groupby(session, sort=False).transform(
+        lambda group: volume_ratio(group, window=window)
+    )
+
+
+def _session_volume_robust_zscore(
+    volume: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    return volume.groupby(session, sort=False).transform(
+        lambda group: volume_robust_zscore(group, window=window)
+    )
+
+
+def _session_atr_percentile(
+    atr: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    return atr.groupby(session, sort=False).transform(
+        lambda group: atr_percentile(group, window=window)
+    )
+
+
 def _session_efficiency_ratio(
     close: pd.Series,
     *,
@@ -216,6 +269,29 @@ def _session_kyle_lambda(
             window=window,
         )
     return result
+
+
+def _session_vpin_approx(
+    bars: pd.DataFrame,
+    *,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    result = pd.Series(index=bars.index, dtype="float64")
+    for _, group in bars.groupby(session, sort=False):
+        result.loc[group.index] = vpin_approx(group, window=window)
+    return result
+
+
+def _session_kyle_lambda_percentile(
+    series: pd.Series,
+    *,
+    session: pd.Series,
+    window: int,
+) -> pd.Series:
+    return series.groupby(session, sort=False).transform(
+        lambda group: kyle_lambda_percentile(group, window=window)
+    )
 
 
 def _session_delta_roc(

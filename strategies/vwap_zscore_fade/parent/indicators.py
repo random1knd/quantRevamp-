@@ -47,12 +47,15 @@ def add_parent_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         low=rth["Low"],
         close=rth["Close"],
     )
-    rth["SessionVWAP"] = session_vwap(
-        rth,
-        price_col="TypicalPrice",
-        volume_col="Volume",
-        session_col="SessionDate_ET",
-    )
+    rth["SessionVWAP"] = pd.Series(index=rth.index, dtype="float64")
+    positive_volume = rth["Volume"] > 0.0
+    if positive_volume.any():
+        rth.loc[positive_volume, "SessionVWAP"] = session_vwap(
+            rth.loc[positive_volume].copy(),
+            price_col="TypicalPrice",
+            volume_col="Volume",
+            session_col="SessionDate_ET",
+        )
     rth["VWAPDeviation"] = rth["Close"] - rth["SessionVWAP"]
     rth["EntryZ"] = _session_deviation_zscore(
         rth["VWAPDeviation"],

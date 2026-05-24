@@ -294,6 +294,33 @@ def test_flow_change_research_context_resets_at_session_boundary():
     )
 
 
+def test_all_research_context_columns_reset_at_session_boundary():
+    session_dates = ["2026-01-02"] * 60 + ["2026-01-05"] * 60
+    session_minutes = [index * 5 for index in range(60)] * 2
+    volumes = [100.0 + (index % 17) * 10.0 for index in range(120)]
+    bars = make_bars(
+        volumes=volumes,
+        session_dates=session_dates,
+        session_minutes=session_minutes,
+    )
+    mutated = bars.copy()
+    mutated.loc[:59, "Open"] = [1000.0 + index * 3.0 for index in range(60)]
+    mutated.loc[:59, "High"] = mutated.loc[:59, "Open"] + 7.0
+    mutated.loc[:59, "Low"] = mutated.loc[:59, "Open"] - 5.0
+    mutated.loc[:59, "Close"] = mutated.loc[:59, "Open"] + 2.0
+    mutated.loc[:59, "Volume"] = [5000.0 + index * 111.0 for index in range(60)]
+    mutated.loc[:59, "BidVolume"] = [3000.0 + index * 17.0 for index in range(60)]
+    mutated.loc[:59, "AskVolume"] = [900.0 + index * 13.0 for index in range(60)]
+
+    original_result = add_research_indicators(bars)
+    mutated_result = add_research_indicators(mutated)
+
+    pd.testing.assert_frame_equal(
+        original_result.loc[60:, RESEARCH_INDICATOR_COLUMNS],
+        mutated_result.loc[60:, RESEARCH_INDICATOR_COLUMNS],
+    )
+
+
 def test_batch1_and_batch2_columns_are_nan_for_non_rth_rows():
     bars = make_bars(
         volumes=[100.0, 100.0, 100.0],

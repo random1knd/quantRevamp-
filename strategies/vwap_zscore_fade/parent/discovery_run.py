@@ -35,7 +35,6 @@ ROOT = Path(__file__).resolve().parents[3]
 INPUT_DATA_PATH = ROOT / "data" / "bars" / "5min" / "NQ_all_5min.csv"
 OUTPUT_ROOT = ROOT / "data" / "results" / params.STRATEGY_NAME / "parent"
 EXCLUDE_ROLL_SESSIONS = True
-CAMPAIGN_ID = "vwap_zscore_fade_parent_c001"
 COMMISSION_PER_ROUND_TURN = 5.16
 COMMISSION_IS_SMOKE_TEST = False
 RANDOM_SEED = 0
@@ -91,7 +90,7 @@ def run_discovery() -> Path:
         data_start=discovery_bars["DateTime_UTC"].min().isoformat(),
         data_end=discovery_bars["DateTime_UTC"].max().isoformat(),
         input_data_paths=[INPUT_DATA_PATH],
-        campaign_id=CAMPAIGN_ID,
+        campaign_id=_campaign_id(discovery_bars),
         commission_source=COMMISSION_SOURCE,
         source_timezone_rationale=TIMEZONE_INFERENCE,
         rth_filter_note=RTH_FILTER_NOTE,
@@ -145,6 +144,15 @@ def _bar_gap_session_count(prepared_bars: pd.DataFrame) -> int:
             prepared_bars["BarGapFromPrevious"],
             "SessionDate_ET",
         ].nunique()
+    )
+
+
+def _campaign_id(discovery_bars: pd.DataFrame) -> str:
+    discovery_start = discovery_bars["SessionDate_ET"].min().isoformat()
+    discovery_end = discovery_bars["SessionDate_ET"].max().isoformat()
+    return (
+        f"{params.STRATEGY_NAME}__{params.INSTRUMENT}__{params.TIMEFRAME}"
+        f"__{discovery_start}_{discovery_end}"
     )
 
 

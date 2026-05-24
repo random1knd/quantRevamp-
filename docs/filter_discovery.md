@@ -40,11 +40,18 @@ Write:
 `trades.csv` is the actual strategy output.
 
 `context_trades.csv` is the same trades plus recorded indicator values for
-slicing. It is research data, not strategy logic.
+slicing. It is research data, not strategy logic. The context writer does not
+drop incomplete trades or gap-crossing holds; the slicer applies the campaign's
+predeclared input population.
 
 ## Slicer Rule
 
 The slicer must use the campaign's predeclared slicer plan.
+
+The slicer plan must declare its input population before the search starts.
+The current default population is `completed_non_gap`: rows where
+`ExitReason != end_of_data` and `HoldCrossesGap == false`. A different
+population is allowed only with an explicit campaign rationale.
 
 The slicer may propose only one best filter candidate per discovery run.
 
@@ -53,10 +60,12 @@ The slicer must write a filter candidate artifact that states:
 - parent strategy
 - campaign id
 - discovery split used
+- slicer input population
 - selected filter rule
 - selection metric
 - searched columns
 - searched rule count
+- per-candidate selection-metric distribution
 - multiple-testing adjustment report
 - trade count before and after the filter
 - 1R through 10R diagnostics when available
@@ -65,6 +74,13 @@ The slicer must write a filter candidate artifact that states:
 The slicer must not modify strategy code.
 
 The slicer must not choose its search space after inspecting results.
+
+The multiple-testing report must state how the selected score was adjusted for
+the full search. Preferred v0 mechanics are a full-search permutation null:
+shuffle `RealizedR` against the filter columns, rerun the entire predeclared
+search for each permutation, and compare the selected score to the distribution
+of maximum permuted scores. A Bonferroni report can remain as an informational
+secondary check when a raw p-value is available.
 
 ## Parent And Child Strategy Layout
 
@@ -117,7 +133,8 @@ size obvious.
 Do not treat "beats parent" as sufficient when the child has too little evidence
 to evaluate honestly.
 
-Initial validation trade-count policy:
+Initial validation trade-count policy is defined in
+`docs/overfitting_tests/minimum_backtest_length.md`:
 
 - fewer than 30 validation trades: insufficient evidence
 - 30 to 99 validation trades: low-sample / experimental
@@ -171,6 +188,7 @@ test split.
 - Do not create more than one child from one discovery run.
 - Do not create a second child generation from the same split campaign.
 - Do not create a filter candidate artifact without searched rule count.
+- Do not create a filter candidate artifact without per-candidate scores.
 - Do not run a slicer without a predeclared campaign slicer plan.
 - Do not change split boundaries without explicit approval.
 - Do not change the one-hour post-open rule without explicit approval.

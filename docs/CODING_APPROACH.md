@@ -223,10 +223,12 @@ slice_report.csv
 
 The candidate artifact should include:
 
+- slicer input population
 - selected filter rule
 - selection metric
 - searched columns
 - searched rule count
+- per-candidate selection-metric distribution
 - multiple-testing adjustment report
 - before/after trade count
 - realized-R summary

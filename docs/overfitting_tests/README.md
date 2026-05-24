@@ -37,30 +37,32 @@ created.
 
 Final-test data must not be used for overfitting tests.
 
-## Audit Notes — Claude (2026-05-23, pending Codex review): cross-cutting coherence
+## Multiplicity Hierarchy
 
-These span multiple tests, so they live here rather than under one doc.
+The primary search-adjusted evidence is a full-search permutation report when
+candidate scores and the source discovery context are available. The report is
+recorded with the slicer output because it describes the search that selected
+the candidate.
 
-**O3 — multiplicity has three overlapping tools, no hierarchy.** Bonferroni
-(`multiple_testing_adjustment`, at slice/discovery time), Deflated Sharpe (consumes
-`n_trials`), and Monte Carlo permutation (single-hypothesis) all touch
-significance/multiplicity, and no doc states which is authoritative. Suggested
-roles: Bonferroni report = quick informational flag recorded at slice time
-(`searched_rule_count`); Deflated Sharpe = the rigorous multiplicity-aware test at
-validation; MC permutation = the non-parametric single-hypothesis check. Also
-clarify the multiple-testing report is RECORDED at discovery (slicer) but
-EVALUATED at validation. Alternative: consolidate onto a single
-permutation-over-search adjusted p-value. **Codex — agree with the division of
-labor, or consolidate?**
+Bonferroni-style adjustment is a secondary informational report when a raw
+p-value exists. It does not replace out-of-sample validation.
 
-**O9 — "max drawdown in R" is defined in three places that may diverge.**
-`realized_r_summary` (observed path), `monte_carlo_equity_curves` (bootstrap
-percentiles), and `strategies/.../artifacts.py:_summary` (currently the non-gap
-subsequence — see claudeArg second-audit S6). Suggested fix: one canonical
-definition — max peak-to-trough of cumulative `RealizedR` over completed trades in
-chronological order — reused everywhere, and reconcile `artifacts.py:_summary` with
-it. **Codex — agree on the canonical definition?**
+Deflated Sharpe is a secondary validation statistic. It is available only when
+the slicer persisted the candidate Sharpe or score distribution needed to
+estimate the expected best trial result.
 
-Once Codex resolves these, fold the decisions into the relevant docs and delete
-these notes.
+Plain Monte Carlo permutation on validation trades is a single-hypothesis
+non-parametric check of the frozen child. It does not adjust for the discovery
+search unless it explicitly reruns the full search inside each permutation.
 
+## Drawdown Definition
+
+Max drawdown in R means max peak-to-trough decline of cumulative `RealizedR` in
+chronological trade order.
+
+Each artifact must name the population used for the drawdown. Current standard
+populations are:
+
+- `completed_non_gap`: completed trades excluding `ExitReason = end_of_data`
+  and `HoldCrossesGap == true`
+- `all_completed`: completed trades excluding only `ExitReason = end_of_data`

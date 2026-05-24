@@ -142,6 +142,8 @@ def _wilder_smooth(
 
     seed_values = values.iloc[:window]
     if skip_seed_na:
+        # ADX TR/DM inputs have no prior bar at index 0, so the first seed
+        # intentionally excludes only that leading NaN.
         initial_seed = (
             seed_values.iloc[1:] if pd.isna(seed_values.iloc[0]) else seed_values
         )

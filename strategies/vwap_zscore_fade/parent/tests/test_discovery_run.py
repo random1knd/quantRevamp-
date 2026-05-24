@@ -8,9 +8,9 @@ import pytest
 
 from shared.data.splits import chronological_session_splits
 from strategies.vwap_zscore_fade.parent.discovery_run import (
-    CAMPAIGN_ID,
     COMMISSION_IS_SMOKE_TEST,
     COMMISSION_PER_ROUND_TURN,
+    _campaign_id,
     _validate_discovery_does_not_overlap_final_test,
     _write_context_trades_csv,
     _rth_only_raw_bars as discovery_rth_only_raw_bars,
@@ -105,8 +105,16 @@ def test_discovery_run_rejects_final_test_overlap():
         )
 
 
-def test_discovery_run_uses_real_commission_not_smoke_label():
-    assert CAMPAIGN_ID == "vwap_zscore_fade_parent_c001"
+def test_discovery_run_uses_date_bound_campaign_id_and_real_commission():
+    prepared = make_prepared_bars(
+        [
+            date(2026, 1, 1),
+            date(2026, 1, 1),
+            date(2026, 1, 2),
+        ]
+    )
+
+    assert _campaign_id(prepared) == "vwap_zscore_fade__NQ__5min__2026-01-01_2026-01-02"
     assert COMMISSION_PER_ROUND_TURN == 5.16
     assert COMMISSION_IS_SMOKE_TEST is False
 

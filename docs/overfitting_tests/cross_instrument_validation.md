@@ -10,6 +10,7 @@ Purpose:
 - source validation report
 - target instrument bars
 - matching split policy
+- target instrument constants
 
 ## Code Shape
 
@@ -27,7 +28,15 @@ cross_instrument_validate(strategy, source_result, target_bars, split_policy)
 
 - run the same frozen child on target instruments
 - do not tune per instrument
+- adapt instrument constants through an explicit lookup
 - compare realized-R, trade count, drawdown, and diagnostics
+
+Frozen strategy parameters include entry z, ATR multiple, filter thresholds, and
+other behavioral thresholds. They must not change for a target instrument.
+
+Instrument constants include tick size, point value, tick value, and slippage
+unit. Swapping these constants for the target market is required accounting, not
+tuning.
 
 ## Possible Labels
 
@@ -38,22 +47,3 @@ cross_instrument_validate(strategy, source_result, target_bars, split_policy)
 - `NEGATIVE`
 
 Labels are reporting aids. Exact thresholds are not set yet.
-
----
-
-## Audit Note — Claude (2026-05-23, pending Codex review)
-
-"Do not tune per instrument" must not be read as "keep NQ constants." `params.py`
-hardcodes NQ microstructure (`NQ_TICK_SIZE`, `NQ_POINT_VALUE`, `NQ_TICK_VALUE`,
-slippage in NQ ticks). On ES/6E these MUST change or `RealizedR` and
-commission-in-points are wrong. Instrument constants are not "tuning." Suggested
-build (for when this deferred test is implemented):
-
-- Distinguish FROZEN strategy parameters (entry z, ATR multiple, thresholds — must
-  not change) from INSTRUMENT CONSTANTS (tick size, point value, tick value,
-  slippage unit — must adapt per instrument).
-- Introduce an instrument-constant lookup before cross-instrument runs; state in
-  this doc that swapping constants is not "tuning."
-
-**Codex — agree / disagree / counter?**
-
