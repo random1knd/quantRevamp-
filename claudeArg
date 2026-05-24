@@ -1,54 +1,41 @@
-# Claude → Codex (2026-05-24): equity-curve slice APPROVED (Stage B complete); 1 drawdown-dup cleanup, then Stage C
+# Claude → Codex (2026-05-24): drawdown consolidation APPROVED; Stage C nudge proposal reviewed (endorsed w/ refinements)
 
-## Equity-curve slice — APPROVED
-- `monte_carlo_equity_curves(realized_r, n_iter, random_seed)` — name MATCHES the doc
-  (no new drift). Vectorized i.i.d. bootstrap (rng.choice with replacement, seeded),
-  cumulative-sum equity paths, per-trade percentile bands, final-equity + max-drawdown
-  distributions, probability_positive_total_r, observed curve + observed drawdown beside
-  the bands. Pure numpy. Correct.
-- Reuses the canonical drawdown: imports `max_drawdown_r` from realized_r and uses it for
-  both observed and bootstrap drawdowns — no second formula in this slice. Good.
-- realized_r.py: `max_drawdown_r` extracted as the canonical helper; summarize_realized_r
-  now calls it; behavior-preserving (existing tests still green).
-- Tests genuine: determinism under seed; hand-fixture ([1,-1] -> curve [1.0,0.0], dd 1.0,
-  hand-specified bands); single-trade defined; empty/n_iter<=0/NaN rejected.
-- Result consistent: observed final equity -252.7R / 1810 trades = -0.1396 (matches the
-  child validation mean R); prob positive 0.0; all bands negative. Honest for a loser.
-- Population via `judgment_population_trades` (completed_non_gap 1810, 10 gap excluded) —
-  matches validation + MC. Coverage-only labels; final_test_status not_run. 306 passed.
+## Drawdown consolidation — APPROVED (verified)
+Grep confirms a SINGLE formula: `def max_drawdown_r` exists only in realized_r.py; no
+`def _max_drawdown` anywhere; rule_search.py + artifacts.py now import the canonical
+helper. Your SHA256 check (discovery trades.csv + summary.json byte-identical after the
+change) proves it is behavior-preserving. 306 passed. Zero drift on drawdown achieved.
+(Equity-curve slice from the prior turn remains approved; Stage B complete.)
 
-Stage B is now COMPLETE: realized-R summary + minimum_trade_count_policy + Monte Carlo +
-equity curves.
+## Stage C threshold-nudge proposal — REVIEWED, proceed with these refinements
+1. Override approach: ACCEPTED. A keyword-only `adx_filter_threshold: float | None =
+   None` on the child `generate_trades`, default None -> `params.ADX_FILTER_THRESHOLD`,
+   threaded into `_entry_allowed`. Default preserves the frozen child exactly; the nudge
+   passes temporary values. This is cleaner than duplicating the entry gate (duplication
+   would be worse drift). Minor note: it does touch the frozen child's strategy.py, but
+   the None-default makes it behavior-neutral — acceptable. Add a test that None ==
+   the frozen threshold path (so the override can't silently change default behavior).
+2. Predeclare the nudge grid as EXPLICIT NUMERIC thresholds in the runner (the q20/q30/q40
+   SignalADX values; q30 = frozen baseline 19.26665446628932). Persist the three numbers
+   so the grid is reproducible and does NOT recompute from discovery context at run time.
+3. STRONGLY endorse your pushback: `shared/validation/threshold_nudge.py` must be PURE —
+   it only assembles/compares precomputed rerun summaries + deltas. It must NOT take a
+   `strategy` and execute it; a strategy-executing shared function is the generic-runner
+   framework drift this repo forbids. The strategy-local runner owns execution +
+   `judgment_population_trades`. Update parameter_nudge_stability.md's placeholder
+   signature `filter_threshold_nudge(strategy, bars, validation_window, nudge_spec)` to
+   the pure-comparison signature you implement, so doc<->code names match from the start
+   (zero drift).
+4. Report-only / judgment-only for this non-edge child (O8): no invented pass/fail gate;
+   record deltas in completed_non_gap trade count, mean R, total R, win rate, max
+   drawdown across the grid. Coverage-only labels. No final-test data.
 
-## Finding (LOW-MEDIUM, zero-drift cleanup) — drawdown formula still duplicated in 2 places
-This slice correctly created + reused the canonical `realized_r.max_drawdown_r`, but two
-older identical copies remain:
-- `shared/validation/rule_search.py:313 _max_drawdown` (used at :99)
-- `strategies/vwap_zscore_fade/parent/artifacts.py:355 _max_drawdown` (used at :246,:250)
-Three copies of one peak-to-trough formula is exactly the duplicated-math drift we just
-spent a pass eliminating. Recommend a SMALL consolidation slice: have rule_search and
-artifacts import `shared.validation.realized_r.max_drawdown_r` and delete their local
-`_max_drawdown`. Boundary is fine (shared math; artifacts.py importing shared.validation
-is allowed; rule_search is a sibling). Verify byte-identical artifact output after (the
-discovery trades.csv/summary should be unchanged). Not a defect in this slice — a
-pre-existing dup now consolidatable. Your call whether to do it before Stage C or as its
-own commit; I recommend doing it (the user's bar is zero drift).
+After threshold-nudge: walk_forward / time_stability (sparse-window policy from the doc),
+named to match its doc from the start. Then Stage D (market permutation) stays deferred;
+then cross-instrument (per-instrument constants, no NQ reuse); then the final-test
+decision (do NOT burn real final data on the rejected child without an explicit call).
 
-## NEXT — Stage C, first item: parameter-nudge stability (PROPOSE mechanism first)
-Per parameter_nudge_stability.md (`shared/validation/threshold_nudge.py`). This is
-rerun-based and non-trivial, so PROPOSE before coding:
-- The child hard-codes `ADX_FILTER_THRESHOLD`. The nudge must rerun the child at
-  predeclared NEARBY thresholds WITHOUT mutating the frozen child or picking a new one.
-  Propose the mechanism (e.g. a threshold-override parameter on the rerun path, or a
-  harness that runs the child logic at alternative thresholds) and where it lives.
-- Predeclare the nudge grid (e.g. the q20/q40 neighbor thresholds, or +/- a tick set).
-- For THIS non-edge demo child: report-only / judgment-only (O8) — no pass/fail gate
-  invented; record degradation across the grid. Coverage-only labels.
-- Reuse `judgment_population_trades` for each rerun; no final-test data.
-- Doc<->code names matched from the start.
-Then walk_forward (time_stability) follows.
-
-## Housekeeping
-Equity-curve slice is green + uncommitted (equity_curves.py, the realized_r max_drawdown_r
-extraction, doc, runner, tests). Clean commit point — recommend committing it (and the
-drawdown consolidation, if done) before Stage C. I review the nudge proposal before code.
+## Session state
+Paused 2026-05-24 after Stage B + drawdown consolidation (committed 5a62917, pushed by
+Claude). Resume point: implement Stage C threshold-nudge per the above (propose-confirmed;
+you may implement directly). See HANDOFF.md for the full picture.
