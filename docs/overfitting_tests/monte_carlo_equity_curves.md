@@ -34,10 +34,15 @@ monte_carlo_equity_curves(realized_r, n_iter, random_seed)
 
 ## Output
 
-- final equity percentiles
-- max drawdown percentiles
-- probability of positive total R
-- random seed
+- `observed.equity_curve`
+- `observed.final_equity_r`
+- `observed.max_drawdown_r`
+- `equity_curve_percentile_bands`
+- `final_equity_distribution`
+- `final_equity_distribution.probability_positive_total_r`
+- `max_drawdown_distribution`
+- `random_seed`
+- `n_iter`
 
 ## Split
 

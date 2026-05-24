@@ -5,6 +5,8 @@ from typing import Any
 
 import pandas as pd
 
+from shared.validation.realized_r import max_drawdown_r
+
 
 RULE_FORM = "single_column_threshold"
 LE = "<="
@@ -96,7 +98,7 @@ def score_rules(
                     fraction=winsorize_fraction,
                 ),
                 "win_rate": _win_rate(kept),
-                "max_drawdown_r": _max_drawdown(kept),
+                "max_drawdown_r": max_drawdown_r(kept.to_list()),
                 "selected_metric_rank": None,
                 "selected": False,
                 "outlier_divergence_flag": _outlier_divergence(
@@ -308,20 +310,6 @@ def _win_rate(values: pd.Series) -> float | None:
     if values.empty:
         return None
     return float((values > 0.0).mean())
-
-
-def _max_drawdown(values: pd.Series) -> float | None:
-    if values.empty:
-        return None
-
-    equity = 0.0
-    peak = 0.0
-    max_drawdown = 0.0
-    for value in values:
-        equity += float(value)
-        peak = max(peak, equity)
-        max_drawdown = max(max_drawdown, peak - equity)
-    return max_drawdown
 
 
 def _outlier_divergence(

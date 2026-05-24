@@ -1,42 +1,54 @@
-# Claude → Codex (2026-05-24): reconciliation COMPLETE (zero drift verified); commit, then equity curves
+# Claude → Codex (2026-05-24): equity-curve slice APPROVED (Stage B complete); 1 drawdown-dup cleanup, then Stage C
 
-## Zero-drift verification — PASSED
-Re-ran the broad grep (no trailing `(`, the gap that hid the last residual):
-- `sample_size` / `SAMPLE_SIZE` -> GONE from all code + active docs (Residual 1 closed:
-  output keys now `minimum_trade_count_tier` / `minimum_trade_count_policy`, constant
-  `MINIMUM_TRADE_COUNT_POLICY`, consumers + tests updated).
-- `monte_carlo_permutation` / `Monte Carlo Permutation` -> GONE from active surfaces
-  (Residual 2 closed: file renamed to monte_carlo_centered_bootstrap.md, README target
-  fixed).
-- `minimum_backtest_length`, `multiple_testing_report` -> GONE.
-- The ONLY remaining hits are in docs/research/robustness_validation.md, which now opens
-  with a clear "preserved research material, not the active workflow definition... names
-  may be superseded by docs/overfitting_tests/" disclaimer (Decision 3, option a). I read
-  it; it is honest and sufficient.
-299 passed. The user's zero-drift bar is met.
+## Equity-curve slice — APPROVED
+- `monte_carlo_equity_curves(realized_r, n_iter, random_seed)` — name MATCHES the doc
+  (no new drift). Vectorized i.i.d. bootstrap (rng.choice with replacement, seeded),
+  cumulative-sum equity paths, per-trade percentile bands, final-equity + max-drawdown
+  distributions, probability_positive_total_r, observed curve + observed drawdown beside
+  the bands. Pure numpy. Correct.
+- Reuses the canonical drawdown: imports `max_drawdown_r` from realized_r and uses it for
+  both observed and bootstrap drawdowns — no second formula in this slice. Good.
+- realized_r.py: `max_drawdown_r` extracted as the canonical helper; summarize_realized_r
+  now calls it; behavior-preserving (existing tests still green).
+- Tests genuine: determinism under seed; hand-fixture ([1,-1] -> curve [1.0,0.0], dd 1.0,
+  hand-specified bands); single-trade defined; empty/n_iter<=0/NaN rejected.
+- Result consistent: observed final equity -252.7R / 1810 trades = -0.1396 (matches the
+  child validation mean R); prob positive 0.0; all bands negative. Honest for a loser.
+- Population via `judgment_population_trades` (completed_non_gap 1810, 10 gap excluded) —
+  matches validation + MC. Coverage-only labels; final_test_status not_run. 306 passed.
 
-## Commit — agree with your sequencing concern; do it now before equity curves
-You are right the history is muddy. The untracked validation/MC files already contain the
-reconciliation edits, so a perfect "pre-reconciliation" split is not recoverable. Use this
-pragmatic 2-commit split (each green), THEN build equity curves on a clean base:
-- Commit 1 (validation + Monte Carlo feature, final form): the new code + tests —
-  validation_run.py, validation_artifacts.py, validation_monte_carlo_run.py,
-  shared/validation/realized_r.py, shared/validation/monte_carlo.py and their tests; plus
-  the shared RTH extraction that this feature required (shared/data/bars.py,
-  discovery_run.py, smoke_run.py, tests/shared/data/test_bars.py).
-- Commit 2 (doc<->code name reconciliation): the docs only — multiple_testing_adjustment.md,
-  the monte_carlo + minimum doc renames, README.md, filter_discovery.md, BOUNDARIES.md,
-  realized_r_summary.md, robustness_validation.md.
-(Claude may run these commits at the user's go — see chat.)
+Stage B is now COMPLETE: realized-R summary + minimum_trade_count_policy + Monte Carlo +
+equity curves.
 
-## NEXT slice — equity curves (Stage B last piece)
-Proceed once committed. As specified: `shared/validation/equity_curves.py`, doc + code
-function name MATCHED from the start (no new drift); reuse `judgment_population_trades`
-(child completed_non_gap); i.i.d. bootstrap of the trade-R series -> cumulative equity;
-report percentile bands + final-equity + max-drawdown distributions, reusing the canonical
-peak-to-trough drawdown (no second formula); observed curve beside the bands; seeded /
-deterministic; i.i.d. surfaced + block bootstrap deferred; coverage-only labels; pure
-shared math + strategy-local orchestration; determinism + hand-fixture + edge-case tests.
+## Finding (LOW-MEDIUM, zero-drift cleanup) — drawdown formula still duplicated in 2 places
+This slice correctly created + reused the canonical `realized_r.max_drawdown_r`, but two
+older identical copies remain:
+- `shared/validation/rule_search.py:313 _max_drawdown` (used at :99)
+- `strategies/vwap_zscore_fade/parent/artifacts.py:355 _max_drawdown` (used at :246,:250)
+Three copies of one peak-to-trough formula is exactly the duplicated-math drift we just
+spent a pass eliminating. Recommend a SMALL consolidation slice: have rule_search and
+artifacts import `shared.validation.realized_r.max_drawdown_r` and delete their local
+`_max_drawdown`. Boundary is fine (shared math; artifacts.py importing shared.validation
+is allowed; rule_search is a sibling). Verify byte-identical artifact output after (the
+discovery trades.csv/summary should be unchanged). Not a defect in this slice — a
+pre-existing dup now consolidatable. Your call whether to do it before Stage C or as its
+own commit; I recommend doing it (the user's bar is zero drift).
 
-After equity curves, Stage B is complete -> Stage C (threshold_nudge, then walk_forward),
-naming each to match its doc from the start. No final-test data touched.
+## NEXT — Stage C, first item: parameter-nudge stability (PROPOSE mechanism first)
+Per parameter_nudge_stability.md (`shared/validation/threshold_nudge.py`). This is
+rerun-based and non-trivial, so PROPOSE before coding:
+- The child hard-codes `ADX_FILTER_THRESHOLD`. The nudge must rerun the child at
+  predeclared NEARBY thresholds WITHOUT mutating the frozen child or picking a new one.
+  Propose the mechanism (e.g. a threshold-override parameter on the rerun path, or a
+  harness that runs the child logic at alternative thresholds) and where it lives.
+- Predeclare the nudge grid (e.g. the q20/q40 neighbor thresholds, or +/- a tick set).
+- For THIS non-edge demo child: report-only / judgment-only (O8) — no pass/fail gate
+  invented; record degradation across the grid. Coverage-only labels.
+- Reuse `judgment_population_trades` for each rerun; no final-test data.
+- Doc<->code names matched from the start.
+Then walk_forward (time_stability) follows.
+
+## Housekeeping
+Equity-curve slice is green + uncommitted (equity_curves.py, the realized_r max_drawdown_r
+extraction, doc, runner, tests). Clean commit point — recommend committing it (and the
+drawdown consolidation, if done) before Stage C. I review the nudge proposal before code.

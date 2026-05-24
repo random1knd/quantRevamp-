@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from shared.validation.realized_r import max_drawdown_r
 from strategies.vwap_zscore_fade.parent import params
 from strategies.vwap_zscore_fade.parent.strategy import Trade
 
@@ -243,11 +244,11 @@ def _summary(
         "headline_sample": "completed_non_gap_trades",
         "mean_realized_r": _mean(non_gap_realized),
         "win_rate": _win_rate(non_gap_realized),
-        "max_drawdown_r": _max_drawdown(non_gap_realized),
+        "max_drawdown_r": max_drawdown_r(non_gap_realized),
         "r_multiple_diagnostics": _r_multiple_diagnostics(non_gap_realized),
         "all_completed_mean_realized_r": _mean(all_completed_realized),
         "all_completed_win_rate": _win_rate(all_completed_realized),
-        "all_completed_max_drawdown_r": _max_drawdown(all_completed_realized),
+        "all_completed_max_drawdown_r": max_drawdown_r(all_completed_realized),
         "gap_trade_mean_r": _mean(gap_realized),
         "gap_trade_win_rate": _win_rate(gap_realized),
         "incomplete_trade_count": sum(
@@ -350,20 +351,6 @@ def _win_rate(values: list[float]) -> float | None:
     if not values:
         return None
     return sum(1 for value in values if value > 0.0) / len(values)
-
-
-def _max_drawdown(values: list[float]) -> float | None:
-    if not values:
-        return None
-
-    equity = 0.0
-    peak = 0.0
-    max_drawdown = 0.0
-    for value in values:
-        equity += value
-        peak = max(peak, equity)
-        max_drawdown = max(max_drawdown, peak - equity)
-    return max_drawdown
 
 
 def _r_multiple_diagnostics(values: list[float]) -> dict[str, int]:

@@ -34,7 +34,7 @@ def summarize_realized_r(
         "median_realized_r": _median(values),
         "total_realized_r": sum(values),
         "win_rate": _win_rate(values),
-        "max_drawdown_r": _max_drawdown(values),
+        "max_drawdown_r": max_drawdown_r(values),
         "r_multiple_diagnostics": _r_multiple_diagnostics(values),
         "minimum_trade_count_tier": minimum_trade_count_policy(len(values)),
         "minimum_trade_count_policy": MINIMUM_TRADE_COUNT_POLICY,
@@ -49,6 +49,21 @@ def minimum_trade_count_policy(completed_trade_count: int) -> str:
     if completed_trade_count < 100:
         return "low_sample_30_to_99"
     return "normal_ge_100"
+
+
+def max_drawdown_r(realized_r: Sequence[float]) -> float | None:
+    values = [_finite_float(value) for value in realized_r]
+    if not values:
+        return None
+
+    equity = 0.0
+    peak = 0.0
+    max_drawdown = 0.0
+    for value in values:
+        equity += value
+        peak = max(peak, equity)
+        max_drawdown = max(max_drawdown, peak - equity)
+    return max_drawdown
 
 
 def _finite_float(value: float) -> float:
@@ -74,20 +89,6 @@ def _win_rate(values: list[float]) -> float | None:
     if not values:
         return None
     return sum(1 for value in values if value > 0.0) / len(values)
-
-
-def _max_drawdown(values: list[float]) -> float | None:
-    if not values:
-        return None
-
-    equity = 0.0
-    peak = 0.0
-    max_drawdown = 0.0
-    for value in values:
-        equity += value
-        peak = max(peak, equity)
-        max_drawdown = max(max_drawdown, peak - equity)
-    return max_drawdown
 
 
 def _r_multiple_diagnostics(values: list[float]) -> dict[str, int]:
