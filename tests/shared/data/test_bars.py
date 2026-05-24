@@ -3,7 +3,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from shared.data.bars import prepare_bars
+from shared.data.bars import prepare_bars, rth_only_raw_bars
 
 
 def make_bars(datetimes_utc, contracts=None):
@@ -31,6 +31,59 @@ def prepare(raw):
         session_open="09:30",
         expected_bar_interval_minutes=5,
     )
+
+
+def rth_only(raw):
+    return rth_only_raw_bars(
+        raw,
+        source_timezone="UTC",
+        strategy_timezone="America/New_York",
+        session_open="09:30",
+        rth_start_session_minute=0,
+        last_rth_bar_open_session_minute=385,
+    )
+
+
+def test_rth_only_raw_bars_filters_source_rows_by_declared_rth_bounds():
+    raw = make_bars(
+        [
+            "2026-01-02 13:00:00+00:00",  # 08:00 ET
+            "2026-01-02 14:30:00+00:00",  # 09:30 ET
+            "2026-01-02 20:55:00+00:00",  # 15:55 ET
+            "2026-01-02 21:00:00+00:00",  # 16:00 ET
+        ]
+    )
+
+    result = rth_only(raw)
+
+    assert result["DateTime"].tolist() == [
+        "2026-01-02 14:30:00+00:00",
+        "2026-01-02 20:55:00+00:00",
+    ]
+
+
+def test_rth_only_raw_bars_accepts_naive_source_timestamps():
+    raw = make_bars(
+        [
+            "2026-07-01 13:25:00",  # 09:25 ET
+            "2026-07-01 13:30:00",  # 09:30 ET
+            "2026-07-01 19:55:00",  # 15:55 ET
+        ]
+    )
+
+    result = rth_only(raw)
+
+    assert result["DateTime"].tolist() == [
+        "2026-07-01 13:30:00",
+        "2026-07-01 19:55:00",
+    ]
+
+
+def test_rth_only_raw_bars_rejects_missing_datetime_column():
+    raw = make_bars(["2026-01-02 14:30:00"]).drop(columns=["DateTime"])
+
+    with pytest.raises(ValueError, match="missing required column: DateTime"):
+        rth_only(raw)
 
 
 def test_prepare_bars_derives_timezone_aware_session_fields():

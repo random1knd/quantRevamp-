@@ -74,6 +74,38 @@ def prepare_bars(
     return prepared
 
 
+def rth_only_raw_bars(
+    raw_bars: pd.DataFrame,
+    *,
+    source_timezone: str,
+    strategy_timezone: str,
+    session_open: str,
+    rth_start_session_minute: int,
+    last_rth_bar_open_session_minute: int,
+) -> pd.DataFrame:
+    """Filter raw source rows to declared RTH session minutes."""
+
+    if "DateTime" not in raw_bars.columns:
+        raise ValueError("missing required column: DateTime")
+
+    source_times = pd.to_datetime(raw_bars["DateTime"], errors="raise")
+    if source_times.dt.tz is None:
+        source_times = source_times.dt.tz_localize(source_timezone)
+    else:
+        source_times = source_times.dt.tz_convert("UTC")
+
+    session_open_time = _parse_session_open(session_open)
+    strategy_times = source_times.dt.tz_convert(strategy_timezone)
+    minute_of_day = strategy_times.dt.hour * 60 + strategy_times.dt.minute
+    session_open_minute = session_open_time.hour * 60 + session_open_time.minute
+    session_minute = minute_of_day - session_open_minute
+    rth_mask = session_minute.between(
+        rth_start_session_minute,
+        last_rth_bar_open_session_minute,
+    )
+    return raw_bars.loc[rth_mask].copy()
+
+
 def _parse_datetime(
     values: pd.Series,
     *,

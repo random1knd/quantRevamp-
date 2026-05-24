@@ -1,8 +1,8 @@
 """Run the parent VWAP z-score fade on the discovery split.
 
-This runner intentionally duplicates the smoke runner's local loading,
-RTH-filter, git-version, and artifact-writing shape. Do not extract these into
-shared runner helpers until shared execution is reviewed as its own slice.
+This runner intentionally keeps local loading, git-version, and
+artifact-writing shape. The RTH source filter is a small shared data helper
+because validation must use identical source preprocessing.
 
 Commission is fixed here for this discovery campaign at 5.16 USD per round
 turn. Source: NinjaTrader futures commission PDF lists NQ all-in monthly-plan
@@ -20,7 +20,7 @@ import subprocess
 
 import pandas as pd
 
-from shared.data.bars import prepare_bars
+from shared.data.bars import prepare_bars, rth_only_raw_bars
 from shared.data.splits import chronological_session_splits
 from strategies.vwap_zscore_fade.parent import params
 from strategies.vwap_zscore_fade.parent.artifacts import write_parent_artifacts
@@ -112,21 +112,14 @@ def run_discovery() -> Path:
 
 
 def _rth_only_raw_bars(raw_bars: pd.DataFrame) -> pd.DataFrame:
-    source_times = pd.to_datetime(raw_bars["DateTime"], errors="raise")
-    if source_times.dt.tz is None:
-        source_times = source_times.dt.tz_localize(params.SOURCE_TIMEZONE)
-    else:
-        source_times = source_times.dt.tz_convert("UTC")
-    strategy_times = source_times.dt.tz_convert(params.STRATEGY_TIMEZONE)
-    minute_of_day = strategy_times.dt.hour * 60 + strategy_times.dt.minute
-    session_open = pd.to_datetime(params.SESSION_OPEN, format="%H:%M").time()
-    session_open_minute = session_open.hour * 60 + session_open.minute
-    session_minute = minute_of_day - session_open_minute
-    rth_mask = session_minute.between(
-        params.RTH_START_SESSION_MINUTE,
-        params.LAST_RTH_BAR_OPEN_SESSION_MINUTE,
+    return rth_only_raw_bars(
+        raw_bars,
+        source_timezone=params.SOURCE_TIMEZONE,
+        strategy_timezone=params.STRATEGY_TIMEZONE,
+        session_open=params.SESSION_OPEN,
+        rth_start_session_minute=params.RTH_START_SESSION_MINUTE,
+        last_rth_bar_open_session_minute=params.LAST_RTH_BAR_OPEN_SESSION_MINUTE,
     )
-    return raw_bars.loc[rth_mask].copy()
 
 
 def _output_dir() -> Path:
