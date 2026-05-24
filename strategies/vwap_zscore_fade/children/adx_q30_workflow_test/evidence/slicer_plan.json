@@ -1,0 +1,101 @@
+{
+  "campaign_id": "vwap_zscore_fade__NQ__5min__2014-11-28_2018-04-17",
+  "columns": [
+    {
+      "directions": [
+        "<="
+      ],
+      "name": "SignalADX"
+    },
+    {
+      "directions": [
+        "<="
+      ],
+      "name": "SignalEfficiencyRatio"
+    },
+    {
+      "directions": [
+        "<="
+      ],
+      "name": "SignalVarRatio"
+    },
+    {
+      "directions": [
+        "<="
+      ],
+      "name": "SignalVPIN"
+    },
+    {
+      "directions": [
+        "<=",
+        ">="
+      ],
+      "name": "SignalRealizedVol"
+    }
+  ],
+  "context_trades_path": "data/results/vwap_zscore_fade/parent/discovery_20260524T050004Z/context_trades.csv",
+  "discovery_artifact": "data/results/vwap_zscore_fade/parent/discovery_20260524T050004Z",
+  "expected_searched_rule_count": 42,
+  "input_population": {
+    "excluded_exit_reason": "end_of_data",
+    "exit_reason_column": "ExitReason",
+    "hold_crosses_gap_column": "HoldCrossesGap",
+    "hold_crosses_gap_value": false,
+    "name": "completed_non_gap"
+  },
+  "min_kept_count": 500,
+  "multiple_testing": {
+    "bonferroni": "informational_only",
+    "method": "full_search_permutation_max_stat",
+    "n_iter": 10000,
+    "p_value_smoothing": "plus_one",
+    "random_seed": 0,
+    "sidedness": "one_sided_positive"
+  },
+  "nan_policy": {
+    "filter_value_nan": "excluded_from_kept_subset"
+  },
+  "no_candidate_rule": {
+    "definition": "best eligible mean_realized_r <= 0"
+  },
+  "outlier_divergence_flag": {
+    "definition": "mean_realized_r > 0 and median_realized_r <= 0"
+  },
+  "parent_strategy": "vwap_zscore_fade",
+  "plan_label": "workflow_test_no_candidate_expected",
+  "quantiles": [
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80
+  ],
+  "realized_r_column": "RealizedR",
+  "required_rule_diagnostics": [
+    "rule_id",
+    "rule_index",
+    "rule_form",
+    "column",
+    "direction",
+    "threshold_quantile",
+    "threshold",
+    "coincident_threshold_group",
+    "coincident_threshold_count",
+    "non_null_count",
+    "kept_count",
+    "eligible",
+    "mean_realized_r",
+    "median_realized_r",
+    "winsorized_mean_realized_r",
+    "win_rate",
+    "max_drawdown_r",
+    "selected_metric_rank",
+    "selected",
+    "outlier_divergence_flag"
+  ],
+  "rule_form": "single_column_threshold",
+  "selection_metric": "mean_realized_r",
+  "winsorize_fraction": 0.05
+}

@@ -1,0 +1,58 @@
+{
+  "best_rule": {
+    "coincident_threshold_count": 1,
+    "coincident_threshold_group": "coincident_2",
+    "column": "SignalADX",
+    "direction": "<=",
+    "eligible": true,
+    "kept_count": 893,
+    "max_drawdown_r": 74.22924515759452,
+    "mean_realized_r": -0.08195238266039637,
+    "median_realized_r": -0.6489411764705882,
+    "non_null_count": 2977,
+    "outlier_divergence_flag": false,
+    "rule_form": "single_column_threshold",
+    "rule_id": "SignalADX__le__q30",
+    "rule_index": 1,
+    "selected": false,
+    "selected_metric_rank": 1,
+    "threshold": 19.26665446628932,
+    "threshold_quantile": 30.0,
+    "win_rate": 0.4244120940649496,
+    "winsorized_mean_realized_r": -0.10542090969094162
+  },
+  "campaign_id": "vwap_zscore_fade__NQ__5min__2014-11-28_2018-04-17",
+  "candidate_status": "no_candidate",
+  "discovery_artifact": "data/results/vwap_zscore_fade/parent/discovery_20260524T050004Z",
+  "eligible_rule_count": 42,
+  "min_kept_count": 500,
+  "multiple_testing": {
+    "adjusted_p_value": null,
+    "bonferroni": {
+      "adjusted_p_value": null,
+      "informational_only": true,
+      "method": "bonferroni",
+      "raw_p_value": null,
+      "searched_rule_count": 42
+    },
+    "method": "full_search_permutation_max_stat",
+    "n_iter": 10000,
+    "random_seed": 0,
+    "sidedness": "one_sided_positive"
+  },
+  "no_candidate_reason": "best_mean_not_positive",
+  "outlier_divergence_flag": false,
+  "parent_strategy": "vwap_zscore_fade",
+  "plan_label": "workflow_test_no_candidate_expected",
+  "population_summary": {
+    "input_rows": 3585,
+    "population_name": "completed_non_gap",
+    "population_rows": 3573
+  },
+  "promotion_decision": "no_filter_candidate_promoted",
+  "searched_rule_count": 42,
+  "selected_rule": null,
+  "selection_metric": "mean_realized_r",
+  "slicer_input_population": "completed_non_gap",
+  "workflow_test_label": "pipeline_test_only_not_a_profit_claim"
+}

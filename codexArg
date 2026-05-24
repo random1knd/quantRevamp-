@@ -1,111 +1,66 @@
-Codex position: single-column now; conjunctions later only under a new
-predeclared campaign or a separate capability slice.
+Codex child-slice handoff: ADX q30 workflow-test child.
 
-Short answer:
-- For real research: single-first, unless the interaction itself is the
-  pre-registered thesis and the search space is kept very small.
-- For this declared pipeline test: keep the current single-column result and
-  move to the manual demonstration child. Do not add/use multi-column
-  conjunctions before the child.
+Pushback:
+- None. Claude's instruction is consistent with the repo rules: the child is a
+  separate reviewable slice, explicitly labeled as a workflow test, and does not
+  revise the honest slicer `no_candidate` verdict.
 
-1. Real research aiming at a profit claim
+What changed:
+- Added child folder:
+  `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/`
+- Added child files:
+  - `README.md`
+  - `strategy.py`
+  - `indicators.py`
+  - `params.py`
+  - `evidence/filter_candidate.json`
+  - `evidence/slicer_plan.json`
+  - `tests/test_child_strategy.py`
 
-I would start single-column for this specific VWAP fade campaign.
+Child label:
+- `workflow test / demonstration child, negative expectancy, NOT a discovered edge`
+- The README states this explicitly. Future run artifacts for this child must
+  carry the same label.
 
-Reasoning:
-- The first question is diagnostic: does any one market dimension materially
-  improve the fade? If no single dimension can get the rule above zero on 3573
-  trades, a larger conjunction search is more likely to find a narrower
-  least-bad pocket than a robust edge.
-- Interactions are real, but they are also the main way a slicer draws shapes
-  around noise. A conjunction should be tested when we can state the interaction
-  thesis before seeing its result, such as "low trend AND low toxicity," not as
-  a blanket expansion across every context pair/triple.
-- A single-axis child is easier to validate live: the failure mode and economic
-  story are legible. A 3- or 4-condition child can pass discovery math while
-  being hard to trust operationally.
+Behavior implemented:
+- Parent strategy logic was copied into the child; the child does not import or
+  wrap the parent strategy.
+- `SignalADX` is now computed in the child trade path in `indicators.py`, not
+  imported from research context.
+- ADX is session-scoped and causal, matching the research-context semantics.
+- Entry filter:
+  `ADX <= 19.26665446628932`
+- The threshold is frozen from the no-candidate slicer artifact's best eligible
+  rule: `SignalADX__le__q30`.
+- ADX NaN at the signal bar blocks entry.
+- Parent gates remain copied: 60-minute post-open gate, roll-session exclusion,
+  stop/target/time-stop/session-end logic, slippage, commission checks, and
+  wrong-side rounded-stop guard.
 
-So for a profit claim: single-first for this campaign, then a new predeclared
-campaign for a specific interaction if the single-column result or external
-market reasoning justifies it.
+Tests added:
+- Frozen ADX threshold matches copied slicer evidence.
+- Child ADX is causal when future bars are mutated.
+- Child ADX resets at the session boundary.
+- Child strategy skips a valid parent-style signal when ADX is missing.
+- Child entry gate blocks ADX above threshold and allows ADX equal to threshold.
+- Child indicator columns include trade-driving `ADX`.
 
-2. This declared pipeline test
+Boundary:
+- Child strategy files do not import parent modules, `research_indicators`,
+  `shared.context`, or `shared.slicing`.
+- Boundary import test passes.
 
-Keep it single-column and move to the child.
+Verification:
+- Focused child + boundary:
+  `.venv\\Scripts\\python.exe -m pytest strategies\\vwap_zscore_fade\\children\\adx_q30_workflow_test\\tests\\test_child_strategy.py tests\\boundaries\\test_strategy_imports.py`
+  -> 9 passed.
+- Full suite:
+  `.venv\\Scripts\\python.exe -m pytest`
+  -> 276 passed.
 
-Reasoning:
-- This run already produced the honest workflow-test output: no candidate, best
-  rule is still negative. The downstream pipeline can be exercised with the
-  labeled demonstration child exactly as Claude described.
-- Adding conjunction support now would test slicer feature breadth, not the
-  discover -> child -> validate workflow. It increases code surface before the
-  current pipeline is completed.
-- Repo rules favor finishing one explicit strategy path end to end before adding
-  broader framework behavior. Conjunction support is useful, but it is not
-  necessary to prove this workflow path.
-- Using conjunctions on the same discovery data must not be allowed to revive a
-  profit claim. Even as a pipeline test, it would blur the audit story: "we got
-  no candidate, then expanded the search." That is the exact sequence the
-  governance rules are trying to make visible.
-
-My recommendation: do not build or run conjunction support before the
-demonstration child. Finish the pipeline with the current single-column
-no-candidate artifact.
-
-3. If multi-column is added later, how to define and count it
-
-I would define a conjunction rule as a canonical AND of concrete terms:
-
-```text
-rule_form = conjunction_threshold
-terms = [
-  (column, threshold_quantile, threshold_value, direction),
-  ...
-]
-logical_operator = AND
-```
-
-Counting:
-- Each unique ordered-by-column tuple of terms is one searched rule.
-- The concrete rule identity is:
-  `(rule_form, logical_operator, term_1, term_2, ..., term_n)`.
-- Term order must be canonical, e.g. sorted by column name, so `A AND B` and
-  `B AND A` are not double-counted.
-- Duplicate quantile thresholds still remain nominal rules, same as the
-  single-column policy, and are marked as coincident if masks are identical.
-- Eligibility failures still count as searched rules.
-
-Scope if/when implemented:
-- Start with pairs only, not pairs+triples+quads.
-- Predeclare a small set of economically motivated pairs, not all combinations.
-  For example:
-  - low ADX AND low VPIN
-  - low VarRatio AND low VPIN
-  - low EfficiencyRatio AND low VPIN
-- Do not include both highly redundant members in pairs just because they exist.
-- Keep the same max-stat permutation principle: for each permutation, rerun the
-  full predeclared expanded search and store the maximum eligible score over
-  every single and conjunction rule in that campaign's plan.
-
-If the user explicitly wants a slicer capability test for conjunctions, I would
-build it as a separate, reviewable capability slice with synthetic/unit tests
-first, and only then decide whether to run it on a new predeclared campaign.
-
-4. Does this change the demonstration child plan?
-
-No.
-
-The demonstration child should remain based on the already-run, already-labeled
-workflow-test artifact:
-- rule: `SignalADX <= q30`
-- threshold: `19.26665446628932`
-- label: negative expectancy / workflow test / not a discovered edge
-
-Changing the child to a conjunction now would make the child depend on a search
-we have not predeclared, implemented, reviewed, or honestly run. That would make
-the demonstration less clean, not more useful.
-
-Final recommendation:
-- Proceed to the manual single-column demonstration child.
-- Defer conjunction support until after this end-to-end pipeline is complete, or
-  start a separate explicit conjunction-capability/campaign discussion.
+Remaining risks / next slice:
+- The child has not been validated yet. It is expected to lose and should be
+  rejected honestly.
+- Next reviewable slice should build the validation runner/report for parent vs
+  demonstration child on the 50% validation split, with artifacts labeled
+  workflow-test coverage / not edge evidence.

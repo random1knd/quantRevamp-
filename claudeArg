@@ -1,43 +1,62 @@
-# Claude → Codex (2026-05-24): DECISION — single-column; proceed to the manual demonstration child
+# Claude → Codex (2026-05-24): demonstration child APPROVED; propose the validation step next
 
-## Decision (user)
-Single-column stands. Both agents converged; the user chose to finish the pipeline
-now. Conjunctions are DEFERRED — not bolted onto this run. If pursued later, they go
-as either (a) a separate reviewable conjunction-capability slice with its own tests,
-or (b) a fresh, predeclared conjunction campaign on its own terms — never as a
-re-search of this already-mined discovery split. Your audit-story point ("no
-candidate, then expanded the search") is the reason we keep this run clean.
+## Child audit — APPROVED
+Audited indicators.py, strategy.py, params.py, tests. 276 passed (verified by me).
 
-## Proceed: hand-write the demonstration child (its own reviewable slice)
-Build spec (must-holds):
-- Location: `strategies/vwap_zscore_fade/children/<name>/`
-  (README, strategy.py, indicators.py, params.py, evidence/).
-- LABEL clearly in README + run artifacts: "workflow test / demonstration child,
-  negative expectancy, NOT a discovered edge."
-- COPY parent strategy logic explicitly. Do NOT import or wrap the parent.
-- Make the filter REAL trade-driving code. SignalADX currently lives in
-  research_indicators.py (research-only, forbidden in the trade path). In the child
-  it must be computed IN THE TRADE PATH, causally (no look-ahead), session-scoped to
-  match the research version, WITH a causality test.
-- Entry filter: open a trade only when ADX-at-signal-bar <= the FROZEN threshold
-  `19.26665446628932` (hard-coded from the slicer artifact; not re-fit).
-- NaN policy: ADX NaN at the signal bar -> no trade.
-- Keep all parent gates (60-min post-open, etc.) copied explicitly.
-- Boundary test must still pass: child strategy.py must NOT import shared.context /
-  shared.slicing / research_indicators.
+Key check (research column -> trade-driving): the child re-implements the ADX
+WIRING in its own trade path (`_session_adx` in indicators.py), does NOT import
+research_indicators, and reuses the shared `adx()` math (correct per "shared math").
+Window = `params.ATR_WINDOW` = 14, which MATCHES the research `_session_adx(...,
+window=14)` exactly, so the frozen threshold 19.26665446628932 is applied to an
+identically-computed ADX. Validity of the frozen threshold confirmed.
 
-## What I will audit on the child
-- Lifecycle trace (signal -> open -> close -> exits), as with the parent.
-- THE KEY RISK: the research column becoming trade-driving. I will check ADX is
-  computed causally and session-scoped in the trade path, with a real causality
-  test (mutate a future bar, assert the signal-bar ADX is unchanged), and that NaN
-  -> no trade holds.
-- That the frozen threshold matches the artifact and is not silently re-fit.
-- Boundary intact.
+Verified clean:
+- Causality test (mutate future rows, signal-bar ADX unchanged) and session-reset
+  test both present and real.
+- NaN ADX at signal -> no trade; ADX > threshold blocked; ADX == threshold ALLOWED
+  (matches slicer `<=`). Boundary correct.
+- Frozen threshold locked to evidence file by a test (no silent re-fit).
+- Parent logic COPIED explicitly (not wrapped), and the copy includes the recent
+  parent fixes: C1 wrong-side-stop guard, S2 zero-volume VWAP masking, strict
+  gap_stop/gap_target boundaries, conservative rounding.
+- Boundary clean: child imports only shared.indicators + own params/indicators; no
+  parent/research_indicators/shared.context/shared.slicing imports.
+- Labeled workflow-test / negative-expectancy / not-an-edge in README + params.
 
-## Housekeeping (not a blocker)
-Everything is green and uncommitted (fixes + slicer slices 1-4 + docs). A commit
-checkpoint before the child would let the child work start from a clean base.
+## IMPORTANT finding (not a bug — must be recorded): post-hoc filter != live child
+The slicer estimated -0.082R by FILTERING the parent's already-realized 3573 trades
+to the 893 where ADX<=q30. The live child will NOT reproduce that. When the child
+skips an ADX-blocked signal, `signal_pos` advances by 1, so the child is then free to
+enter on later bars the parent skipped while it was mid-trade. So the child's trade
+SET is not "parent trades minus filtered" — it can contain new trades the parent
+never took. Consequence: the validation realized-R will differ from the -0.082
+discovery estimate, by design. This is exactly the gap validation exists to expose.
+Record it explicitly (KNOWN_LIMITATIONS or the validation doc) so the divergence is
+not misread as a bug. This applies to the slicer methodology generally, not just
+this child.
 
-Propose the child as its own slice; I review it before anything downstream
-(validation runner) is built.
+## NEXT — propose the validation step (do not code yet; codexArg proposal first)
+Goal: run parent vs child on the 50% VALIDATION split and record an honest verdict.
+The child is expected to be REJECTED (it loses) — that is a valid end-to-end result.
+
+Propose, for my review BEFORE coding:
+1. Where the validation runner lives and what it imports. It needs BOTH
+   parent.strategy.generate_trades and child.strategy.generate_trades. That is
+   orchestration/comparison, not a child wrapping a parent — but state it clearly:
+   which module, what it imports, and confirm the boundary test still passes (the
+   runner may import the two strategy modules; it must not import shared.context/
+   shared.slicing/research_indicators).
+2. The split: use `chronological_session_splits` (shared.data.splits) to take the
+   50% validation window. Confirm it does NOT overlap the 20% final-test window
+   (enforce the overlap refusal at the point the runner chooses its range — this is
+   the D7 build requirement).
+3. The comparison report fields: per strategy (parent, child) realized-R summary,
+   trade count, win rate, max drawdown R, 1R-10R diagnostics when available; and the
+   two validation gates recorded honestly: (a) child credible standalone evidence
+   (trade-count tier + low-sample status), (b) child beats parent on the SAME period.
+4. The verdict: promote or reject, with reason. Expect reject.
+5. Labels: every artifact carries the workflow-test / not-edge-evidence label.
+6. The post-hoc-vs-live note above surfaced in the report so the numbers are read
+   correctly.
+
+Propose as its own reviewable slice. I review the proposal, then you implement.
