@@ -50,6 +50,7 @@ RANDOM_SEED = 0
 COVERAGE_LABEL = "coverage only / not edge evidence"
 FINAL_TEST_STATUS = "not_run"
 JUDGMENT_POPULATION = "completed_non_gap"
+MIN_CHILD_PARENT_MEAN_DELTA_R = 0.05
 POST_HOC_VS_LIVE_NOTE = (
     "The slicer estimate was a post-hoc discovery-subset result for "
     "SignalADX <= q30 with mean RealizedR -0.08195238266039637. This "
@@ -60,6 +61,7 @@ DSR_UNAVAILABLE_REASON = (
     "Unavailable: the slicer artifact did not persist a per-rule Sharpe/std "
     "distribution, so Deflated Sharpe Ratio cannot be computed honestly here."
 )
+FINAL_PROMOTION_STATUS = "not_evaluated_requires_overfitting_cross_instrument_final_test"
 RTH_FILTER_NOTE = (
     "Validation uses shared.data.bars.rth_only_raw_bars with the same declared "
     "RTH bounds as discovery before prepare_bars."
@@ -315,7 +317,12 @@ def _verdict(
         and float(child_mean) > 0.0
     )
     child_beats_parent = bool(comparison["child_beats_parent"])
-    promote = standalone_credible and child_beats_parent
+    child_minus_parent = comparison["child_minus_parent_mean_realized_r"]
+    effect_size_ok = (
+        child_minus_parent is not None
+        and float(child_minus_parent) >= MIN_CHILD_PARENT_MEAN_DELTA_R
+    )
+    advance_to_overfitting = standalone_credible and child_beats_parent and effect_size_ok
 
     reasons = []
     if minimum_trade_count_tier != "normal_ge_100":
@@ -326,9 +333,18 @@ def _verdict(
         reasons.append("child_mean_realized_r_not_positive")
     if not child_beats_parent:
         reasons.append("child_did_not_beat_parent_mean_realized_r")
+    if not effect_size_ok:
+        reasons.append("child_minus_parent_mean_realized_r_below_0.05R")
 
     return {
-        "decision": "promote" if promote else "reject",
+        "decision": (
+            "advance_to_overfitting_review" if advance_to_overfitting else "reject"
+        ),
+        "preliminary_validation_status": (
+            "pass" if advance_to_overfitting else "fail"
+        ),
+        "final_promotion_status": FINAL_PROMOTION_STATUS,
+        "minimum_child_parent_mean_delta_r": MIN_CHILD_PARENT_MEAN_DELTA_R,
         "standalone_child_credibility_status": (
             "pass" if standalone_credible else "fail"
         ),

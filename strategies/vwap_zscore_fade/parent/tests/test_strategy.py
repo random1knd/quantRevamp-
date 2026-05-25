@@ -244,6 +244,15 @@ def test_entry_is_taken_when_entry_bar_is_contiguous():
     assert trades[0].entry_time == bars.loc[20, "DateTime_ET"]
 
 
+def test_generate_trades_rejects_unsorted_bars():
+    bars = make_signal_setup(side="long").iloc[[1, 0, *range(2, 21)]].reset_index(
+        drop=True
+    )
+
+    with pytest.raises(ValueError, match="DateTime_ET ascending"):
+        generate_smoke_trades(bars)
+
+
 def test_generate_trades_exits_long_at_stop():
     bars = make_signal_setup(
         side="long",

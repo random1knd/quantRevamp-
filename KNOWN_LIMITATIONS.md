@@ -140,6 +140,36 @@ What would justify a different approach:
 - A move to a tick-accurate execution model, or evidence that the R-denominator
   bias materially changes a slicing or validation decision.
 
+## Same-Session Gaps Leave Session VWAP Based On Observed Bars
+
+What it looks like:
+
+- A trade can signal after an earlier same-session data gap. Its `EntryZ` window
+  is gap-free, but its cumulative `SessionVWAP` and fixed target are still based
+  on all observed bars since the session open, excluding any missing bars.
+
+What it actually is:
+
+- `SessionVWAP` is an expanding cumulative calculation over the rows that exist
+  in the source data. The current v0 strategy does not reconstruct missing bars,
+  split sessions at a gap, or reject every later same-session signal after a
+  data hole.
+
+Why the current behavior is accepted:
+
+- The current VWAP z-score campaign is a negative workflow-test campaign, not an
+  edge claim. Read-only audit counts found a small but nonzero exposure: 19
+  discovery headline trades and 24 validation-parent headline trades signaled
+  after an earlier same-session gap. This can help or hurt individual trades; it
+  is not assumed to be a directional edge inflator.
+
+What would justify a different approach:
+
+- Any future positive edge claim should report this exposure before promotion.
+  If the affected trades are material to the conclusion, the campaign should
+  either exclude post-gap same-session signals or define an explicit session
+  split/reset policy before accepting the result.
+
 ## Some Research Columns Are Not Session-Grouped But Are Clean At Every Signal Bar
 
 What it looks like:

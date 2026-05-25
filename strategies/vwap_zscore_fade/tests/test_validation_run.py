@@ -162,11 +162,57 @@ def test_validation_report_rejects_negative_demo_child_and_marks_dsr_unavailable
     assert report["child"]["minimum_trade_count_tier"] == "normal_ge_100"
     assert report["comparison"]["child_beats_parent"] is True
     assert report["verdict"]["decision"] == "reject"
+    assert report["verdict"]["preliminary_validation_status"] == "fail"
+    assert report["verdict"]["final_promotion_status"].startswith("not_evaluated")
     assert report["verdict"]["standalone_child_credibility_status"] == "fail"
     assert "child_mean_realized_r_not_positive" in report["verdict"]["reasons"]
     assert report["deflated_sharpe_ratio"]["status"] == "unavailable"
     assert "per-rule Sharpe/std distribution" in report["deflated_sharpe_ratio"]["reason"]
     assert "post-hoc discovery-subset" in report["post_hoc_vs_live_note"]
+
+
+def test_validation_report_can_only_advance_to_overfitting_not_final_promotion():
+    prepared = make_prepared_bars([date(2026, 1, day) for day in range(1, 11)])
+    splits = chronological_session_splits(prepared)
+    validation = validation_split_bars(prepared, splits=splits)
+    parent_trades = [report_trade(0.10) for _ in range(100)]
+    child_trades = [report_trade(0.20) for _ in range(100)]
+
+    report = build_validation_report(
+        parent_trades=parent_trades,
+        child_trades=child_trades,
+        validation_bars=validation,
+        splits=splits,
+    )
+
+    assert report["verdict"]["decision"] == "advance_to_overfitting_review"
+    assert report["verdict"]["preliminary_validation_status"] == "pass"
+    assert report["verdict"]["final_promotion_status"].startswith("not_evaluated")
+    assert report["verdict"]["minimum_child_parent_mean_delta_r"] == pytest.approx(
+        0.05
+    )
+
+
+def test_validation_report_requires_minimum_effect_size_to_advance():
+    prepared = make_prepared_bars([date(2026, 1, day) for day in range(1, 11)])
+    splits = chronological_session_splits(prepared)
+    validation = validation_split_bars(prepared, splits=splits)
+    parent_trades = [report_trade(0.10) for _ in range(100)]
+    child_trades = [report_trade(0.12) for _ in range(100)]
+
+    report = build_validation_report(
+        parent_trades=parent_trades,
+        child_trades=child_trades,
+        validation_bars=validation,
+        splits=splits,
+    )
+
+    assert report["comparison"]["child_beats_parent"] is True
+    assert report["verdict"]["decision"] == "reject"
+    assert (
+        "child_minus_parent_mean_realized_r_below_0.05R"
+        in report["verdict"]["reasons"]
+    )
 
 
 def test_validation_report_uses_completed_non_gap_judgment_population():

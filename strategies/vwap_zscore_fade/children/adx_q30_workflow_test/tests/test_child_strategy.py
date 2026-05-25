@@ -143,6 +143,15 @@ def test_child_strategy_skips_signal_when_adx_is_missing():
     assert generate_smoke_trades(bars) == []
 
 
+def test_child_strategy_rejects_unsorted_bars():
+    bars = make_adx_missing_signal_setup().iloc[
+        [1, 0, *range(2, 21)]
+    ].reset_index(drop=True)
+
+    with pytest.raises(ValueError, match="DateTime_ET ascending"):
+        generate_smoke_trades(bars)
+
+
 def test_child_entry_gate_blocks_high_adx_and_allows_low_adx():
     bars = pd.DataFrame(
         [

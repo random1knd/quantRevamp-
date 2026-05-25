@@ -81,6 +81,7 @@ def generate_trades(
     """
 
     _validate_required_columns(bars)
+    _validate_chronological_order(bars)
     _validate_commission(
         commission_per_round_turn=commission_per_round_turn,
         commission_is_smoke_test=commission_is_smoke_test,
@@ -130,6 +131,11 @@ def _validate_required_columns(bars: pd.DataFrame) -> None:
     missing = [column for column in REQUIRED_COLUMNS if column not in bars.columns]
     if missing:
         raise ValueError(f"missing required columns: {missing}")
+
+
+def _validate_chronological_order(bars: pd.DataFrame) -> None:
+    if not bars["DateTime_ET"].is_monotonic_increasing:
+        raise ValueError("bars must be sorted by DateTime_ET ascending")
 
 
 def _validate_commission(

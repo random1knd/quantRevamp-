@@ -29,6 +29,9 @@ walk_forward_rerun(strategy, bars, validation_window, n_windows)
 - divide the 50% validation split into chronological windows
 - rerun the frozen child in each window
 - report realized-R and trade count by window
+- for distribution-derived raw thresholds, report each window's kept-trade
+  fraction or threshold percentile when useful, because distribution drift can
+  change how restrictive a frozen literal level is
 
 ## Window Size Policy
 
@@ -45,6 +48,7 @@ Do not let sparse walk-forward windows silently pass as stable.
 ## Rules
 
 - no tuning per window
+- no re-derived threshold per window for the candidate result
 - no new filters
 - no final-test data
 - no trade-split fallback in the first implementation unless explicitly added

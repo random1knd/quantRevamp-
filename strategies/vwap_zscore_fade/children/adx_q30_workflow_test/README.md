@@ -32,6 +32,13 @@ research context.
 
 If ADX is missing at the signal bar, the child opens no trade.
 
+Because ADX is session-scoped and has its own Wilder warmup, the first several
+otherwise z-score-eligible bars in each session can be skipped because ADX is
+missing, not because the low-ADX regime filter failed. This is acceptable for
+this non-edge workflow child. Any future ADX-based edge claim must explicitly
+accept this ADX definition and warmup interaction, or replace it before
+discovery.
+
 ## Governance
 
 - This child does not import or wrap the parent strategy.
