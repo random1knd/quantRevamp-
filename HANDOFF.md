@@ -30,33 +30,52 @@ valid completion.
 - [x] Stage C, slicer-side threshold-neighborhood report: implemented as a
       train-side, discovery-contaminated artifact check. It is coverage-only for
       the current `no_candidate` child and cannot validate an edge.
-- [ ] Stage C, child-rerun threshold nudge: deferred to the next reviewable
-      slice.
+- [x] Stage C, child-rerun threshold nudge: implemented as a validation rerun
+      over literal q20/q30/q40 ADX slicer thresholds. It is coverage-only and
+      cannot select a new threshold.
+- [x] Walk-forward rerun: implemented as eight predeclared whole-session
+      validation windows. All eight windows are sufficient and all eight window
+      means are negative.
 - [ ] Stage D, market-data permutation: deferred.
+- [ ] Time stability: deferred.
 - [ ] Cross-instrument: deferred; needs instrument-specific constants.
 - [ ] Final 20% test: not run. Do not touch final-test data without an explicit
       labeled decision.
 
 ## Current Slice
 
-Implemented Claude-approved safe chunk:
+Implemented Claude-approved walk-forward chunk:
 
-- `shared/validation/threshold_neighborhood.py`: pure helper over already
-  scored slicer rows. No strategy imports and no backtests.
-- `strategies/vwap_zscore_fade/parent/threshold_neighborhood_run.py`:
-  strategy-local artifact runner that reads `slice_report.csv`,
-  `filter_candidate.json`, and `slicer_plan.json`, then writes
-  `threshold_neighborhood_report.json` and
-  `threshold_neighborhood_report.csv`.
-- `strategies/vwap_zscore_fade/parent/slicer_artifacts.py`: artifact-layer
-  `candidate_gate` now requires positive mean R, minimum kept count, adjusted
-  p-value `<= 0.10`, and no outlier divergence before writing
-  `candidate_status = candidate_selected`.
+- `shared/validation/walk_forward.py`: pure helper that compares already-built
+  window summaries. No strategy imports and no backtests.
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/walk_forward_run.py`:
+  child-local runner that loads validation bars once, cuts eight contiguous
+  whole-session windows, reruns the frozen child per window, and writes
+  `walk_forward_report.json` and `walk_forward_report.csv`.
+- `docs/overfitting_tests/walk_forward_reruns.md`: corrected away from the old
+  strategy-callable helper shape.
+- `docs/overfitting_tests/cross_instrument_validation.md`: adds the 6E session
+  model blocker before cross-instrument work resumes.
+- `docs/overfitting_tests/monte_carlo_centered_bootstrap.md` and
+  `docs/overfitting_tests/monte_carlo_equity_curves.md`: predeclare the future
+  dependence-aware bootstrap requirement for positive candidates.
+
+Real walk-forward output:
+
+- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/walk_forward_20260525T162359Z`
+- overall result: `reported_no_pass_fail`
+- sparse windows: 0 of 8
+- window mean signs: 8 negative, 0 positive
+- mean R range: min `-0.22462478765408672`, max `-0.08342306329400517`
+- ADX kept-fraction range: `0.23453070683661645` to
+  `0.3016905071521456`
 
 Deferred on purpose:
 
+- no market-data permutation yet
+- no time-stability report yet
+- no cross-instrument build until the explicit market/session design is made
 - no promotion aggregator until a real positive candidate exists
-- no child-rerun threshold nudge until this slicer-side slice is reviewed
 
 ## Audit Fixes Already In This Working Tree
 
@@ -70,15 +89,16 @@ Deferred on purpose:
   diagnostics only.
 - Same-session VWAP gap behavior is documented as a current workflow-test
   limitation.
+- Current i.i.d. bootstrap reports remain coverage-only for this negative
+  workflow child. A future positive candidate requires a predeclared
+  dependence-aware bootstrap before trusting significance.
 
 ## Verification
 
-- Focused tests for the new helper, runner, and artifact gate: 9 passed.
-- Full suite: 317 passed.
-- Current-campaign gate check in ignored `.tmp/slicer_gate_check_current`
-  preserved the substantive slicer verdict:
-  `no_candidate`, `best_mean_not_positive`, best rule
-  `SignalADX__le__q30`, mean R `-0.08195238266039637`.
+- Focused walk-forward/child tests: 16 passed.
+- Full suite: 328 passed.
+- Real walk-forward runner completed and wrote
+  `walk_forward_20260525T162359Z`.
 - `git diff --check`: no whitespace errors; only CRLF conversion warnings.
 
 ## Standing Governance Reminders

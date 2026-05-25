@@ -45,6 +45,25 @@ centered_bootstrap_mean_report(
 - if `sidedness = two_sided`, use the fraction of absolute null means greater
   than or equal to the absolute actual score
 
+## Future Dependence-Aware Method
+
+The current centered bootstrap assumes validation trades are i.i.d. The strategy
+filter does not remove this dependence risk: it selects which trades are
+included, but it does not make their outcomes time-independent.
+
+For a future positive candidate, significance must use a predeclared
+dependence-aware bootstrap before the result is trusted. Preferred block unit is
+whole sessions. If session-level trade counts make that unusable, use contiguous
+trade blocks instead, but the block-size policy must be declared and frozen
+before looking at the positive candidate's result.
+
+The dependence-aware method applies both to the significance p-value here and to
+the equity-curve / drawdown bands in
+`docs/overfitting_tests/monte_carlo_equity_curves.md`.
+
+Do not implement this for the current negative workflow child. Its existing
+i.i.d. reports remain coverage-only and already carry the workflow-test label.
+
 ## Output
 
 - actual score

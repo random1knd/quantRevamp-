@@ -29,8 +29,12 @@ monte_carlo_equity_curves(realized_r, n_iter, random_seed)
 - resample validation trade returns with replacement
 - build synthetic equity curves
 - report final equity and drawdown bands
-- if trade-outcome autocorrelation or regime clustering appears material, use a
-  block bootstrap that resamples contiguous trade blocks
+- for a future positive candidate, use the dependence-aware block-bootstrap
+  policy predeclared in
+  `docs/overfitting_tests/monte_carlo_centered_bootstrap.md` before trusting
+  equity-curve or drawdown bands
+- the strategy filter does not remove trade-outcome dependence; it only selects
+  which trades are included
 
 ## Output
 
