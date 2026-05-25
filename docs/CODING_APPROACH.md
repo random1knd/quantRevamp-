@@ -368,8 +368,8 @@ Likely code:
 
 ```text
 shared/validation/
+  threshold_neighborhood.py
   walk_forward.py
-  threshold_nudge.py
   market_permutation.py
 ```
 
@@ -383,8 +383,9 @@ Inputs:
 Outputs:
 
 ```text
+threshold_neighborhood_report.json
 walk_forward_report.json
-nudge_report.json
+child_threshold_nudge_report.json
 market_permutation_report.json
 ```
 

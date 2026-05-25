@@ -10,6 +10,7 @@ from strategies.vwap_zscore_fade.parent.slicer_run import (
     completed_non_gap_population,
     run_slicer,
 )
+from strategies.vwap_zscore_fade.parent.slicer_artifacts import write_slicer_artifacts
 
 
 RULE_FIELDS = [
@@ -143,6 +144,8 @@ def test_slicer_run_writes_honest_no_candidate_artifacts(slicer_scratch):
     assert candidate["candidate_status"] == "no_candidate"
     assert candidate["promotion_decision"] == "no_filter_candidate_promoted"
     assert candidate["no_candidate_reason"] == "best_mean_not_positive"
+    assert candidate["candidate_gate"]["candidate_status"] == "no_candidate"
+    assert candidate["candidate_gate"]["failed_reasons"] == ["best_mean_not_positive"]
     assert candidate["population_summary"]["input_rows"] == 4
     assert candidate["population_summary"]["population_rows"] == 2
     assert candidate["best_rule"]["mean_realized_r"] == -1.5
@@ -158,3 +161,94 @@ def test_slicer_run_writes_honest_no_candidate_artifacts(slicer_scratch):
     with (output_dir / "permutation_null.csv").open(newline="", encoding="utf-8") as file:
         permutation_rows = list(csv.DictReader(file))
     assert permutation_rows == []
+
+
+def test_artifact_gate_rejects_search_candidate_with_high_adjusted_p_value(
+    slicer_scratch,
+):
+    discovery_artifact = slicer_scratch / "discovery"
+    discovery_artifact.mkdir()
+    context_path = discovery_artifact / "context_trades.csv"
+    selected_rule = {
+        "rule_id": "SignalADX__le__q100",
+        "rule_index": 0,
+        "rule_form": "single_column_threshold",
+        "column": "SignalADX",
+        "direction": "<=",
+        "threshold_quantile": 100.0,
+        "threshold": 4.0,
+        "coincident_threshold_group": "coincident_1",
+        "coincident_threshold_count": 1,
+        "non_null_count": 4,
+        "kept_count": 4,
+        "eligible": True,
+        "mean_realized_r": 0.5,
+        "median_realized_r": 0.5,
+        "winsorized_mean_realized_r": 0.5,
+        "win_rate": 0.75,
+        "max_drawdown_r": 1.0,
+        "selected_metric_rank": 1,
+        "selected": True,
+        "outlier_divergence_flag": False,
+    }
+    plan = make_tiny_plan(
+        context_path=context_path,
+        discovery_artifact=discovery_artifact,
+    )
+    output_dir = slicer_scratch / "slicer_out"
+
+    write_slicer_artifacts(
+        output_dir=output_dir,
+        plan=plan,
+        search_result={
+            "searched_rule_count": 1,
+            "eligible_rule_count": 1,
+            "candidate_status": "candidate_selected",
+            "no_candidate_reason": None,
+            "selected_rule": selected_rule,
+            "best_rule": selected_rule,
+            "rules": [selected_rule],
+        },
+        permutation_report={
+            "method": "full_search_permutation_max_stat",
+            "sidedness": "one_sided_positive",
+            "random_seed": 0,
+            "n_iter": 2,
+            "searched_rule_count": 1,
+            "candidate_status": "candidate_selected",
+            "observed_selected_rule": selected_rule,
+            "observed_selected_mean_realized_r": 0.5,
+            "permutation_null": [],
+            "adjusted_p_value": 0.5,
+            "bonferroni": {
+                "method": "bonferroni",
+                "searched_rule_count": 1,
+                "raw_p_value": None,
+                "adjusted_p_value": None,
+                "informational_only": True,
+            },
+        },
+        population_summary={
+            "input_rows": 4,
+            "population_rows": 4,
+            "population_name": "completed_non_gap",
+        },
+    )
+
+    candidate = json.loads(
+        (output_dir / "filter_candidate.json").read_text(encoding="utf-8")
+    )
+    assert candidate["candidate_status"] == "no_candidate"
+    assert candidate["promotion_decision"] == "no_filter_candidate_promoted"
+    assert candidate["no_candidate_reason"] == "adjusted_p_value_above_threshold"
+    assert candidate["selected_rule"] is None
+    assert candidate["best_rule"]["rule_id"] == "SignalADX__le__q100"
+    assert candidate["candidate_gate"]["failed_reasons"] == [
+        "adjusted_p_value_above_threshold"
+    ]
+    assert (
+        candidate["candidate_gate"]["requirements"]["adjusted_p_value_lte_0.10"][
+            "observed"
+        ]
+        == 0.5
+    )

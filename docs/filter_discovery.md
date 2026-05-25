@@ -82,6 +82,23 @@ search for each permutation, and compare the selected score to the distribution
 of maximum permuted scores. A Bonferroni report can remain as an informational
 secondary check when a raw p-value is available.
 
+Initial real-candidate gate:
+
+- selected mean `RealizedR` must be positive
+- the rule must meet the campaign's predeclared minimum kept-trade count
+- full-search permutation adjusted p-value must be `<= 0.10`
+- the selected rule must not be flagged as outlier-divergent
+
+This gate is enforced when the slicer artifact is written. The rule-search
+helper may identify the best eligible positive rule, but the artifact can label
+`candidate_status = candidate_selected` only when the artifact-layer
+`candidate_gate` passes all requirements. Otherwise it must write
+`candidate_status = no_candidate` with a specific `no_candidate_reason`.
+
+If the full-search adjusted p-value is unavailable, the slicer may write a
+coverage or workflow-test child only with an explicit non-edge label. It must
+not label the filter as a real promoted edge candidate.
+
 ## Parent And Child Strategy Layout
 
 Filtered versions are written as child strategies under the parent.
@@ -108,6 +125,22 @@ strategies/
 
 The child strategy must explicitly contain the approved filter. A filter found
 by slicing is not active until it appears in a child strategy.
+
+## Threshold Freeze Policy
+
+Promoted child strategies freeze literal parameter values. If a filter was
+found from a quantile grid, the child records both the quantile provenance and
+the literal threshold, but the child trades the literal threshold.
+
+Out-of-sample validation, walk-forward windows, cross-instrument checks, and
+final tests must not re-derive that quantile from the evaluation data. A
+re-derived quantile may be reported only as a diagnostic sensitivity view, not
+as the candidate's pass/fail result.
+
+If the actual thesis is relative-regime behavior, such as "lowest 30% ADX",
+then that percentile rank must be implemented as an explicit causal strategy
+input before discovery. In that case the frozen child threshold is the
+scale-free percentile value, not a raw level re-derived from holdout data.
 
 ## Validation
 
@@ -140,6 +173,23 @@ Initial validation trade-count policy is defined in
 - 30 to 99 validation trades: low-sample / experimental
 - 100 or more validation trades: normal interpretation allowed
 
+Initial same-instrument validation can only advance a child to overfitting
+review; it is not final promotion. The gate for that advance is:
+
+- completed_non_gap validation trade count must be in the `normal_ge_100` tier
+- child mean `RealizedR` must be positive
+- child mean `RealizedR` must beat parent mean `RealizedR` by at least `0.05R`
+
+Final real-candidate promotion after validation also requires:
+
+- validation centered-bootstrap one-sided p-value `<= 0.10`
+- no required overfitting report with a blocking failure
+- cross-instrument and final-test evidence reviewed under their declared labels
+
+These thresholds are campaign governance, not universal market truth. Changing
+them requires a documented decision before discovery for that campaign. The
+current ADX Q30 child is a workflow-test child and is not a real candidate.
+
 ## Overfitting Tests
 
 Run overfitting tests after validation and before cross-instrument checks.
@@ -151,14 +201,26 @@ CSV-only tests use validation trade results:
 - Monte Carlo centered-bootstrap significance
 - Monte Carlo equity curves
 
+Slicer-artifact tests use discovery artifacts and are train-side only:
+
+- threshold-neighborhood report from the scored `slice_report.csv`
+
+The threshold-neighborhood report cannot validate an edge. It checks whether
+the selected or best slicer rule was an isolated threshold spike in the already
+searched same-column, same-direction grid. The advisory policy is: at least one
+immediate neighbor should keep positive mean `RealizedR` and at least 50% of the
+anchor rule's mean `RealizedR`; if both immediate neighbors exist and both fail,
+flag `isolated_spike_flag`.
+
 Rerun-based tests use validation bars and the frozen child strategy:
 
 - walk-forward windows inside the validation split
-- filter-threshold nudge report
+- child-rerun filter-threshold nudge report
 - market-data permutation later
 
-The filter-threshold nudge report checks fragility. It temporarily reruns nearby
-thresholds, but it must not mutate the child strategy.
+The child-rerun filter-threshold nudge report checks implementation fragility.
+It temporarily reruns nearby literal discovery-derived thresholds, but it must
+not mutate the child strategy.
 
 Walk-forward sparse-window policy:
 
@@ -180,6 +242,12 @@ overfitting review.
 The final 20% test happens after that. It is run once on the frozen candidate.
 No slicing, tuning, threshold changes, or child creation happens on the final
 test split.
+
+Before any final-test run, check whether the last source session is complete
+under the strategy's declared session rules. If the source file ends with a
+partial session, either exclude that tail session from the final-test run or
+label the artifact as partial-tail so it cannot be read as a complete final
+session result.
 
 ## Anti-Drift Rules
 

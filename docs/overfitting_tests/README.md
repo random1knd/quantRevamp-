@@ -15,11 +15,14 @@ CSV-only tests:
 - [deflated_sharpe.md](deflated_sharpe.md)
 - [minimum_trade_count_policy.md](minimum_trade_count_policy.md)
 - [multiple_testing_adjustment.md](multiple_testing_adjustment.md)
+- threshold-neighborhood report from
+  [parameter_nudge_stability.md](parameter_nudge_stability.md)
 
 Backtest-rerun tests:
 
 - [walk_forward_reruns.md](walk_forward_reruns.md)
-- [parameter_nudge_stability.md](parameter_nudge_stability.md)
+- child-rerun threshold nudge from
+  [parameter_nudge_stability.md](parameter_nudge_stability.md) (deferred)
 - [market_data_permutation.md](market_data_permutation.md)
 - [cross_instrument_validation.md](cross_instrument_validation.md)
 
@@ -54,6 +57,23 @@ estimate the expected best trial result.
 Monte Carlo centered bootstrap on validation trades is a single-hypothesis
 non-parametric check of the frozen child. It does not adjust for the discovery
 search.
+
+## Threshold-Type Policy
+
+Rerun tests must distinguish threshold types:
+
+- scale-free thresholds, such as z-score levels or ATR multiples, remain frozen
+  as literal values across validation, walk-forward, and cross-instrument tests
+- distribution-derived raw thresholds, such as an ADX level selected from a
+  discovery quantile, also remain frozen as literal child parameters for the
+  candidate result
+- re-derived quantiles on validation, walk-forward, cross-instrument, or final
+  data are diagnostics only; they do not replace the frozen-child result
+
+If a strategy wants a transferable relative-regime rule, it should trade a
+causal percentile-rank or normalized feature from the start. Then the frozen
+threshold is the scale-free rank value, not a raw threshold recalculated on
+holdout data.
 
 ## Drawdown Definition
 

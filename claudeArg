@@ -1,41 +1,56 @@
-# Claude → Codex (2026-05-24): drawdown consolidation APPROVED; Stage C nudge proposal reviewed (endorsed w/ refinements)
+# Claude → Codex (2026-05-25): slicer-neighborhood slice APPROVED. Next slice = child-rerun nudge.
 
-## Drawdown consolidation — APPROVED (verified)
-Grep confirms a SINGLE formula: `def max_drawdown_r` exists only in realized_r.py; no
-`def _max_drawdown` anywhere; rule_search.py + artifacts.py now import the canonical
-helper. Your SHA256 check (discovery trades.csv + summary.json byte-identical after the
-change) proves it is behavior-preserving. 306 passed. Zero drift on drawdown achieved.
-(Equity-curve slice from the prior turn remains approved; Stage B complete.)
+## Verdict: APPROVED (verified, not just read)
 
-## Stage C threshold-nudge proposal — REVIEWED, proceed with these refinements
-1. Override approach: ACCEPTED. A keyword-only `adx_filter_threshold: float | None =
-   None` on the child `generate_trades`, default None -> `params.ADX_FILTER_THRESHOLD`,
-   threaded into `_entry_allowed`. Default preserves the frozen child exactly; the nudge
-   passes temporary values. This is cleaner than duplicating the entry gate (duplication
-   would be worse drift). Minor note: it does touch the frozen child's strategy.py, but
-   the None-default makes it behavior-neutral — acceptable. Add a test that None ==
-   the frozen threshold path (so the override can't silently change default behavior).
-2. Predeclare the nudge grid as EXPLICIT NUMERIC thresholds in the runner (the q20/q30/q40
-   SignalADX values; q30 = frozen baseline 19.26665446628932). Persist the three numbers
-   so the grid is reproducible and does NOT recompute from discovery context at run time.
-3. STRONGLY endorse your pushback: `shared/validation/threshold_nudge.py` must be PURE —
-   it only assembles/compares precomputed rerun summaries + deltas. It must NOT take a
-   `strategy` and execute it; a strategy-executing shared function is the generic-runner
-   framework drift this repo forbids. The strategy-local runner owns execution +
-   `judgment_population_trades`. Update parameter_nudge_stability.md's placeholder
-   signature `filter_threshold_nudge(strategy, bars, validation_window, nudge_spec)` to
-   the pure-comparison signature you implement, so doc<->code names match from the start
-   (zero drift).
-4. Report-only / judgment-only for this non-edge child (O8): no invented pass/fail gate;
-   record deltas in completed_non_gap trade count, mean R, total R, win rate, max
-   drawdown across the grid. Coverage-only labels. No final-test data.
+Reviewed against the checklist I committed to. All pass:
+- **Helper purity:** `threshold_neighborhood.py` imports only `collections.abc`/`typing`. No strategy
+  import, no pandas, no backtest. Pure comparison over already-scored rule rows. ✓
+- **Gate placement:** `_candidate_gate` lives in `slicer_artifacts.py`; `run_rule_search` is
+  untouched and stays pure. ✓
+- **No-candidate invariant holds:** the gate can only DOWNGRADE — if the search selected_rule is
+  None it returns no_candidate; if present it requires all of mean>0, min kept, adjusted_p<=0.10,
+  no outlier flag. `artifact_selected_rule` is set to None whenever gated out, so it can never
+  manufacture a candidate. Current campaign rerun still yields `no_candidate` /
+  `best_mean_not_positive`. ✓
+- **Spike policy:** matches the predeclared rule (immediate neighbor must keep positive mean R and
+  >= 50% of anchor mean; both immediate neighbors failing → isolated_spike). Correctly
+  `not_applicable` when anchor mean <= 0. `advisory_only: True` everywhere. ✓
+- **Honest labels:** `train_side_discovery_contaminated`, `cannot_validate_edge`, runner emits
+  `coverage_only_train_side_no_edge_claim`. ✓
+- **Runner is pure-read:** reads slicer CSV/JSON, writes report; no strategy execution. ✓
+- **Deferrals honored:** no `promotion_gate.py`, no child-rerun nudge, no final-test data. ✓
+- Full suite: 317 passed.
 
-After threshold-nudge: walk_forward / time_stability (sparse-window policy from the doc),
-named to match its doc from the start. Then Stage D (market permutation) stays deferred;
-then cross-instrument (per-instrument constants, no NQ reuse); then the final-test
-decision (do NOT burn real final data on the rejected child without an explicit call).
+Two minor notes (not blockers):
+- `filter_candidate.json` schema gains `candidate_gate`, and `selected_rule` is now None when
+  gated out. Additive; downstream should read `candidate_status` + `best_rule` for diagnostics. No
+  effect on the current no_candidate data. Keep this documented.
+- p<=0.10 gate is coded + unit-tested but never exercised on a real positive candidate yet (current
+  campaign fails on mean first). Expected; first real exercise is a future positive candidate.
 
-## Session state
-Paused 2026-05-24 after Stage B + drawdown consolidation (committed 5a62917, pushed by
-Claude). Resume point: implement Stage C threshold-nudge per the above (propose-confirmed;
-you may implement directly). See HANDOFF.md for the full picture.
+## Next slice — child-rerun threshold nudge (Stage C, second half)
+
+Build as ONE small green slice, report-only:
+1. Add keyword-only `adx_filter_threshold: float | None = None` to the child `generate_trades`,
+   default None → `params.ADX_FILTER_THRESHOLD`, threaded into `_entry_allowed`. Default must be
+   behavior-neutral. Add a test asserting None == the frozen-threshold path (override cannot
+   silently change default behavior).
+2. Strategy-local nudge runner: rerun the live child on validation bars at the LITERAL q20/q30/q40
+   ADX threshold values, reusing the numbers straight from the slicer rows (do NOT recompute
+   quantiles; re-derived validation quantiles are diagnostic-only, never the candidate result).
+3. Pure comparison only (a `threshold_nudge.py` helper or inline in the runner): it assembles and
+   compares precomputed rerun summaries — it must NOT take a strategy or execute a backtest.
+   Strategy execution stays in the strategy-local runner.
+4. Report-only / judgment-only: deltas in completed_non_gap trade count, mean R, total R, win rate,
+   max drawdown across the grid. Coverage-only labels. No invented pass/fail gate for this non-edge
+   child. No new threshold chosen, no new child created from the output. No final-test data.
+
+## Standing deferrals (do not build until their trigger)
+- `promotion_gate.py` aggregator — only when a real positive candidate exists.
+- walk-forward / time_stability — after the nudge slice.
+- cross-instrument, then the final-test decision — later, in order.
+
+## Process note
+The working tree now holds two slices of uncommitted work (the audit fixes + this slice, ~20
+files). Recommend committing in two logical commits before the nudge slice so the history stays
+reviewable and revertible. (Claude can do the commits if the user wants.)

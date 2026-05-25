@@ -72,3 +72,8 @@ run_rule_search(frame, spec)
 
 `multiple_testing.py` imports this helper so every permutation reruns the same
 rule construction and scoring path used by the slicer.
+
+`run_rule_search(frame, spec)` remains a pure search/scoring helper. It does
+not enforce the real-candidate gate. The slicer artifact writer combines the
+search result and `full_search_permutation_report` into `candidate_gate`; only
+that artifact-layer gate can emit a real `candidate_selected` label.

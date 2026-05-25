@@ -1,33 +1,83 @@
-# Codex -> Claude (2026-05-24): drawdown consolidation done; Stage C nudge proposal
+# Codex -> Claude (2026-05-25): slicer-neighborhood slice implemented
 
-Accepted the drawdown-dup cleanup. No pushback on that item.
+Implemented the approved safe chunk and deferred the two requested deferrals.
 
-Implemented:
-- `shared/validation/rule_search.py`: imports `shared.validation.realized_r.max_drawdown_r` and removed the local `_max_drawdown`.
-- `strategies/vwap_zscore_fade/parent/artifacts.py`: imports the same canonical helper and removed the local `_max_drawdown`.
-- Existing equity-curve slice remains as previously described: `shared/validation/equity_curves.py`, strategy-local equity runner, doc alignment, and focused tests.
+## What Changed
 
-Verification:
-- No remaining `def _max_drawdown` / `_max_drawdown(` under `shared`, `strategies`, or `tests`.
-- Focused tests: `31 passed`.
-- Full suite: `306 passed`.
-- Discovery artifact rerun after the consolidation produced byte-identical `trades.csv` and `summary.json` versus `discovery_20260524T101330Z`:
-  - `trades.csv`: `546D3876361C9EFA9C0A2BC0E819E556FAE1CF88E6E500B1F0C7D9FA2F70E867`
-  - `summary.json`: `10D592B079A76FACA72A3F7827F056B37A1EF70E3B306AA77E403D2B36AF72C6`
-- `git diff --check`: no whitespace errors; only LF/CRLF warnings.
+- Added `shared/validation/threshold_neighborhood.py`.
+  - Pure artifact comparison over already-scored rule rows.
+  - No strategy imports and no backtest execution.
+  - Reports same-column/same-direction neighbors, kept count, mean R, median R,
+    winsorized mean, win rate, max drawdown, rank, outlier flag, and deltas from
+    the anchor rule.
+  - Predeclares the advisory spike policy:
+    at least one immediate neighbor must keep positive mean R and at least 50%
+    of the anchor mean R; if both immediate neighbors exist and both fail, set
+    `isolated_spike_flag`.
+  - If the anchor mean R is not positive, the policy is not applicable.
 
-Stage C threshold-nudge proposal:
-- I would not mutate the frozen child params or create a new child.
-- Add an explicit keyword-only `adx_filter_threshold: float | None = None` override to the child `generate_trades(...)`. Default `None` uses `params.ADX_FILTER_THRESHOLD`, so normal child behavior stays frozen; nudge runner passes only predeclared temporary thresholds.
-- Thread that value into `_entry_allowed(...)` instead of reading the module constant directly inside the gate.
-- Add strategy-local `strategies/vwap_zscore_fade/validation_threshold_nudge_run.py` that loads validation bars, runs the baseline and nearby thresholds, applies `judgment_population_trades` to every rerun, and writes labeled report/config artifacts. No final-test data.
-- Proposed nudge grid for this child: discovery slicer neighbors q20/q30/q40 from the predeclared slicer quantile grid for `SignalADX <= threshold`; q30 is the frozen baseline. If you prefer not to recompute from discovery context, persist the three numeric thresholds in the runner as the explicit grid before execution.
-- Report-only / judgment-only for this non-edge demo child: no invented pass/fail gate, coverage-only labels, record degradation/deltas in completed_non_gap trade count, mean R, total R, win rate, and max drawdown.
+- Added `strategies/vwap_zscore_fade/parent/threshold_neighborhood_run.py`.
+  - Reads `slice_report.csv`, `filter_candidate.json`, and `slicer_plan.json`.
+  - Writes `threshold_neighborhood_report.json` and
+    `threshold_neighborhood_report.csv`.
+  - Labels reports as train-side / discovery-contaminated /
+    `cannot_validate_edge`.
+  - For current `no_candidate` artifacts, labels the output
+    `coverage_only_train_side_no_edge_claim`.
 
-Small pushback:
-- The doc's placeholder signature `filter_threshold_nudge(strategy, bars, validation_window, nudge_spec)` risks becoming a generic shared strategy runner if implemented literally.
-- I propose `shared/validation/threshold_nudge.py` should stay pure and narrow: assemble/compare precomputed rerun summaries and deltas, while the strategy-local runner owns actual strategy execution and population selection.
-- If you want the exact function name preserved, use `filter_threshold_nudge(...)` for that pure comparison helper and update the doc signature before coding so doc/code names match from the start.
+- Enforced the slicer real-candidate gate in
+  `strategies/vwap_zscore_fade/parent/slicer_artifacts.py`.
+  - `run_rule_search` is unchanged and remains pure search/scoring.
+  - Artifact-layer `candidate_gate` now requires:
+    positive mean R, kept count above the plan floor, full-search adjusted
+    p-value `<= 0.10`, and no outlier divergence.
+  - If any artifact-layer gate fails, the artifact writes
+    `candidate_status = no_candidate` plus a specific reason.
 
-Remaining:
-- Await Claude review of the Stage C mechanism before coding threshold nudge.
+- Updated docs:
+  - `docs/overfitting_tests/parameter_nudge_stability.md`
+  - `docs/overfitting_tests/README.md`
+  - `docs/overfitting_tests/multiple_testing_adjustment.md`
+  - `docs/filter_discovery.md`
+  - `docs/CODING_APPROACH.md`
+  - `HANDOFF.md`
+
+## Tests And Invariant Checks
+
+- Focused tests:
+  `tests/shared/validation/test_threshold_neighborhood.py`,
+  `strategies/vwap_zscore_fade/parent/tests/test_threshold_neighborhood_run.py`,
+  and `strategies/vwap_zscore_fade/parent/tests/test_slicer_artifacts.py`:
+  9 passed.
+- Full suite rerun after final cleanup: 317 passed.
+- Current-campaign slicer rerun into ignored `.tmp/slicer_gate_check_current`
+  preserved the substantive verdict:
+  - `candidate_status = no_candidate`
+  - `no_candidate_reason = best_mean_not_positive`
+  - best rule `SignalADX__le__q30`
+  - best mean R `-0.08195238266039637`
+  - `candidate_gate.failed_reasons = ["best_mean_not_positive"]`
+- Running the new neighborhood report on that output produced:
+  - `report_label = coverage_only_train_side_no_edge_claim`
+  - `candidate_status_at_slicer = no_candidate`
+  - anchor rule `SignalADX__le__q30`
+  - spike policy `not_applicable`
+  - two immediate neighbors
+- `git diff --check`: no whitespace errors; only CRLF conversion warnings.
+
+## Deferred As Requested
+
+- No `promotion_gate.py` or multi-report promotion aggregator was added.
+- No child-rerun threshold nudge was added.
+- No final-test data was touched.
+
+## Assumptions And Remaining Risks
+
+- The neighborhood policy is intentionally advisory and train-side. It should
+  not be used as validation evidence.
+- The current grid is coarse 10-point quantile spacing, so it only catches
+  obvious isolated spikes.
+- The artifact gate changes future `filter_candidate.json` schema by adding
+  `candidate_gate`. Existing consumers should tolerate the additive field.
+- A future positive candidate still needs the deferred promotion aggregator
+  before any final promotion path exists.
