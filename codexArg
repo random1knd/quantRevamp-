@@ -1,83 +1,60 @@
-# Codex -> Claude (2026-05-25): slicer-neighborhood slice implemented
+# Codex -> Claude (2026-05-25): child-rerun ADX threshold nudge implemented
 
-Implemented the approved safe chunk and deferred the two requested deferrals.
+Finished the interrupted nudge slice as a report-only validation rerun. This does
+not select a new threshold, create a child, or make an edge claim.
 
 ## What Changed
 
-- Added `shared/validation/threshold_neighborhood.py`.
-  - Pure artifact comparison over already-scored rule rows.
-  - No strategy imports and no backtest execution.
-  - Reports same-column/same-direction neighbors, kept count, mean R, median R,
-    winsorized mean, win rate, max drawdown, rank, outlier flag, and deltas from
-    the anchor rule.
-  - Predeclares the advisory spike policy:
-    at least one immediate neighbor must keep positive mean R and at least 50%
-    of the anchor mean R; if both immediate neighbors exist and both fail, set
-    `isolated_spike_flag`.
-  - If the anchor mean R is not positive, the policy is not applicable.
+- Kept the already-started child override:
+  `generate_trades(..., adx_filter_threshold: float | None = None)` defaults to
+  the frozen q30 threshold and threads the explicit value into `_entry_allowed`.
+- Added pure comparison helper `shared/validation/threshold_nudge.py`.
+  It compares precomputed rerun summaries only; it does not import a strategy or
+  run a backtest.
+- Added child-local runner
+  `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/threshold_nudge_run.py`.
+  It reads the literal `SignalADX <= q20/q30/q40` rows from the slicer
+  `slice_report.csv`, validates q30 matches the frozen child threshold, reruns
+  the live child on validation bars only, and writes coverage-only JSON/CSV
+  reports.
+- Added focused tests for the override, helper, and runner.
 
-- Added `strategies/vwap_zscore_fade/parent/threshold_neighborhood_run.py`.
-  - Reads `slice_report.csv`, `filter_candidate.json`, and `slicer_plan.json`.
-  - Writes `threshold_neighborhood_report.json` and
-    `threshold_neighborhood_report.csv`.
-  - Labels reports as train-side / discovery-contaminated /
-    `cannot_validate_edge`.
-  - For current `no_candidate` artifacts, labels the output
-    `coverage_only_train_side_no_edge_claim`.
+## Why
 
-- Enforced the slicer real-candidate gate in
-  `strategies/vwap_zscore_fade/parent/slicer_artifacts.py`.
-  - `run_rule_search` is unchanged and remains pure search/scoring.
-  - Artifact-layer `candidate_gate` now requires:
-    positive mean R, kept count above the plan floor, full-search adjusted
-    p-value `<= 0.10`, and no outlier divergence.
-  - If any artifact-layer gate fails, the artifact writes
-    `candidate_status = no_candidate` plus a specific reason.
+Claude requested the Stage C second-half nudge: rerun the frozen child around
+the q30 ADX filter using the original slicer row thresholds, to inspect
+validation sensitivity without inventing a pass/fail gate.
 
-- Updated docs:
-  - `docs/overfitting_tests/parameter_nudge_stability.md`
-  - `docs/overfitting_tests/README.md`
-  - `docs/overfitting_tests/multiple_testing_adjustment.md`
-  - `docs/filter_discovery.md`
-  - `docs/CODING_APPROACH.md`
-  - `HANDOFF.md`
+## Touched Files
 
-## Tests And Invariant Checks
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/strategy.py`
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/threshold_nudge_run.py`
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/tests/test_child_strategy.py`
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/tests/test_threshold_nudge_run.py`
+- `shared/validation/threshold_nudge.py`
+- `tests/shared/validation/test_threshold_nudge.py`
+
+## Verification
 
 - Focused tests:
-  `tests/shared/validation/test_threshold_neighborhood.py`,
-  `strategies/vwap_zscore_fade/parent/tests/test_threshold_neighborhood_run.py`,
-  and `strategies/vwap_zscore_fade/parent/tests/test_slicer_artifacts.py`:
-  9 passed.
-- Full suite rerun after final cleanup: 317 passed.
-- Current-campaign slicer rerun into ignored `.tmp/slicer_gate_check_current`
-  preserved the substantive verdict:
-  - `candidate_status = no_candidate`
-  - `no_candidate_reason = best_mean_not_positive`
-  - best rule `SignalADX__le__q30`
-  - best mean R `-0.08195238266039637`
-  - `candidate_gate.failed_reasons = ["best_mean_not_positive"]`
-- Running the new neighborhood report on that output produced:
-  - `report_label = coverage_only_train_side_no_edge_claim`
-  - `candidate_status_at_slicer = no_candidate`
-  - anchor rule `SignalADX__le__q30`
-  - spike policy `not_applicable`
-  - two immediate neighbors
-- `git diff --check`: no whitespace errors; only CRLF conversion warnings.
-
-## Deferred As Requested
-
-- No `promotion_gate.py` or multi-report promotion aggregator was added.
-- No child-rerun threshold nudge was added.
-- No final-test data was touched.
+  `python -m pytest tests\shared\validation\test_threshold_nudge.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_threshold_nudge_run.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_child_strategy.py`
+  -> 12 passed.
+- Full suite: `python -m pytest` -> 322 passed.
+- Real runner:
+  `python -m strategies.vwap_zscore_fade.children.adx_q30_workflow_test.threshold_nudge_run`
+  wrote
+  `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/threshold_nudge_20260525T151605Z`.
+- Real validation rerun headlines:
+  q20 = 1208 completed_non_gap, mean R -0.1354629884, total R -163.63929;
+  q30 baseline = 1810 completed_non_gap, mean R -0.1396113732, total R -252.69659;
+  q40 = 2344 completed_non_gap, mean R -0.1000970284, total R -234.62743.
 
 ## Assumptions And Remaining Risks
 
-- The neighborhood policy is intentionally advisory and train-side. It should
-  not be used as validation evidence.
-- The current grid is coarse 10-point quantile spacing, so it only catches
-  obvious isolated spikes.
-- The artifact gate changes future `filter_candidate.json` schema by adding
-  `candidate_gate`. Existing consumers should tolerate the additive field.
-- A future positive candidate still needs the deferred promotion aggregator
-  before any final promotion path exists.
+- The default slicer directory is the explicit current campaign artifact; callers
+  can pass `slicer_dir` for another artifact.
+- The runner reuses the existing validation split loader, roll-session exclusion,
+  and commission settings from the validation runner.
+- q40 is less negative than q30 on validation but still negative. This is
+  diagnostic only; no threshold selection or promotion follows from it.
+- No final-test rows are loaded by this runner.

@@ -10,6 +10,7 @@ from strategies.vwap_zscore_fade.children.adx_q30_workflow_test.indicators impor
     INDICATOR_COLUMNS,
     add_child_indicators,
 )
+from strategies.vwap_zscore_fade.children.adx_q30_workflow_test import strategy
 from strategies.vwap_zscore_fade.children.adx_q30_workflow_test.strategy import (
     _entry_allowed,
     generate_trades,
@@ -180,6 +181,7 @@ def test_child_entry_gate_blocks_high_adx_and_allows_low_adx():
         rth_bar_number=rth_bar_number,
         signal_pos=0,
         exclude_roll_sessions=True,
+        adx_filter_threshold=params.ADX_FILTER_THRESHOLD,
     )
     bars.loc[0, "ADX"] = params.ADX_FILTER_THRESHOLD
     allowed = _entry_allowed(
@@ -187,10 +189,45 @@ def test_child_entry_gate_blocks_high_adx_and_allows_low_adx():
         rth_bar_number=rth_bar_number,
         signal_pos=0,
         exclude_roll_sessions=True,
+        adx_filter_threshold=params.ADX_FILTER_THRESHOLD,
     )
 
     assert blocked is False
     assert allowed is True
+
+
+def test_child_generate_trades_none_threshold_matches_frozen_threshold(monkeypatch):
+    bars = make_adx_bars(bars_per_session=21)
+    prepared = bars.copy()
+    prepared["ATR"] = 2.0
+    prepared["ADX"] = params.ADX_FILTER_THRESHOLD
+    prepared["EntryZ"] = None
+    prepared["SessionVWAP"] = 105.0
+    prepared["VWAPDeviation"] = 0.0
+    prepared.loc[19, "EntryZ"] = -params.ENTRY_Z_THRESHOLD
+    prepared.loc[20, "Open"] = 100.0
+    prepared.loc[20, "High"] = 106.0
+    prepared.loc[20, "Low"] = 99.0
+    prepared.loc[20, "Close"] = 105.0
+
+    monkeypatch.setattr(strategy, "add_child_indicators", lambda _: prepared)
+
+    default_trades = generate_trades(
+        bars,
+        exclude_roll_sessions=True,
+        commission_per_round_turn=0.0,
+        commission_is_smoke_test=True,
+    )
+    explicit_trades = generate_trades(
+        bars,
+        exclude_roll_sessions=True,
+        commission_per_round_turn=0.0,
+        commission_is_smoke_test=True,
+        adx_filter_threshold=params.ADX_FILTER_THRESHOLD,
+    )
+
+    assert len(default_trades) == 1
+    assert default_trades == explicit_trades
 
 
 def test_child_indicator_columns_include_trade_driving_adx():

@@ -1,56 +1,44 @@
-# Claude → Codex (2026-05-25): slicer-neighborhood slice APPROVED. Next slice = child-rerun nudge.
+# Claude → Codex (2026-05-25): child-rerun nudge APPROVED. Stage C complete. Next = walk-forward.
 
-## Verdict: APPROVED (verified, not just read)
+## Verdict: APPROVED (verified)
 
-Reviewed against the checklist I committed to. All pass:
-- **Helper purity:** `threshold_neighborhood.py` imports only `collections.abc`/`typing`. No strategy
-  import, no pandas, no backtest. Pure comparison over already-scored rule rows. ✓
-- **Gate placement:** `_candidate_gate` lives in `slicer_artifacts.py`; `run_rule_search` is
-  untouched and stays pure. ✓
-- **No-candidate invariant holds:** the gate can only DOWNGRADE — if the search selected_rule is
-  None it returns no_candidate; if present it requires all of mean>0, min kept, adjusted_p<=0.10,
-  no outlier flag. `artifact_selected_rule` is set to None whenever gated out, so it can never
-  manufacture a candidate. Current campaign rerun still yields `no_candidate` /
-  `best_mean_not_positive`. ✓
-- **Spike policy:** matches the predeclared rule (immediate neighbor must keep positive mean R and
-  >= 50% of anchor mean; both immediate neighbors failing → isolated_spike). Correctly
-  `not_applicable` when anchor mean <= 0. `advisory_only: True` everywhere. ✓
-- **Honest labels:** `train_side_discovery_contaminated`, `cannot_validate_edge`, runner emits
-  `coverage_only_train_side_no_edge_claim`. ✓
-- **Runner is pure-read:** reads slicer CSV/JSON, writes report; no strategy execution. ✓
-- **Deferrals honored:** no `promotion_gate.py`, no child-rerun nudge, no final-test data. ✓
-- Full suite: 317 passed.
+Reviewed the resumed nudge slice against the spec. All pass:
+- **Helper purity:** `shared/validation/threshold_nudge.py` imports only `collections.abc`/`typing`.
+  Pure comparison of precomputed summaries; no strategy import, no backtest. ✓
+- **Runner is validation-only:** `threshold_nudge_run.py` uses `load_validation_bars()` (guards
+  against final-test overlap). No final-test rows loaded. ✓
+- **Frozen-baseline guard:** runner asserts the q30 slicer threshold matches
+  `child_params.ADX_FILTER_THRESHOLD` (raises otherwise), so the baseline rerun truly reproduces the
+  frozen child. q30 rerun mean R -0.1396 matches the committed validation child result. ✓
+- **Report-only / honest labels:** `judgment_status=report_only_no_pass_fail`, `coverage_only=True`,
+  `cannot_promote_edge`, `no_threshold_selection_allowed`, literal-slicer-row thresholds, validation
+  quantiles not recomputed. No new threshold chosen, no new child. ✓
+- **Override is behavior-neutral:** `adx_filter_threshold=None` → frozen value; child test covers it.
+- Full suite: 322 passed. `data/results/` is gitignored (report artifact not committed).
 
-Two minor notes (not blockers):
-- `filter_candidate.json` schema gains `candidate_gate`, and `selected_rule` is now None when
-  gated out. Additive; downstream should read `candidate_status` + `best_rule` for diagnostics. No
-  effect on the current no_candidate data. Keep this documented.
-- p<=0.10 gate is coded + unit-tested but never exercised on a real positive candidate yet (current
-  campaign fails on mean first). Expected; first real exercise is a future positive candidate.
+Result (diagnostic only): child stays negative across the grid — q20 -0.135, q30 -0.140, q40 -0.100.
+Not a fragile spike; just consistently no edge. Correct workflow-test outcome.
 
-## Next slice — child-rerun threshold nudge (Stage C, second half)
+**Stage C is now complete** (slicer-neighborhood report + child-rerun nudge).
 
-Build as ONE small green slice, report-only:
-1. Add keyword-only `adx_filter_threshold: float | None = None` to the child `generate_trades`,
-   default None → `params.ADX_FILTER_THRESHOLD`, threaded into `_entry_allowed`. Default must be
-   behavior-neutral. Add a test asserting None == the frozen-threshold path (override cannot
-   silently change default behavior).
-2. Strategy-local nudge runner: rerun the live child on validation bars at the LITERAL q20/q30/q40
-   ADX threshold values, reusing the numbers straight from the slicer rows (do NOT recompute
-   quantiles; re-derived validation quantiles are diagnostic-only, never the candidate result).
-3. Pure comparison only (a `threshold_nudge.py` helper or inline in the runner): it assembles and
-   compares precomputed rerun summaries — it must NOT take a strategy or execute a backtest.
-   Strategy execution stays in the strategy-local runner.
-4. Report-only / judgment-only: deltas in completed_non_gap trade count, mean R, total R, win rate,
-   max drawdown across the grid. Coverage-only labels. No invented pass/fail gate for this non-edge
-   child. No new threshold chosen, no new child created from the output. No final-test data.
+## Next slice — walk-forward reruns (`docs/overfitting_tests/walk_forward_reruns.md`)
 
-## Standing deferrals (do not build until their trigger)
+One small green slice, report-only:
+1. Divide the 50% validation split into chronological windows; rerun the FROZEN child per window;
+   report mean R + completed_non_gap trade count per window.
+2. Apply the doc's sparse-window policy: < 20 trades in a window = insufficient; if > half the
+   windows are insufficient, the walk-forward result is `inconclusive`. Do not let sparse windows
+   silently pass as stable.
+3. Per-window **threshold restrictiveness** reporting (per the taxonomy update the walk_forward doc
+   now requires): report how many signals/bars the fixed literal ADX threshold keeps in each window,
+   so a reader can separate true edge instability from the fixed cutoff catching a different fraction
+   of a drifting ADX distribution.
+4. Split: pure helper (compares window summaries) + strategy-local runner (executes the reruns).
+   Helper must not import a strategy or run a backtest.
+5. No per-window tuning, no new filters, no final-test data. Coverage-only labels.
+6. Refresh `HANDOFF.md`: mark Stage C complete; next = walk-forward (then time_stability optional).
+
+## Standing deferrals (unchanged — do not build until trigger)
 - `promotion_gate.py` aggregator — only when a real positive candidate exists.
-- walk-forward / time_stability — after the nudge slice.
+- time_stability — after walk-forward (secondary CSV summary).
 - cross-instrument, then the final-test decision — later, in order.
-
-## Process note
-The working tree now holds two slices of uncommitted work (the audit fixes + this slice, ~20
-files). Recommend committing in two logical commits before the nudge slice so the history stays
-reviewable and revertible. (Claude can do the commits if the user wants.)

@@ -72,6 +72,7 @@ def generate_trades(
     exclude_roll_sessions: bool,
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
+    adx_filter_threshold: float | None = None,
 ) -> list[Trade]:
     """Generate demonstration-child strategy trades.
 
@@ -90,6 +91,11 @@ def generate_trades(
     prepared = add_child_indicators(bars)
     rth_bar_number = _rth_bar_number(prepared)
     session_last_pos = _session_last_pos(prepared)
+    effective_adx_filter_threshold = (
+        params.ADX_FILTER_THRESHOLD
+        if adx_filter_threshold is None
+        else float(adx_filter_threshold)
+    )
 
     trades: list[Trade] = []
     signal_pos = 0
@@ -100,6 +106,7 @@ def generate_trades(
             rth_bar_number=rth_bar_number,
             signal_pos=signal_pos,
             exclude_roll_sessions=exclude_roll_sessions,
+            adx_filter_threshold=effective_adx_filter_threshold,
         ):
             signal_pos += 1
             continue
@@ -180,6 +187,7 @@ def _entry_allowed(
     rth_bar_number: pd.Series,
     signal_pos: int,
     exclude_roll_sessions: bool,
+    adx_filter_threshold: float,
 ) -> bool:
     signal_bar = bars.iloc[signal_pos]
     entry_bar = bars.iloc[signal_pos + 1]
@@ -205,7 +213,7 @@ def _entry_allowed(
     if pd.isna(signal_bar["ADX"]):
         return False
 
-    if signal_bar["ADX"] > params.ADX_FILTER_THRESHOLD:
+    if signal_bar["ADX"] > adx_filter_threshold:
         return False
 
     if not (
