@@ -66,6 +66,13 @@ class _OpenTrade:
     target_price: float
 
 
+@dataclass(frozen=True)
+class _Accounting:
+    tick_size: float
+    point_value: float
+    slippage_ticks_per_side: float
+
+
 def generate_trades(
     bars: pd.DataFrame,
     *,
@@ -73,6 +80,9 @@ def generate_trades(
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
     adx_filter_threshold: float | None = None,
+    tick_size: float | None = None,
+    point_value: float | None = None,
+    slippage_ticks_per_side: float | None = None,
 ) -> list[Trade]:
     """Generate demonstration-child strategy trades.
 
@@ -86,6 +96,11 @@ def generate_trades(
     _validate_commission(
         commission_per_round_turn=commission_per_round_turn,
         commission_is_smoke_test=commission_is_smoke_test,
+    )
+    accounting = _accounting(
+        tick_size=tick_size,
+        point_value=point_value,
+        slippage_ticks_per_side=slippage_ticks_per_side,
     )
 
     prepared = add_child_indicators(bars)
@@ -116,6 +131,7 @@ def generate_trades(
             side=side,
             signal_pos=signal_pos,
             entry_pos=signal_pos + 1,
+            accounting=accounting,
         )
         if open_trade is None:
             signal_pos += 1
@@ -127,6 +143,7 @@ def generate_trades(
             session_last_pos=session_last_pos,
             commission_per_round_turn=commission_per_round_turn,
             commission_is_smoke_test=commission_is_smoke_test,
+            accounting=accounting,
         )
         trades.append(trade)
         signal_pos = exit_pos + 1
@@ -155,6 +172,32 @@ def _validate_commission(
 
     if commission_per_round_turn == 0.0 and not commission_is_smoke_test:
         raise ValueError("zero commission requires smoke-test label")
+
+
+def _accounting(
+    *,
+    tick_size: float | None,
+    point_value: float | None,
+    slippage_ticks_per_side: float | None,
+) -> _Accounting:
+    resolved = _Accounting(
+        tick_size=params.NQ_TICK_SIZE if tick_size is None else float(tick_size),
+        point_value=(
+            params.NQ_POINT_VALUE if point_value is None else float(point_value)
+        ),
+        slippage_ticks_per_side=(
+            params.SLIPPAGE_TICKS_PER_SIDE
+            if slippage_ticks_per_side is None
+            else float(slippage_ticks_per_side)
+        ),
+    )
+    if resolved.tick_size <= 0.0:
+        raise ValueError("tick_size must be positive")
+    if resolved.point_value <= 0.0:
+        raise ValueError("point_value must be positive")
+    if resolved.slippage_ticks_per_side < 0.0:
+        raise ValueError("slippage_ticks_per_side must be non-negative")
+    return resolved
 
 
 def _rth_bar_number(bars: pd.DataFrame) -> pd.Series:
@@ -235,14 +278,19 @@ def _open_trade(
     side: Side,
     signal_pos: int,
     entry_pos: int,
+    accounting: _Accounting,
 ) -> _OpenTrade | None:
     signal_bar = bars.iloc[signal_pos]
     entry_bar = bars.iloc[entry_pos]
-    slippage = _slippage_points()
+    slippage = _slippage_points(accounting)
     target_price = signal_bar["SessionVWAP"]
     if pd.isna(target_price):
         return None
-    target_price = _round_target_conservative(float(target_price), side=side)
+    target_price = _round_target_conservative(
+        float(target_price),
+        side=side,
+        accounting=accounting,
+    )
 
     if side == "long":
         entry_price = float(entry_bar["Open"]) + slippage
@@ -254,7 +302,11 @@ def _open_trade(
         initial_stop_price = entry_price + params.STOP_ATR_MULTIPLE * float(
             signal_bar["ATR"]
         )
-    initial_stop_price = _round_stop_conservative(initial_stop_price, side=side)
+    initial_stop_price = _round_stop_conservative(
+        initial_stop_price,
+        side=side,
+        accounting=accounting,
+    )
 
     if side == "long" and initial_stop_price >= entry_price:
         return None
@@ -287,6 +339,7 @@ def _close_trade(
     session_last_pos: dict,
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
+    accounting: _Accounting,
 ) -> tuple[Trade, int]:
     session_date = bars.iloc[open_trade.entry_pos]["SessionDate_ET"]
     last_same_session_pos = session_last_pos[session_date]
@@ -299,6 +352,7 @@ def _close_trade(
             bar,
             open_trade=open_trade,
             elapsed=elapsed,
+            accounting=accounting,
         )
         if exit_result is not None:
             return (
@@ -316,6 +370,7 @@ def _close_trade(
                     ),
                     commission_per_round_turn=commission_per_round_turn,
                     commission_is_smoke_test=commission_is_smoke_test,
+                    accounting=accounting,
                 ),
                 exit_pos,
             )
@@ -331,6 +386,7 @@ def _close_trade(
             exit_price=_close_exit_price(
                 bars.iloc[exit_pos]["Close"],
                 side=open_trade.side,
+                accounting=accounting,
             ),
             exit_reason=fallthrough_reason,
             gap_through=False,
@@ -341,6 +397,7 @@ def _close_trade(
             ),
             commission_per_round_turn=commission_per_round_turn,
             commission_is_smoke_test=commission_is_smoke_test,
+            accounting=accounting,
         ),
         exit_pos,
     )
@@ -358,25 +415,42 @@ def _exit_result(
     *,
     open_trade: _OpenTrade,
     elapsed: pd.Timedelta,
+    accounting: _Accounting,
 ) -> dict[str, float | str | bool] | None:
-    stop_result = _stop_exit_result(bar, open_trade=open_trade)
+    stop_result = _stop_exit_result(
+        bar,
+        open_trade=open_trade,
+        accounting=accounting,
+    )
     if stop_result is not None:
         return stop_result
 
-    target_result = _target_exit_result(bar, open_trade=open_trade)
+    target_result = _target_exit_result(
+        bar,
+        open_trade=open_trade,
+        accounting=accounting,
+    )
     if target_result is not None:
         return target_result
 
     if elapsed >= pd.Timedelta(minutes=params.TIME_STOP_MINUTES):
         return {
-            "exit_price": _close_exit_price(bar["Close"], side=open_trade.side),
+            "exit_price": _close_exit_price(
+                bar["Close"],
+                side=open_trade.side,
+                accounting=accounting,
+            ),
             "exit_reason": "time_stop",
             "gap_through": False,
         }
 
     if bar["SessionMinute_ET"] >= params.LAST_RTH_BAR_OPEN_SESSION_MINUTE:
         return {
-            "exit_price": _close_exit_price(bar["Close"], side=open_trade.side),
+            "exit_price": _close_exit_price(
+                bar["Close"],
+                side=open_trade.side,
+                accounting=accounting,
+            ),
             "exit_reason": "session_end",
             "gap_through": False,
         }
@@ -388,9 +462,10 @@ def _stop_exit_result(
     bar: pd.Series,
     *,
     open_trade: _OpenTrade,
+    accounting: _Accounting,
 ) -> dict[str, float | str | bool] | None:
     stop = open_trade.initial_stop_price
-    slippage = _slippage_points()
+    slippage = _slippage_points(accounting)
 
     if open_trade.side == "long":
         if bar["Open"] < stop:
@@ -426,6 +501,7 @@ def _target_exit_result(
     bar: pd.Series,
     *,
     open_trade: _OpenTrade,
+    accounting: _Accounting,
 ) -> dict[str, float | str | bool] | None:
     target = open_trade.target_price
 
@@ -434,7 +510,7 @@ def _target_exit_result(
         return {
             "exit_price": float(target)
             if gap_through
-            else float(target) - _slippage_points(),
+            else float(target) - _slippage_points(accounting),
             "exit_reason": "target",
             "gap_through": gap_through,
         }
@@ -444,7 +520,7 @@ def _target_exit_result(
         return {
             "exit_price": float(target)
             if gap_through
-            else float(target) + _slippage_points(),
+            else float(target) + _slippage_points(accounting),
             "exit_reason": "target",
             "gap_through": gap_through,
         }
@@ -452,11 +528,16 @@ def _target_exit_result(
     return None
 
 
-def _close_exit_price(price: float, *, side: Side) -> float:
+def _close_exit_price(
+    price: float,
+    *,
+    side: Side,
+    accounting: _Accounting,
+) -> float:
     if side == "long":
-        return float(price) - _slippage_points()
+        return float(price) - _slippage_points(accounting)
 
-    return float(price) + _slippage_points()
+    return float(price) + _slippage_points(accounting)
 
 
 def _hold_crosses_gap(
@@ -482,6 +563,7 @@ def _build_trade(
     hold_crosses_gap: bool,
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
+    accounting: _Accounting,
 ) -> Trade:
     signal_bar = bars.iloc[open_trade.signal_pos]
     entry_bar = bars.iloc[open_trade.entry_pos]
@@ -492,7 +574,7 @@ def _build_trade(
         exit_price=exit_price,
         initial_risk=open_trade.initial_risk,
     )
-    commission_points = commission_per_round_turn / params.NQ_POINT_VALUE
+    commission_points = commission_per_round_turn / accounting.point_value
     net_r = (gross_r * open_trade.initial_risk - commission_points) / (
         open_trade.initial_risk
     )
@@ -546,27 +628,37 @@ def _gross_r(
     return (entry_price - exit_price) / initial_risk
 
 
-def _slippage_points() -> float:
-    return params.SLIPPAGE_TICKS_PER_SIDE * params.NQ_TICK_SIZE
+def _slippage_points(accounting: _Accounting) -> float:
+    return accounting.slippage_ticks_per_side * accounting.tick_size
 
 
-def _round_stop_conservative(price: float, *, side: Side) -> float:
+def _round_stop_conservative(
+    price: float,
+    *,
+    side: Side,
+    accounting: _Accounting,
+) -> float:
     if side == "long":
-        return _ceil_to_tick(price)
+        return _ceil_to_tick(price, tick_size=accounting.tick_size)
 
-    return _floor_to_tick(price)
+    return _floor_to_tick(price, tick_size=accounting.tick_size)
 
 
-def _round_target_conservative(price: float, *, side: Side) -> float:
+def _round_target_conservative(
+    price: float,
+    *,
+    side: Side,
+    accounting: _Accounting,
+) -> float:
     if side == "long":
-        return _ceil_to_tick(price)
+        return _ceil_to_tick(price, tick_size=accounting.tick_size)
 
-    return _floor_to_tick(price)
-
-
-def _ceil_to_tick(price: float) -> float:
-    return math.ceil((price / params.NQ_TICK_SIZE) - 1e-12) * params.NQ_TICK_SIZE
+    return _floor_to_tick(price, tick_size=accounting.tick_size)
 
 
-def _floor_to_tick(price: float) -> float:
-    return math.floor((price / params.NQ_TICK_SIZE) + 1e-12) * params.NQ_TICK_SIZE
+def _ceil_to_tick(price: float, *, tick_size: float) -> float:
+    return math.ceil((price / tick_size) - 1e-12) * tick_size
+
+
+def _floor_to_tick(price: float, *, tick_size: float) -> float:
+    return math.floor((price / tick_size) + 1e-12) * tick_size

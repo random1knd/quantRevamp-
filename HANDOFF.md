@@ -42,27 +42,58 @@ valid completion.
       this VWAP-fade mean-reversion family.
 - [x] Time stability: implemented as one full-validation frozen-child trade
       generation bucketed by entry calendar month, quarter, and year.
-- [x] Cross-instrument blueprint: design spec written. Implementation is
-      deferred until review; ES is next, then 6E session model, then final
-      test capstone.
-- [ ] Cross-instrument implementation: deferred.
+- [x] Cross-instrument blueprint: design spec written and Cycle B implemented
+      for NQ/ES.
+- [x] Cross-instrument Cycle B: explicit child-local NQ/ES/6E lookup, NQ
+      lookup regression proof, and ES same-day RTH transfer report.
+- [ ] Cross-instrument Cycle C: 6E session-date model and mandatory sanity
+      checks.
 - [ ] Final 20% test: not run. Do not touch final-test data without an explicit
       labeled decision.
 
 ## Current Slice
 
-Implemented Claude-approved cross-instrument blueprint design only:
+Implemented Claude-approved cross-instrument Cycle B:
 
 - `docs/overfitting_tests/cross_instrument_validation.md`: rewritten from the
   stale strategy-callable helper shape into a pure-report shared helper plus
-  child-local rerun design.
-- Explicit lookup is limited to `NQ`, `ES`, and `6E`; no registry, framework, or
-  generic multi-instrument layer.
-- Accounting constants are separated from session structure.
-- Behavioral thresholds remain frozen and identical across instruments.
-- ES is specified as the behavior-neutral constants-swap case to build first.
-- 6E remains blocked until the new overnight session model and mandatory sanity
+  child-local rerun design; now records the Cycle B artifact and result.
+- `shared/validation/cross_instrument.py`: pure report helper over
+  already-built per-instrument summaries. It does not import strategies, load
+  bars, or rerun trades.
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_run.py`:
+  child-local runner with explicit `NQ`, `ES`, and blocked `6E` lookup rows.
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/strategy.py`:
+  child generation now accepts optional accounting overrides while preserving
+  the existing NQ defaults.
+- The runner proves NQ lookup behavior is bit-identical before ES is run.
+- 6E remains blocked until the overnight session model and mandatory sanity
   checks are implemented.
+
+Real Cycle B artifact:
+
+- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_es_20260528T134418Z`
+
+NQ lookup proof:
+
+- bit-identical: `true`
+- trade count: baseline `1820`, lookup `1820`
+- completed_non_gap count: baseline `1810`, lookup `1810`
+- mean R: baseline `-0.13961137318663386`, lookup
+  `-0.13961137318663386`
+- trade-row SHA-256:
+  `d935f1a27b144054403860c53eafe12985250e49f365b83683c2949f8809d7a5`
+
+ES same-day RTH transfer result:
+
+- trade count: `2375`
+- completed_non_gap count: `2374`
+- mean R: `-0.2708235375893883`
+- total R: `-642.9350782372079`
+- win rate: `0.37573715248525696`
+- ADX kept fraction: `0.24325736464968153`
+- interpretation: ES does not rescue the rejected workflow child; this remains
+  coverage-only context and cannot select an instrument or promote an edge.
 
 6E data-grounded session findings:
 
@@ -85,8 +116,6 @@ Implemented Claude-approved cross-instrument blueprint design only:
 
 Next sequence:
 
-- Cycle B: implement explicit lookup, rerun NQ through it and prove
-  bit-identical behavior, then run ES.
 - Cycle C: implement 6E session-date support and mandatory sanity checks, then
   run 6E.
 - Cycle D: run final 20% capstone once, coverage-only, with predeclared
@@ -151,7 +180,8 @@ family and is kept only as workflow coverage.
   mean-reversion candidate must use a predeclared structure-preserving
   within-session block permutation before any market-permutation result can be
   treated as meaningful edge validation
-- no cross-instrument implementation until the blueprint is reviewed
+- no 6E cross-instrument run until its session-date model and sanity checks are
+  implemented
 - no promotion aggregator until a real positive candidate exists
 - no final-test access
 
@@ -173,11 +203,15 @@ family and is kept only as workflow coverage.
 
 ## Verification
 
-- Cross-instrument blueprint cycle is doc-only; no new implementation tests.
-- Full suite: 340 passed.
-- 6E data-shape scan completed and recorded in
-  `docs/overfitting_tests/cross_instrument_validation.md`.
-- `git diff --check`: no whitespace errors; only CRLF conversion warnings.
+- Focused cross-instrument tests:
+  `python -m pytest tests\shared\validation\test_cross_instrument.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_child_strategy.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_cross_instrument_run.py`
+  -> 12 passed.
+- Real Cycle B runner completed and wrote
+  `cross_instrument_es_20260528T134418Z`.
+- Full suite: `python -m pytest` -> 344 passed.
+- `git diff --check`: no whitespace errors; CRLF warnings only.
+- No final-test rows were passed to the strategy. Cross-instrument Cycle B uses
+  validation splits only.
 
 Previous time-stability verification:
 

@@ -2,8 +2,8 @@
 
 Status:
 
-- design only in this cycle
-- no implementation yet
+- Cycle B implemented for NQ/ES
+- 6E remains blocked until Cycle C session-date support and sanity checks
 - coverage-only blueprint demonstration on a rejected workflow child
 
 Purpose:
@@ -136,6 +136,16 @@ For ES these timing gates remain a near-literal NQ RTH transfer. For 6E they
 are intentionally frozen and therefore mean "no entries during the first hour
 after the 18:00 ET session open, and no entries at/after session minute 360
 (00:00 ET)." That is not tuned for FX; it is part of the blueprint stress test.
+
+6E artifact caveat:
+
+- the literal frozen gates make 6E trade only an arbitrary early-session window:
+  roughly `19:00 ET` through `00:00 ET`, with force-flat around `00:25 ET`
+- any 6E result from this workflow child primarily reflects that frozen
+  literal-gate transfer, not whether the VWAP-fade thesis transfers to EUR/USD
+- the 6E R number is therefore not FX-thesis evidence
+- a real FX candidate must decide whether timing gates are session-relative
+  before discovery; changing them after seeing 6E results would be tuning
 
 ## Data-Grounded 6E Session Decision
 
@@ -333,10 +343,10 @@ and must not be used to pick the best instrument.
 
 Cycle B:
 
-- add explicit child-local NQ/ES/6E lookup
-- rerun NQ through lookup and prove bit-identical behavior
-- run ES
-- write coverage-only cross-instrument report
+- completed: add explicit child-local NQ/ES/6E lookup
+- completed: rerun NQ through lookup and prove bit-identical behavior
+- completed: run ES
+- completed: write coverage-only cross-instrument report
 
 Cycle C:
 
@@ -355,3 +365,37 @@ Deferred until a real positive candidate:
 - block bootstrap engine
 - block permutation engine
 - promotion aggregator
+
+## Cycle B Result
+
+Artifact:
+
+```text
+data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_es_20260528T134418Z
+```
+
+NQ lookup proof:
+
+- bit-identical: `true`
+- trade count: baseline `1820`, lookup `1820`
+- completed_non_gap count: baseline `1810`, lookup `1810`
+- mean R: baseline `-0.13961137318663386`, lookup
+  `-0.13961137318663386`
+- trade-row SHA-256:
+  `d935f1a27b144054403860c53eafe12985250e49f365b83683c2949f8809d7a5`
+
+ES same-day RTH transfer:
+
+- trade count: `2375`
+- completed_non_gap count: `2374`
+- mean R: `-0.2708235375893883`
+- total R: `-642.9350782372079`
+- win rate: `0.37573715248525696`
+- ADX kept fraction: `0.24325736464968153`
+
+Interpretation:
+
+- ES did not rescue the rejected workflow child
+- this is still coverage-only context and cannot select an instrument or
+  promote an edge
+- 6E was not run

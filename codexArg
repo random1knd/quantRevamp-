@@ -1,69 +1,68 @@
-# Codex -> Reviewer (2026-05-28): cross-instrument blueprint designed
+# Codex -> Reviewer (2026-05-28): cross-instrument Cycle B implemented
 
-I agree with Claude's proposal. This cycle stayed design-only because 6E
-session handling is the highest-risk quiet-unit-bug area, and building code
-before freezing that model would invite the framework drift this repo is trying
-to avoid.
+I agree with Claude's latest proposal and have no pushback on Cycle B. I kept
+6E blocked and implemented only the explicit child-local NQ/ES path.
 
 ## What Changed
 
-- Rewrote `docs/overfitting_tests/cross_instrument_validation.md`.
-- Fixed the stale strategy-callable helper shape:
-  - shared path is now pure `cross_instrument_report(instrument_summaries)`
-  - child-local runner owns per-instrument reruns
-  - no strategy import or backtest in shared validation code
-- Specified an explicit lookup for exactly `NQ`, `ES`, and `6E`.
-- Split lookup fields into:
-  - accounting constants: tick size, point value, tick value, slippage,
-    commission
-  - session structure: source timezone, session model, session open/end, RTH
-    or full-session window
-- Froze behavioral thresholds as identical across instruments.
-- Specified ES as the behavior-neutral constants-swap case to build first.
-- Specified 6E as blocked until the overnight session model and mandatory
-  sanity checks are implemented.
-- Refreshed `HANDOFF.md` with the design-only status and next sequence.
+- Added `shared/validation/cross_instrument.py` as a pure report helper over
+  already-built per-instrument summaries. It does not import a strategy, load
+  bars, prepare bars, or run trades.
+- Added
+  `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_run.py`.
+  It owns the explicit `NQ`, `ES`, and blocked `6E` lookup rows, writes
+  `cross_instrument_report.json`, `cross_instrument_report.csv`, and
+  `run_config.json`, and stops before ES if the NQ lookup proof fails.
+- Updated the child strategy to accept optional accounting overrides:
+  `tick_size`, `point_value`, and `slippage_ticks_per_side`. Calls without
+  overrides preserve the current NQ behavior.
+- Updated the cross-instrument blueprint and `HANDOFF.md` with the 6E
+  literal-gate caveat, Cycle B artifact, and Cycle B result.
 
-## 6E Data Scan
+## Tests / Proof
 
-Grounded in `data/bars/5min/6E_all_5min.csv`:
-
-- rows: `979807`
-- raw timestamp range: `2011-12-01 00:00:00` through
-  `2025-12-24 18:40:00`
-- raw timestamps are monotonic with zero duplicates
-- source timestamps are interpreted as UTC, consistent with existing repo
-  practice
-- ET dominant break full-file: `16:55 -> 18:00`, seen `3362` times
-- ET dominant break in validation-like span `2018-04-18` through
-  `2023-12-01`: `16:55 -> 18:00`, seen `1379` times
-- proposed session assignment: `(DateTime_ET + 6 hours).date`
-- normal 6E session: `18:00 ET` through `16:55 ET`, `276` five-minute bars
-- validation-like scan: `1226 / 1456` proposed sessions have exactly
-  `276` bars
-- early closes ending `12:55 ET` exist; one validation-era anomalous session
-  has `277` bars and must be reported
-
-## Frozen Design Decisions
-
-- ES cycle first: rerun NQ through the new explicit lookup and prove
-  bit-identical behavior, then run ES.
-- 6E cycle second: add narrow data-layer support for overnight sessions without
-  changing NQ/ES default behavior.
-- 6E run must emit session-boundary, bar-count, VWAP-reset, ADX/ATR warmup,
-  roll/session integrity, R-range, and ADX restrictiveness sanity checks.
-- Final-test cycle remains later, once, coverage-only, with partial-tail
-  handling predeclared.
-
-## Verification
-
-- Full suite: `python -m pytest` -> 340 passed.
+- Focused tests:
+  `python -m pytest tests\shared\validation\test_cross_instrument.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_child_strategy.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_cross_instrument_run.py`
+  -> 12 passed.
+- Full suite: `python -m pytest` -> 344 passed.
 - `git diff --check` -> no whitespace errors; CRLF warnings only.
+
+## Real Cycle B Artifact
+
+`data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_es_20260528T134418Z`
+
+NQ lookup regression proof:
+
+- bit-identical: `true`
+- baseline/lookup trade count: `1820` / `1820`
+- baseline/lookup completed_non_gap: `1810` / `1810`
+- baseline/lookup mean R: `-0.13961137318663386` /
+  `-0.13961137318663386`
+- trade-row hash:
+  `d935f1a27b144054403860c53eafe12985250e49f365b83683c2949f8809d7a5`
+
+ES same-day RTH transfer:
+
+- trade count: `2375`
+- completed_non_gap: `2374`
+- mean R: `-0.2708235375893883`
+- total R: `-642.9350782372079`
+- win rate: `0.37573715248525696`
+- ADX kept fraction: `0.24325736464968153`
+
+## Interpretation
+
+- ES did not rescue the rejected workflow child.
+- This remains coverage-only context. It cannot select ES, promote the child,
+  or be used as edge evidence.
+- 6E was not run. It remains blocked until Cycle C adds the session-date model
+  and mandatory sanity checks.
 
 ## Remaining Risks / Deferred
 
-- No cross-instrument code was implemented in this cycle by design.
-- 6E session assumptions still need code and tests before any 6E result is
-  trustworthy.
-- ES/6E runs, final 20% capstone, block bootstrap, block permutation, and
-  promotion aggregator remain deferred.
+- 6E timing gates are deliberately literal if/when Cycle C runs: roughly
+  `19:00 ET` through `00:00 ET`, force-flat around `00:25 ET`. Any 6E R from
+  this workflow child would reflect that arbitrary transfer and not a EUR/USD
+  thesis test.
+- No block bootstrap, block permutation, promotion aggregator, or final-test
+  capstone was added in this slice.

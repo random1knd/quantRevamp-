@@ -230,6 +230,54 @@ def test_child_generate_trades_none_threshold_matches_frozen_threshold(monkeypat
     assert default_trades == explicit_trades
 
 
+def test_child_accounting_overrides_preserve_default_and_change_commission(monkeypatch):
+    bars = make_adx_bars(bars_per_session=21)
+    prepared = bars.copy()
+    prepared["ATR"] = 2.0
+    prepared["ADX"] = params.ADX_FILTER_THRESHOLD
+    prepared["EntryZ"] = None
+    prepared["SessionVWAP"] = 105.0
+    prepared["VWAPDeviation"] = 0.0
+    prepared.loc[19, "EntryZ"] = -params.ENTRY_Z_THRESHOLD
+    prepared.loc[20, "Open"] = 100.0
+    prepared.loc[20, "High"] = 106.0
+    prepared.loc[20, "Low"] = 99.0
+    prepared.loc[20, "Close"] = 105.0
+
+    monkeypatch.setattr(strategy, "add_child_indicators", lambda _: prepared)
+
+    default_trade = generate_trades(
+        bars,
+        exclude_roll_sessions=True,
+        commission_per_round_turn=5.16,
+        commission_is_smoke_test=False,
+    )[0]
+    explicit_nq_trade = generate_trades(
+        bars,
+        exclude_roll_sessions=True,
+        commission_per_round_turn=5.16,
+        commission_is_smoke_test=False,
+        tick_size=params.NQ_TICK_SIZE,
+        point_value=params.NQ_POINT_VALUE,
+        slippage_ticks_per_side=params.SLIPPAGE_TICKS_PER_SIDE,
+    )[0]
+    es_accounting_trade = generate_trades(
+        bars,
+        exclude_roll_sessions=True,
+        commission_per_round_turn=5.16,
+        commission_is_smoke_test=False,
+        tick_size=0.25,
+        point_value=50.0,
+        slippage_ticks_per_side=1,
+    )[0]
+
+    assert default_trade == explicit_nq_trade
+    assert es_accounting_trade.realized_r_gross == pytest.approx(
+        default_trade.realized_r_gross
+    )
+    assert es_accounting_trade.realized_r > default_trade.realized_r
+
+
 def test_child_indicator_columns_include_trade_driving_adx():
     assert "ADX" in INDICATOR_COLUMNS
     assert params.ADX_WINDOW == 14
