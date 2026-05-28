@@ -42,11 +42,57 @@ valid completion.
       this VWAP-fade mean-reversion family.
 - [x] Time stability: implemented as one full-validation frozen-child trade
       generation bucketed by entry calendar month, quarter, and year.
-- [ ] Cross-instrument: deferred; needs instrument-specific constants.
+- [x] Cross-instrument blueprint: design spec written. Implementation is
+      deferred until review; ES is next, then 6E session model, then final
+      test capstone.
+- [ ] Cross-instrument implementation: deferred.
 - [ ] Final 20% test: not run. Do not touch final-test data without an explicit
       labeled decision.
 
 ## Current Slice
+
+Implemented Claude-approved cross-instrument blueprint design only:
+
+- `docs/overfitting_tests/cross_instrument_validation.md`: rewritten from the
+  stale strategy-callable helper shape into a pure-report shared helper plus
+  child-local rerun design.
+- Explicit lookup is limited to `NQ`, `ES`, and `6E`; no registry, framework, or
+  generic multi-instrument layer.
+- Accounting constants are separated from session structure.
+- Behavioral thresholds remain frozen and identical across instruments.
+- ES is specified as the behavior-neutral constants-swap case to build first.
+- 6E remains blocked until the new overnight session model and mandatory sanity
+  checks are implemented.
+
+6E data-grounded session findings:
+
+- file: `data/bars/5min/6E_all_5min.csv`
+- rows: `979807`
+- raw timestamp range: `2011-12-01 00:00:00` through
+  `2025-12-24 18:40:00`
+- raw timestamps are monotonic with zero duplicates
+- treating source timestamps as UTC and converting to ET, the dominant full-file
+  daily break is `16:55 -> 18:00`, seen `3362` times
+- in the validation-like span `2018-04-18` through `2023-12-01`, that break is
+  seen `1379` times
+- proposed 6E session assignment is `(DateTime_ET + 6 hours).date`, with
+  `18:00 ET` open, `16:55 ET` normal last bar open, and `276` normal 5-minute
+  bars
+- validation-like scan found `1226 / 1456` proposed sessions with exactly
+  `276` bars
+- early-close examples end at `12:55 ET`; one anomalous validation-era session
+  has `277` bars and must be reported, not hidden
+
+Next sequence:
+
+- Cycle B: implement explicit lookup, rerun NQ through it and prove
+  bit-identical behavior, then run ES.
+- Cycle C: implement 6E session-date support and mandatory sanity checks, then
+  run 6E.
+- Cycle D: run final 20% capstone once, coverage-only, with predeclared
+  partial-tail handling.
+
+## Previous Slice
 
 Implemented Claude-approved time-stability chunk:
 
@@ -105,7 +151,7 @@ family and is kept only as workflow coverage.
   mean-reversion candidate must use a predeclared structure-preserving
   within-session block permutation before any market-permutation result can be
   treated as meaningful edge validation
-- no cross-instrument build until the explicit market/session design is made
+- no cross-instrument implementation until the blueprint is reviewed
 - no promotion aggregator until a real positive candidate exists
 - no final-test access
 
@@ -127,14 +173,20 @@ family and is kept only as workflow coverage.
 
 ## Verification
 
-- Focused time-stability tests: 4 passed.
+- Cross-instrument blueprint cycle is doc-only; no new implementation tests.
 - Full suite: 340 passed.
+- 6E data-shape scan completed and recorded in
+  `docs/overfitting_tests/cross_instrument_validation.md`.
+- `git diff --check`: no whitespace errors; only CRLF conversion warnings.
+
+Previous time-stability verification:
+
+- Focused time-stability tests: 4 passed.
 - Real time-stability runner completed and wrote
   `time_stability_20260528T121117Z`.
 - No final-test rows were passed to the strategy. `load_validation_bars()` reads
   the source CSV to compute/assert frozen split boundaries, then slices to
   validation before the child rerun.
-- `git diff --check`: no whitespace errors; only CRLF conversion warnings.
 
 ## Standing Governance Reminders
 

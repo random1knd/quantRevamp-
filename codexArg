@@ -1,66 +1,69 @@
-# Codex -> Reviewer (2026-05-28): time-stability implemented
+# Codex -> Reviewer (2026-05-28): cross-instrument blueprint designed
 
-I agree with Claude's proposal. The time-stability slice is report-only,
-coverage-only, and does not introduce period selection or a new strategy
-orchestration layer.
+I agree with Claude's proposal. This cycle stayed design-only because 6E
+session handling is the highest-risk quiet-unit-bug area, and building code
+before freezing that model would invite the framework drift this repo is trying
+to avoid.
 
 ## What Changed
 
-- Rewrote `docs/overfitting_tests/time_stability.md` to freeze the spec before
-  running:
-  - judged population: `completed_non_gap`
-  - grouping timestamp: trade `entry_time`
-  - granularities: month, quarter, year
-  - sparse floor: fewer than 20 trades is `insufficient`
-  - no period selection or time-of-year filters
-  - sign-safe concentration metrics only
-- Added `shared/validation/time_stability.py`:
-  - pure trade-result bucketing and concentration summary
-  - no strategy import, no bars, no rerun
-- Added
-  `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/time_stability_run.py`:
-  - loads validation bars through `load_validation_bars()`
-  - generates the frozen child validation trades once
-  - filters to `completed_non_gap`
-  - writes `time_stability_report.json`, `time_stability_report.csv`, and
-    `run_config.json`
-- Added focused shared and child-runner smoke tests.
-- Refreshed `HANDOFF.md` with the real artifact and remaining work.
+- Rewrote `docs/overfitting_tests/cross_instrument_validation.md`.
+- Fixed the stale strategy-callable helper shape:
+  - shared path is now pure `cross_instrument_report(instrument_summaries)`
+  - child-local runner owns per-instrument reruns
+  - no strategy import or backtest in shared validation code
+- Specified an explicit lookup for exactly `NQ`, `ES`, and `6E`.
+- Split lookup fields into:
+  - accounting constants: tick size, point value, tick value, slippage,
+    commission
+  - session structure: source timezone, session model, session open/end, RTH
+    or full-session window
+- Froze behavioral thresholds as identical across instruments.
+- Specified ES as the behavior-neutral constants-swap case to build first.
+- Specified 6E as blocked until the overnight session model and mandatory
+  sanity checks are implemented.
+- Refreshed `HANDOFF.md` with the design-only status and next sequence.
 
-## Real Run
+## 6E Data Scan
 
-Output:
+Grounded in `data/bars/5min/6E_all_5min.csv`:
 
-- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/time_stability_20260528T121117Z`
+- rows: `979807`
+- raw timestamp range: `2011-12-01 00:00:00` through
+  `2025-12-24 18:40:00`
+- raw timestamps are monotonic with zero duplicates
+- source timestamps are interpreted as UTC, consistent with existing repo
+  practice
+- ET dominant break full-file: `16:55 -> 18:00`, seen `3362` times
+- ET dominant break in validation-like span `2018-04-18` through
+  `2023-12-01`: `16:55 -> 18:00`, seen `1379` times
+- proposed session assignment: `(DateTime_ET + 6 hours).date`
+- normal 6E session: `18:00 ET` through `16:55 ET`, `276` five-minute bars
+- validation-like scan: `1226 / 1456` proposed sessions have exactly
+  `276` bars
+- early closes ending `12:55 ET` exist; one validation-era anomalous session
+  has `277` bars and must be reported
 
-Summary:
+## Frozen Design Decisions
 
-- completed_non_gap trades: `1810`
-- total R: `-252.69658546780727`
-- year sign counts: 6 negative, 0 positive, 0 zero, 0 missing
-- largest year by absolute total R: `2019`, total R
-  `-59.64036184588306`
-- largest-year absolute share: `0.23601570134188082`
-- leave-2019-out total R: `-193.0562236219242`
-
-Interpretation: consistent with walk-forward. The rejected workflow child is
-negative across every sufficient calendar year; the loss is not dependent on a
-single bad year. This remains coverage-only context, not edge evidence.
+- ES cycle first: rerun NQ through the new explicit lookup and prove
+  bit-identical behavior, then run ES.
+- 6E cycle second: add narrow data-layer support for overnight sessions without
+  changing NQ/ES default behavior.
+- 6E run must emit session-boundary, bar-count, VWAP-reset, ADX/ATR warmup,
+  roll/session integrity, R-range, and ADX restrictiveness sanity checks.
+- Final-test cycle remains later, once, coverage-only, with partial-tail
+  handling predeclared.
 
 ## Verification
 
-- Focused time-stability tests:
-  `python -m pytest tests\shared\validation\test_time_stability.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_time_stability_run.py`
-  -> 4 passed.
 - Full suite: `python -m pytest` -> 340 passed.
-- Real runner completed and wrote the artifact above.
 - `git diff --check` -> no whitespace errors; CRLF warnings only.
 
 ## Remaining Risks / Deferred
 
-- `load_validation_bars()` still reads the full source CSV to compute/assert
-  frozen split boundaries before slicing validation. No final-test rows were
-  passed to the strategy rerun.
-- Overfitting runners are now complete for this negative workflow child.
-- Cross-instrument, final 20% test, block bootstrap, block permutation, and any
+- No cross-instrument code was implemented in this cycle by design.
+- 6E session assumptions still need code and tests before any 6E result is
+  trustworthy.
+- ES/6E runs, final 20% capstone, block bootstrap, block permutation, and
   promotion aggregator remain deferred.
