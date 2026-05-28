@@ -3,7 +3,7 @@
 Status:
 
 - Cycle B implemented for NQ/ES
-- 6E remains blocked until Cycle C session-date support and sanity checks
+- Cycle C implemented for 6E with mixed-contract session quarantine
 - coverage-only blueprint demonstration on a rejected workflow child
 
 Purpose:
@@ -15,8 +15,8 @@ Purpose:
 
 ## BLOCKER History: 6E Session Model
 
-Do not run 6E cross-instrument validation until its session model is explicitly
-implemented and sanity-checked.
+6E cross-instrument validation was blocked until its session model was
+explicitly implemented and sanity-checked.
 
 Earlier blocker:
 
@@ -189,14 +189,14 @@ Decision for 6E:
 - SessionVWAP resets at `SessionMinute_ET = 0`
 - ADX and ATR warmup are session-local exactly as for NQ, but over the 6E
   overnight session
-- contract roll detection is by this new `SessionDate_ET`; multiple contracts
-  in one 18:00-to-17:00 ET session are invalid unless explicitly handled later
+- contract roll detection is by this new `SessionDate_ET`; Cycle C explicitly
+  quarantines mixed-contract sessions as untradeable roll sessions
 
 ## Required Data-Layer Change For 6E
 
 Do not mutate current same-day behavior for NQ/ES.
 
-Add a narrow data-layer option, not a framework:
+Implemented as a narrow data-layer option, not a framework:
 
 - existing same-day mode remains default:
   `SessionDate_ET = DateTime_ET.dt.date`
@@ -235,7 +235,9 @@ A 6E run without these checks is untrusted even if tests pass:
   - per-session count of non-null ADX and ATR
   - count of sessions with no eligible post-warmup bars
 - roll/session integrity:
-  - no session contains multiple contracts unless explicitly allowed later
+- mixed-contract sessions are quarantined as untradeable roll sessions and
+  reported by date, bar count, and contracts
+- no tradeable session may contain multiple contracts
   - roll-session flag counts reported
 - R-range sanity check:
   - min/max/percentiles for initial risk, gross R, net R
@@ -350,9 +352,10 @@ Cycle B:
 
 Cycle C:
 
-- add narrow 6E session-date support in the data layer
-- add mandatory 6E sanity checks
-- run 6E only after sanity checks pass
+- completed: add narrow 6E session-date support in the data layer
+- completed: quarantine mixed-contract 6E sessions
+- completed: add mandatory 6E sanity checks
+- completed: run 6E only after sanity checks pass
 
 Cycle D:
 
@@ -399,3 +402,49 @@ Interpretation:
 - this is still coverage-only context and cannot select an instrument or
   promote an edge
 - 6E was not run
+
+## Cycle C Result
+
+Artifact:
+
+```text
+data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_6e_20260528T144737Z
+```
+
+NQ and ES regression gates:
+
+- NQ lookup bit-identical: `true`
+- NQ trade-row SHA-256:
+  `d935f1a27b144054403860c53eafe12985250e49f365b83683c2949f8809d7a5`
+- ES Cycle B unchanged: `true`
+- ES mean R remains `-0.2708235375893883`
+
+6E session sanity:
+
+- status: `pass`
+- validation sessions: `1841`
+- normal `276`-bar sessions: `1529`
+- `228`-bar sessions: `30`
+- `277`-bar sessions: `11`, including `2018-05-14`
+- mixed-contract sessions quarantined: `22`
+- mixed-contract excluded fraction: `0.011950027159152634`
+- tradeable mixed-contract session count: `0`
+- VWAP reset verification: `1841` checked, `0` failed
+- zero/negative initial-risk trades: `0`
+
+6E frozen-gate transfer:
+
+- trade count: `1915`
+- completed_non_gap count: `1907`
+- mean R: `-0.5415719496803157`
+- total R: `-1032.777708040362`
+- win rate: `0.3434714210802307`
+- ADX kept fraction: `0.18258426966292135`
+
+Interpretation:
+
+- 6E did not rescue the rejected workflow child
+- the 6E R number reflects the arbitrary frozen timing-gate transfer, not
+  EUR/USD thesis evidence
+- this remains coverage-only context and cannot select an instrument or promote
+  an edge

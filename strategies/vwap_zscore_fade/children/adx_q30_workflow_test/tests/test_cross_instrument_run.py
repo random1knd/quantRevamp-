@@ -47,6 +47,7 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
     }
     input_paths["NQ"].write_text("nq", encoding="utf-8")
     input_paths["ES"].write_text("es-data", encoding="utf-8")
+    input_paths["6E"].write_text("6e", encoding="utf-8")
     monkeypatch.setattr(
         cross_instrument_run,
         "INSTRUMENTS",
@@ -66,7 +67,9 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
             return nq_bars.copy(), splits
         if config.instrument == "ES":
             return es_bars.copy(), splits
-        raise AssertionError("6E must not be loaded in Cycle B")
+        if config.instrument == "6E":
+            return _validation_bars("6E", close_offset=0.10), splits
+        raise AssertionError(f"unexpected instrument: {config.instrument}")
 
     generate_calls = []
 
@@ -79,6 +82,8 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
         tick_size=None,
         point_value=None,
         slippage_ticks_per_side=None,
+        rth_start_session_minute=None,
+        last_rth_bar_open_session_minute=None,
     ):
         instrument = bars["Instrument"].iloc[0]
         generate_calls.append(
@@ -89,10 +94,14 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
                 "slippage_ticks_per_side": slippage_ticks_per_side,
                 "commission_per_round_turn": commission_per_round_turn,
                 "commission_is_smoke_test": commission_is_smoke_test,
+                "rth_start_session_minute": rth_start_session_minute,
+                "last_rth_bar_open_session_minute": last_rth_bar_open_session_minute,
             }
         )
         if instrument == "ES":
             return [_trade("ES", realized_r=0.40, entry_price=5000.0)]
+        if instrument == "6E":
+            return [_trade("6E", realized_r=0.0, entry_price=1.1000)]
         return [_trade("NQ", realized_r=-0.20, entry_price=17000.0)]
 
     monkeypatch.setattr(
@@ -108,10 +117,26 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
     monkeypatch.setattr(
         cross_instrument_run,
         "_adx_restrictiveness_summary",
-        lambda bars, *, exclude_roll_sessions: {
+        lambda bars, **_: {
             "adx_kept_count": 3,
             "adx_rejected_count": 1,
             "adx_missing_count": 0,
+        },
+    )
+    monkeypatch.setattr(
+        cross_instrument_run,
+        "_es_cycle_b_regression_proof",
+        lambda summary: {"unchanged": True, "checks": {}, "observed": summary},
+    )
+    monkeypatch.setattr(
+        cross_instrument_run,
+        "_build_6e_session_sanity_report",
+        lambda *, config, validation_bars, splits, trades: {
+            "report_type": "six_e_session_sanity_report",
+            "instrument": "6E",
+            "status": "pass",
+            "session_boundary_samples": [],
+            "mixed_contract_excluded_sessions": [],
         },
     )
 
@@ -119,7 +144,7 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
     result = cross_instrument_run.run_cross_instrument_report(output_dir=output_dir)
 
     assert result == output_dir
-    assert loaded_instruments == ["NQ", "ES"]
+    assert loaded_instruments == ["NQ", "ES", "6E"]
     assert generate_calls[0]["instrument"] == "NQ"
     assert generate_calls[0]["point_value"] is None
     assert generate_calls[1]["instrument"] == "NQ"
@@ -127,6 +152,9 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
     assert generate_calls[2]["instrument"] == "ES"
     assert generate_calls[2]["tick_size"] == pytest.approx(0.25)
     assert generate_calls[2]["point_value"] == pytest.approx(50.0)
+    assert generate_calls[3]["instrument"] == "6E"
+    assert generate_calls[3]["tick_size"] == pytest.approx(0.00005)
+    assert generate_calls[3]["point_value"] == pytest.approx(125000.0)
 
     report = json.loads(
         (output_dir / cross_instrument_run.REPORT_JSON).read_text(encoding="utf-8")
@@ -137,15 +165,17 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
     )
     assert report["coverage_only"] is True
     assert report["judgment_status"] == "report_only_no_pass_fail"
-    assert report["instruments_run"] == ["NQ", "ES"]
-    assert "6E" in report["instruments_not_run"]
+    assert report["instruments_run"] == ["NQ", "ES", "6E"]
+    assert report["instruments_not_run"] == {}
+    assert report["six_e_session_sanity_status"] == "pass"
+    assert "not EUR/USD thesis evidence" in report["six_e_literal_gate_caveat"]
     assert report["nq_lookup_regression_proof"]["bit_identical"] is True
     assert report["nq_lookup_regression_proof"]["trade_rows_match"] is True
     assert report["nq_lookup_regression_proof"]["validation_bars_match"] is True
-    assert report["instrument_order"] == ["ES", "NQ"]
+    assert report["instrument_order"] == ["6E", "ES", "NQ"]
     assert report["instrument_mean_sign_counts"] == {
         "positive": 1,
-        "zero": 0,
+        "zero": 1,
         "negative": 1,
         "missing": 0,
     }
@@ -155,9 +185,10 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
         encoding="utf-8",
     ) as file:
         rows = list(csv.DictReader(file))
-    assert [row["instrument"] for row in rows] == ["ES", "NQ"]
-    assert rows[0]["point_value"] == "50.0"
-    assert rows[1]["point_value"] == "20.0"
+    assert [row["instrument"] for row in rows] == ["6E", "ES", "NQ"]
+    assert rows[0]["point_value"] == "125000.0"
+    assert rows[1]["point_value"] == "50.0"
+    assert rows[2]["point_value"] == "20.0"
 
     run_config = json.loads(
         (output_dir / cross_instrument_run.RUN_CONFIG_JSON).read_text(
@@ -165,9 +196,8 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
         )
     )
     assert run_config["run_type"] == "validation_child_cross_instrument"
-    assert run_config["instrument_lookup"]["6E"]["implementation_status"] == (
-        "blocked_until_cycle_c_session_model"
-    )
+    assert run_config["instrument_lookup"]["6E"]["implementation_status"] == "cycle_c_run"
+    assert run_config["six_e_session_sanity_status"] == "pass"
     assert run_config["input_data_bytes"][
         ".test_artifacts/child_cross_instrument_tests/"
         f"{scratch.name}/NQ_sample.csv"
@@ -176,6 +206,12 @@ def test_cross_instrument_runner_proves_nq_lookup_before_es_and_blocks_6e(
         ".test_artifacts/child_cross_instrument_tests/"
         f"{scratch.name}/ES_sample.csv"
     ] == 7
+    assert run_config["input_data_bytes"][
+        ".test_artifacts/child_cross_instrument_tests/"
+        f"{scratch.name}/6E_sample.csv"
+    ] == 2
+    assert (output_dir / cross_instrument_run.SESSION_SANITY_JSON).exists()
+    assert (output_dir / cross_instrument_run.SESSION_SANITY_CSV).exists()
 
 
 def _instrument_lookup(input_paths: dict[str, Path]) -> dict[str, object]:
@@ -185,6 +221,10 @@ def _instrument_lookup(input_paths: dict[str, Path]) -> dict[str, object]:
             instrument="NQ",
             input_path=input_paths["NQ"],
             session_model="same_day_rth",
+            session_date_policy="same_day",
+            session_date_offset_hours=None,
+            mixed_contract_policy="reject",
+            daily_break_expected=None,
             source_timezone="UTC",
             strategy_timezone="America/New_York",
             session_open="09:30",
@@ -203,6 +243,10 @@ def _instrument_lookup(input_paths: dict[str, Path]) -> dict[str, object]:
             instrument="ES",
             input_path=input_paths["ES"],
             session_model="same_day_rth",
+            session_date_policy="same_day",
+            session_date_offset_hours=None,
+            mixed_contract_policy="reject",
+            daily_break_expected=None,
             source_timezone="UTC",
             strategy_timezone="America/New_York",
             session_open="09:30",
@@ -220,7 +264,11 @@ def _instrument_lookup(input_paths: dict[str, Path]) -> dict[str, object]:
         "6E": config(
             instrument="6E",
             input_path=input_paths["6E"],
-            session_model="overnight_18et_blocked_until_cycle_c",
+            session_model="overnight_18et_quarantine_mixed_contracts",
+            session_date_policy="offset_after_session_open",
+            session_date_offset_hours=6.0,
+            mixed_contract_policy="mark",
+            daily_break_expected="16:55 -> 18:00 ET",
             source_timezone="UTC",
             strategy_timezone="America/New_York",
             session_open="18:00",
@@ -233,7 +281,7 @@ def _instrument_lookup(input_paths: dict[str, Path]) -> dict[str, object]:
             slippage_ticks_per_side=1.0,
             commission_per_round_turn=5.60,
             commission_is_smoke_test=False,
-            implementation_status="blocked_until_cycle_c_session_model",
+            implementation_status="cycle_c_run",
         ),
     }
 

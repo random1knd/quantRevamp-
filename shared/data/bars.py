@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import time
 import re
+from typing import Literal
 
 import pandas as pd
 
@@ -26,6 +27,12 @@ def prepare_bars(
     strategy_timezone: str,
     session_open: str,
     expected_bar_interval_minutes: int,
+    session_date_policy: Literal[
+        "same_day",
+        "offset_after_session_open",
+    ] = "same_day",
+    session_date_offset_hours: int | float | None = None,
+    mixed_contract_policy: Literal["reject", "mark"] = "reject",
 ) -> pd.DataFrame:
     """Prepare raw bars with mechanical timestamp and contract-roll fields."""
 
@@ -54,21 +61,37 @@ def prepare_bars(
     prepared["DateTime_ET"] = prepared["DateTime_UTC"].dt.tz_convert(
         strategy_timezone
     )
-    prepared["SessionDate_ET"] = prepared["DateTime_ET"].dt.date
-    _reject_multiple_contracts_per_session(prepared)
-
     prepared["MinuteOfDay_ET"] = (
         prepared["DateTime_ET"].dt.hour * 60 + prepared["DateTime_ET"].dt.minute
     )
-    prepared["SessionMinute_ET"] = prepared["MinuteOfDay_ET"] - (
-        session_open_time.hour * 60 + session_open_time.minute
+    prepared["SessionDate_ET"] = _session_date(
+        prepared["DateTime_ET"],
+        session_date_policy=session_date_policy,
+        session_date_offset_hours=session_date_offset_hours,
     )
+    prepared["SessionMinute_ET"] = _session_minute(
+        prepared["MinuteOfDay_ET"],
+        session_open_time=session_open_time,
+        session_date_policy=session_date_policy,
+    )
+    session_contract = _session_contract(prepared)
+    mixed_contract_session = _mixed_contract_session(prepared)
+    if mixed_contract_policy == "reject":
+        _reject_multiple_contracts_per_session(prepared, mixed_contract_session)
+    elif mixed_contract_policy == "mark":
+        prepared["MixedContractSession"] = mixed_contract_session
+        prepared["SessionContract"] = prepared["SessionDate_ET"].map(session_contract)
+    else:
+        raise ValueError(f"unknown mixed_contract_policy: {mixed_contract_policy}")
+
     prepared["BarGapMinutesFromPrevious"] = _bar_gap_minutes_from_previous(prepared)
     prepared["BarGapFromPrevious"] = prepared["BarGapMinutesFromPrevious"].ne(
         expected_bar_interval_minutes
     ) & prepared["BarGapMinutesFromPrevious"].notna()
     prepared["IsFirstSessionAfterContractChange"] = _mark_first_session_after_contract_change(
-        prepared
+        prepared,
+        session_contract=session_contract,
+        mixed_contract_session=mixed_contract_session,
     )
 
     return prepared
@@ -82,6 +105,10 @@ def rth_only_raw_bars(
     session_open: str,
     rth_start_session_minute: int,
     last_rth_bar_open_session_minute: int,
+    session_date_policy: Literal[
+        "same_day",
+        "offset_after_session_open",
+    ] = "same_day",
 ) -> pd.DataFrame:
     """Filter raw source rows to declared RTH session minutes."""
 
@@ -97,8 +124,11 @@ def rth_only_raw_bars(
     session_open_time = _parse_session_open(session_open)
     strategy_times = source_times.dt.tz_convert(strategy_timezone)
     minute_of_day = strategy_times.dt.hour * 60 + strategy_times.dt.minute
-    session_open_minute = session_open_time.hour * 60 + session_open_time.minute
-    session_minute = minute_of_day - session_open_minute
+    session_minute = _session_minute(
+        minute_of_day,
+        session_open_time=session_open_time,
+        session_date_policy=session_date_policy,
+    )
     rth_mask = session_minute.between(
         rth_start_session_minute,
         last_rth_bar_open_session_minute,
@@ -133,12 +163,68 @@ def _parse_session_open(session_open: str) -> time:
     return parsed.time()
 
 
-def _reject_multiple_contracts_per_session(bars: pd.DataFrame) -> None:
-    contract_counts = bars.groupby("SessionDate_ET")["Contract"].nunique()
-    mixed_sessions = contract_counts[contract_counts > 1]
+def _session_date(
+    date_time_et: pd.Series,
+    *,
+    session_date_policy: str,
+    session_date_offset_hours: int | float | None,
+) -> pd.Series:
+    if session_date_policy == "same_day":
+        if session_date_offset_hours is not None:
+            raise ValueError(
+                "session_date_offset_hours is only valid for "
+                "offset_after_session_open"
+            )
+        return date_time_et.dt.date
+
+    if session_date_policy == "offset_after_session_open":
+        if session_date_offset_hours is None:
+            raise ValueError(
+                "session_date_offset_hours is required for "
+                "offset_after_session_open"
+            )
+        return (date_time_et + pd.Timedelta(hours=session_date_offset_hours)).dt.date
+
+    raise ValueError(f"unknown session_date_policy: {session_date_policy}")
+
+
+def _session_minute(
+    minute_of_day: pd.Series,
+    *,
+    session_open_time: time,
+    session_date_policy: str,
+) -> pd.Series:
+    session_open_minute = session_open_time.hour * 60 + session_open_time.minute
+    raw_session_minute = minute_of_day - session_open_minute
+    if session_date_policy == "same_day":
+        return raw_session_minute
+    if session_date_policy == "offset_after_session_open":
+        return raw_session_minute.mod(24 * 60)
+    raise ValueError(f"unknown session_date_policy: {session_date_policy}")
+
+
+def _session_contract(bars: pd.DataFrame) -> dict:
+    return bars.groupby("SessionDate_ET", sort=False)["Contract"].last().to_dict()
+
+
+def _mixed_contract_session(bars: pd.DataFrame) -> pd.Series:
+    contract_counts = bars.groupby("SessionDate_ET", sort=False)["Contract"].transform(
+        "nunique"
+    )
+    return contract_counts > 1
+
+
+def _reject_multiple_contracts_per_session(
+    bars: pd.DataFrame,
+    mixed_contract_session: pd.Series,
+) -> None:
+    mixed_sessions = bars.loc[
+        mixed_contract_session,
+        "SessionDate_ET",
+    ].drop_duplicates()
 
     if not mixed_sessions.empty:
-        sessions = [str(session) for session in mixed_sessions.index.tolist()]
+        sessions = [str(session) for session in mixed_sessions.tolist()]
         raise ValueError(f"multiple contracts in one session: {sessions}")
 
 
@@ -155,9 +241,18 @@ def _bar_gap_minutes_from_previous(
     return gap_minutes
 
 
-def _mark_first_session_after_contract_change(bars: pd.DataFrame) -> pd.Series:
+def _mark_first_session_after_contract_change(
+    bars: pd.DataFrame,
+    *,
+    session_contract: dict,
+    mixed_contract_session: pd.Series,
+) -> pd.Series:
     session_contracts = (
-        bars.groupby("SessionDate_ET", sort=True)["Contract"].first().reset_index()
+        bars[["SessionDate_ET"]]
+        .drop_duplicates()
+        .assign(
+            Contract=lambda frame: frame["SessionDate_ET"].map(session_contract),
+        )
     )
     session_contracts["PreviousContract"] = session_contracts["Contract"].shift(1)
     session_contracts["IsRollSession"] = (
@@ -172,4 +267,7 @@ def _mark_first_session_after_contract_change(bars: pd.DataFrame) -> pd.Series:
             strict=True,
         )
     )
-    return bars["SessionDate_ET"].map(roll_by_session).astype(bool)
+    return (
+        bars["SessionDate_ET"].map(roll_by_session).astype(bool)
+        | mixed_contract_session.astype(bool)
+    )

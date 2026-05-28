@@ -210,7 +210,7 @@ def test_child_generate_trades_none_threshold_matches_frozen_threshold(monkeypat
     prepared.loc[20, "Low"] = 99.0
     prepared.loc[20, "Close"] = 105.0
 
-    monkeypatch.setattr(strategy, "add_child_indicators", lambda _: prepared)
+    monkeypatch.setattr(strategy, "add_child_indicators", lambda *_, **__: prepared)
 
     default_trades = generate_trades(
         bars,
@@ -244,7 +244,7 @@ def test_child_accounting_overrides_preserve_default_and_change_commission(monke
     prepared.loc[20, "Low"] = 99.0
     prepared.loc[20, "Close"] = 105.0
 
-    monkeypatch.setattr(strategy, "add_child_indicators", lambda _: prepared)
+    monkeypatch.setattr(strategy, "add_child_indicators", lambda *_, **__: prepared)
 
     default_trade = generate_trades(
         bars,
@@ -276,6 +276,50 @@ def test_child_accounting_overrides_preserve_default_and_change_commission(monke
         default_trade.realized_r_gross
     )
     assert es_accounting_trade.realized_r > default_trade.realized_r
+
+
+def test_child_session_bound_overrides_preserve_default_and_extend_exit(monkeypatch):
+    bars = make_adx_bars(bars_per_session=80)
+    prepared = bars.copy()
+    prepared["ATR"] = 2.0
+    prepared["ADX"] = params.ADX_FILTER_THRESHOLD
+    prepared["EntryZ"] = None
+    prepared["SessionVWAP"] = 90.0
+    prepared["VWAPDeviation"] = 0.0
+    prepared.loc[70, "EntryZ"] = params.ENTRY_Z_THRESHOLD
+    prepared.loc[71:, "Open"] = 100.0
+    prepared.loc[71:, "High"] = 100.5
+    prepared.loc[71:, "Low"] = 99.5
+    prepared.loc[71:, "Close"] = 100.0
+
+    monkeypatch.setattr(strategy, "add_child_indicators", lambda *_, **__: prepared)
+
+    default_trade = generate_trades(
+        bars,
+        exclude_roll_sessions=True,
+        commission_per_round_turn=0.0,
+        commission_is_smoke_test=True,
+    )[0]
+    explicit_default_trade = generate_trades(
+        bars,
+        exclude_roll_sessions=True,
+        commission_per_round_turn=0.0,
+        commission_is_smoke_test=True,
+        rth_start_session_minute=params.RTH_START_SESSION_MINUTE,
+        last_rth_bar_open_session_minute=params.LAST_RTH_BAR_OPEN_SESSION_MINUTE,
+    )[0]
+    extended_trade = generate_trades(
+        bars,
+        exclude_roll_sessions=True,
+        commission_per_round_turn=0.0,
+        commission_is_smoke_test=True,
+        rth_start_session_minute=0,
+        last_rth_bar_open_session_minute=1375,
+    )[0]
+
+    assert default_trade == explicit_default_trade
+    assert default_trade.exit_reason == "session_end"
+    assert extended_trade.exit_reason == "end_of_data"
 
 
 def test_child_indicator_columns_include_trade_driving_adx():

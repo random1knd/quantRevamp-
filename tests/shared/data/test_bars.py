@@ -223,6 +223,123 @@ def test_prepare_bars_records_same_session_bar_gap_metadata():
     ]
 
 
+def test_prepare_bars_offset_session_policy_groups_overnight_session():
+    raw = make_bars(
+        [
+            "2026-01-02 23:00:00",  # 18:00 ET, session minute 0
+            "2026-01-02 23:10:00",  # 18:10 ET, missing one 5m bar
+            "2026-01-03 04:55:00",  # 23:55 ET
+            "2026-01-03 05:00:00",  # 00:00 ET
+            "2026-01-03 21:55:00",  # 16:55 ET
+            "2026-01-03 23:00:00",  # next session 18:00 ET
+        ],
+        contracts=["6EH26"] * 6,
+    )
+
+    bars = prepare_bars(
+        raw,
+        source_timezone="UTC",
+        strategy_timezone="America/New_York",
+        session_open="18:00",
+        expected_bar_interval_minutes=5,
+        session_date_policy="offset_after_session_open",
+        session_date_offset_hours=6,
+    )
+
+    assert bars["SessionDate_ET"].tolist() == [
+        date(2026, 1, 3),
+        date(2026, 1, 3),
+        date(2026, 1, 3),
+        date(2026, 1, 3),
+        date(2026, 1, 3),
+        date(2026, 1, 4),
+    ]
+    assert bars["SessionMinute_ET"].tolist() == [0, 10, 355, 360, 1375, 0]
+    assert bars["SessionMinute_ET"].iloc[:5].is_monotonic_increasing
+    assert bars["BarGapFromPrevious"].tolist() == [
+        False,
+        True,
+        True,
+        False,
+        True,
+        False,
+    ]
+    assert pd.isna(bars.loc[5, "BarGapMinutesFromPrevious"])
+
+
+def test_prepare_bars_offset_policy_requires_offset():
+    raw = make_bars(["2026-01-02 23:00:00"], contracts=["6EH26"])
+
+    with pytest.raises(ValueError, match="session_date_offset_hours is required"):
+        prepare_bars(
+            raw,
+            source_timezone="UTC",
+            strategy_timezone="America/New_York",
+            session_open="18:00",
+            expected_bar_interval_minutes=5,
+            session_date_policy="offset_after_session_open",
+        )
+
+
+def test_prepare_bars_marks_mixed_contract_session_when_explicitly_requested():
+    raw = make_bars(
+        [
+            "2026-01-01 23:00:00",
+            "2026-01-02 23:00:00",
+            "2026-01-03 00:00:00",
+            "2026-01-03 23:00:00",
+        ],
+        contracts=["6EH26", "6EH26", "6EM26", "6EM26"],
+    )
+
+    bars = prepare_bars(
+        raw,
+        source_timezone="UTC",
+        strategy_timezone="America/New_York",
+        session_open="18:00",
+        expected_bar_interval_minutes=5,
+        session_date_policy="offset_after_session_open",
+        session_date_offset_hours=6,
+        mixed_contract_policy="mark",
+    )
+
+    assert bars["SessionDate_ET"].tolist() == [
+        date(2026, 1, 2),
+        date(2026, 1, 3),
+        date(2026, 1, 3),
+        date(2026, 1, 4),
+    ]
+    assert bars["MixedContractSession"].tolist() == [False, True, True, False]
+    assert bars["SessionContract"].tolist() == ["6EH26", "6EM26", "6EM26", "6EM26"]
+    assert bars["IsFirstSessionAfterContractChange"].tolist() == [
+        False,
+        True,
+        True,
+        False,
+    ]
+
+
+def test_prepare_bars_rejects_mixed_contract_session_by_default_with_offset_policy():
+    raw = make_bars(
+        [
+            "2026-01-02 23:00:00",
+            "2026-01-03 00:00:00",
+        ],
+        contracts=["6EH26", "6EM26"],
+    )
+
+    with pytest.raises(ValueError, match="multiple contracts in one session"):
+        prepare_bars(
+            raw,
+            source_timezone="UTC",
+            strategy_timezone="America/New_York",
+            session_open="18:00",
+            expected_bar_interval_minutes=5,
+            session_date_policy="offset_after_session_open",
+            session_date_offset_hours=6,
+        )
+
+
 def test_prepare_bars_rejects_non_positive_expected_bar_interval():
     raw = make_bars(["2026-01-02 14:30:00"])
 

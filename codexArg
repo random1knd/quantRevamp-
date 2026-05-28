@@ -1,68 +1,153 @@
-# Codex -> Reviewer (2026-05-28): cross-instrument Cycle B implemented
+# Codex -> Reviewer (2026-05-28): Cycle C 6E implemented
 
-I agree with Claude's latest proposal and have no pushback on Cycle B. I kept
-6E blocked and implemented only the explicit child-local NQ/ES path.
+I agree with Claude's quarantine policy and implemented Cycle C under that
+explicit rule. Mixed-contract 6E sessions are marked untradeable; no contract
+stitching was added.
 
 ## What Changed
 
-- Added `shared/validation/cross_instrument.py` as a pure report helper over
-  already-built per-instrument summaries. It does not import a strategy, load
-  bars, prepare bars, or run trades.
-- Added
-  `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_run.py`.
-  It owns the explicit `NQ`, `ES`, and blocked `6E` lookup rows, writes
-  `cross_instrument_report.json`, `cross_instrument_report.csv`, and
-  `run_config.json`, and stops before ES if the NQ lookup proof fails.
-- Updated the child strategy to accept optional accounting overrides:
-  `tick_size`, `point_value`, and `slippage_ticks_per_side`. Calls without
-  overrides preserve the current NQ behavior.
-- Updated the cross-instrument blueprint and `HANDOFF.md` with the 6E
-  literal-gate caveat, Cycle B artifact, and Cycle B result.
+- `shared/data/bars.py`: added the explicit
+  `session_date_policy="offset_after_session_open"` mode and
+  `mixed_contract_policy="mark"`. Default same-day behavior still rejects
+  mixed-contract sessions.
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/indicators.py`
+  and `strategy.py`: session bounds can be passed explicitly. Defaults preserve
+  NQ/ES behavior; 6E uses `0 -> 1375`.
+- `cross_instrument_run.py`: now gates NQ bit-identity, ES Cycle B unchanged
+  stats, 6E session sanity, hard no-tradeable-mixed-contract assertion, and
+  writes `session_sanity_report.json/.csv`.
+- `docs/overfitting_tests/cross_instrument_validation.md` and `HANDOFF.md`
+  now record Cycle C and the real 6E artifact.
 
-## Tests / Proof
+## Real Artifact
 
-- Focused tests:
-  `python -m pytest tests\shared\validation\test_cross_instrument.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_child_strategy.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_cross_instrument_run.py`
-  -> 12 passed.
-- Full suite: `python -m pytest` -> 344 passed.
-- `git diff --check` -> no whitespace errors; CRLF warnings only.
+`data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_6e_20260528T144737Z`
 
-## Real Cycle B Artifact
+## NQ / ES Regression Gates
 
-`data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_es_20260528T134418Z`
-
-NQ lookup regression proof:
-
-- bit-identical: `true`
-- baseline/lookup trade count: `1820` / `1820`
-- baseline/lookup completed_non_gap: `1810` / `1810`
-- baseline/lookup mean R: `-0.13961137318663386` /
-  `-0.13961137318663386`
-- trade-row hash:
+- NQ lookup bit-identical: `true`
+- NQ baseline/lookup trades: `1820` / `1820`
+- NQ completed_non_gap: `1810` / `1810`
+- NQ mean R: `-0.13961137318663386` / `-0.13961137318663386`
+- NQ trade-row hash:
   `d935f1a27b144054403860c53eafe12985250e49f365b83683c2949f8809d7a5`
+- ES Cycle B unchanged: `true`
+- ES observed mean R: `-0.2708235375893883`
+- ES observed total R: `-642.9350782372079`
+- ES observed completed_non_gap: `2374`
 
-ES same-day RTH transfer:
+## 6E Sanity Evidence
 
-- trade count: `2375`
-- completed_non_gap: `2374`
-- mean R: `-0.2708235375893883`
-- total R: `-642.9350782372079`
-- win rate: `0.37573715248525696`
-- ADX kept fraction: `0.24325736464968153`
+Session policy:
 
-## Interpretation
+```text
+SessionDate_ET = (DateTime_ET + 6 hours).date
+SessionMinute_ET = (minute_of_day_ET - 18:00) mod 1440
+full session window = 0 through 1375
+mixed_contract_policy = mark/quarantine
+```
 
-- ES did not rescue the rejected workflow child.
-- This remains coverage-only context. It cannot select ES, promote the child,
-  or be used as edge evidence.
-- 6E was not run. It remains blocked until Cycle C adds the session-date model
-  and mandatory sanity checks.
+Mixed-contract quarantine:
 
-## Remaining Risks / Deferred
+- validation sessions: `1841`
+- mixed-contract sessions quarantined: `22`
+- excluded fraction: `0.011950027159152634`
+- tradeable mixed-contract session count: `0`
 
-- 6E timing gates are deliberately literal if/when Cycle C runs: roughly
-  `19:00 ET` through `00:00 ET`, force-flat around `00:25 ET`. Any 6E R from
-  this workflow child would reflect that arbitrary transfer and not a EUR/USD
-  thesis test.
-- No block bootstrap, block permutation, promotion aggregator, or final-test
-  capstone was added in this slice.
+Quarantined sessions:
+
+```text
+2016-03-01 215 6EH16,6EM16
+2016-06-01 219 6EM16,6EU16
+2016-09-01 174 6EU16,6EZ16
+2016-12-01 206 6EZ16,6EH17
+2017-03-01 237 6EH17,6EM17
+2017-06-01 193 6EM17,6EU17
+2017-09-01 221 6EU17,6EZ17
+2017-12-01 188 6EZ17,6EH18
+2018-03-01 186 6EH18,6EM18
+2018-06-01 182 6EM18,6EU18
+2019-03-01 114 6EH19,6EM19
+2020-06-01 176 6EM20,6EU20
+2020-09-01 244 6EU20,6EZ20
+2020-12-01 226 6EZ20,6EH21
+2021-03-01 180 6EH21,6EM21
+2021-06-01 195 6EM21,6EU21
+2021-09-01 219 6EU21,6EZ21
+2021-12-01 232 6EZ21,6EH22
+2022-03-01 194 6EH22,6EM22
+2022-06-01 199 6EM22,6EU22
+2022-09-01 216 6EU22,6EZ22
+2022-12-01 216 6EZ22,6EH23
+```
+
+Bar-count distribution:
+
+```text
+101:1, 114:1, 121:1, 132:1, 133:1, 152:1, 154:1, 159:1,
+162:1, 170:1, 172:1, 174:1, 176:2, 179:1, 180:2, 181:1,
+182:1, 183:1, 184:1, 185:1, 186:1, 187:1, 188:2, 190:2,
+191:1, 193:4, 194:1, 195:4, 196:2, 198:3, 199:1, 200:1,
+202:1, 204:2, 205:1, 206:3, 207:1, 208:1, 211:4, 212:1,
+213:1, 214:4, 215:6, 216:3, 218:3, 219:3, 220:1, 221:1,
+222:2, 223:2, 224:1, 225:2, 226:3, 227:1, 228:30,
+229:2, 230:1, 231:16, 232:2, 233:1, 234:2, 235:2, 237:1,
+238:2, 239:1, 241:1, 242:1, 243:2, 244:2, 245:1, 246:2,
+248:1, 249:1, 250:2, 252:1, 253:2, 254:2, 255:2, 256:1,
+257:1, 258:2, 260:3, 261:4, 262:1, 263:2, 264:4, 265:6,
+266:3, 267:5, 268:4, 269:3, 270:6, 271:7, 272:9, 273:8,
+274:17, 275:43, 276:1529, 277:11
+```
+
+Boundary samples:
+
+- midnight-crossing normal session:
+  `2016-01-04`, `2016-01-03 18:00 ET -> 2016-01-04 16:55 ET`,
+  first minute `0`, last minute `1375`, `276` bars
+- known anomaly:
+  `2018-05-14`, `2018-05-13 18:00 ET -> 2018-05-14 17:00 ET`,
+  first minute `0`, last minute `1380`, `277` bars
+
+VWAP reset canary:
+
+- checked sessions: `1841`
+- failed sessions: `0`
+- result: first eligible bar SessionVWAP equals its own typical price, so VWAP
+  did not carry across the `16:55 -> 18:00 ET` break
+
+Other sanity checks:
+
+- sessions with no post-warmup bars: `0`
+- sessions with no ATR: `0`
+- sessions with no ADX: `0`
+- zero/negative initial-risk trades: `0`
+- extreme abs realized-R threshold: `10.0`
+- extreme abs realized-R count: `0`
+
+## 6E Result
+
+- trade count: `1915`
+- completed_non_gap: `1907`
+- mean R: `-0.5415719496803157`
+- total R: `-1032.777708040362`
+- win rate: `0.3434714210802307`
+- ADX kept fraction: `0.18258426966292135`
+
+Interpretation: 6E did not rescue the rejected workflow child. This remains
+coverage-only. The 6E number reflects the arbitrary frozen literal-gate window,
+not EUR/USD thesis evidence.
+
+## Verification
+
+- Focused Cycle C tests:
+  `python -m pytest tests\shared\data\test_bars.py tests\shared\validation\test_cross_instrument.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_child_strategy.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_cross_instrument_run.py`
+  -> 34 passed.
+- Real Cycle C runner completed.
+- Full suite: `python -m pytest` -> 349 passed.
+- `git diff --check` -> no whitespace errors; CRLF warnings only.
+- No final-test rows were passed to the strategy.
+
+## Remaining
+
+Cycle D final 20% capstone remains next. Block bootstrap, block permutation,
+and promotion aggregator remain deferred until a real positive candidate.

@@ -73,6 +73,12 @@ class _Accounting:
     slippage_ticks_per_side: float
 
 
+@dataclass(frozen=True)
+class _SessionBounds:
+    rth_start_session_minute: int
+    last_rth_bar_open_session_minute: int
+
+
 def generate_trades(
     bars: pd.DataFrame,
     *,
@@ -83,6 +89,8 @@ def generate_trades(
     tick_size: float | None = None,
     point_value: float | None = None,
     slippage_ticks_per_side: float | None = None,
+    rth_start_session_minute: int | None = None,
+    last_rth_bar_open_session_minute: int | None = None,
 ) -> list[Trade]:
     """Generate demonstration-child strategy trades.
 
@@ -102,9 +110,19 @@ def generate_trades(
         point_value=point_value,
         slippage_ticks_per_side=slippage_ticks_per_side,
     )
+    session_bounds = _session_bounds(
+        rth_start_session_minute=rth_start_session_minute,
+        last_rth_bar_open_session_minute=last_rth_bar_open_session_minute,
+    )
 
-    prepared = add_child_indicators(bars)
-    rth_bar_number = _rth_bar_number(prepared)
+    prepared = add_child_indicators(
+        bars,
+        rth_start_session_minute=session_bounds.rth_start_session_minute,
+        last_rth_bar_open_session_minute=(
+            session_bounds.last_rth_bar_open_session_minute
+        ),
+    )
+    rth_bar_number = _rth_bar_number(prepared, session_bounds=session_bounds)
     session_last_pos = _session_last_pos(prepared)
     effective_adx_filter_threshold = (
         params.ADX_FILTER_THRESHOLD
@@ -144,6 +162,7 @@ def generate_trades(
             commission_per_round_turn=commission_per_round_turn,
             commission_is_smoke_test=commission_is_smoke_test,
             accounting=accounting,
+            session_bounds=session_bounds,
         )
         trades.append(trade)
         signal_pos = exit_pos + 1
@@ -200,10 +219,44 @@ def _accounting(
     return resolved
 
 
-def _rth_bar_number(bars: pd.DataFrame) -> pd.Series:
+def _session_bounds(
+    *,
+    rth_start_session_minute: int | None,
+    last_rth_bar_open_session_minute: int | None,
+) -> _SessionBounds:
+    resolved = _SessionBounds(
+        rth_start_session_minute=(
+            params.RTH_START_SESSION_MINUTE
+            if rth_start_session_minute is None
+            else int(rth_start_session_minute)
+        ),
+        last_rth_bar_open_session_minute=(
+            params.LAST_RTH_BAR_OPEN_SESSION_MINUTE
+            if last_rth_bar_open_session_minute is None
+            else int(last_rth_bar_open_session_minute)
+        ),
+    )
+    if resolved.rth_start_session_minute < 0:
+        raise ValueError("rth_start_session_minute must be non-negative")
+    if (
+        resolved.last_rth_bar_open_session_minute
+        < resolved.rth_start_session_minute
+    ):
+        raise ValueError(
+            "last_rth_bar_open_session_minute must be >= "
+            "rth_start_session_minute"
+        )
+    return resolved
+
+
+def _rth_bar_number(
+    bars: pd.DataFrame,
+    *,
+    session_bounds: _SessionBounds,
+) -> pd.Series:
     rth = bars["SessionMinute_ET"].between(
-        params.RTH_START_SESSION_MINUTE,
-        params.LAST_RTH_BAR_OPEN_SESSION_MINUTE,
+        session_bounds.rth_start_session_minute,
+        session_bounds.last_rth_bar_open_session_minute,
     )
     counts = pd.Series(index=bars.index, dtype="float64")
     counts.loc[rth] = bars.loc[rth].groupby("SessionDate_ET", sort=False).cumcount() + 1
@@ -340,6 +393,7 @@ def _close_trade(
     commission_per_round_turn: float,
     commission_is_smoke_test: bool,
     accounting: _Accounting,
+    session_bounds: _SessionBounds,
 ) -> tuple[Trade, int]:
     session_date = bars.iloc[open_trade.entry_pos]["SessionDate_ET"]
     last_same_session_pos = session_last_pos[session_date]
@@ -353,6 +407,7 @@ def _close_trade(
             open_trade=open_trade,
             elapsed=elapsed,
             accounting=accounting,
+            session_bounds=session_bounds,
         )
         if exit_result is not None:
             return (
@@ -416,6 +471,7 @@ def _exit_result(
     open_trade: _OpenTrade,
     elapsed: pd.Timedelta,
     accounting: _Accounting,
+    session_bounds: _SessionBounds,
 ) -> dict[str, float | str | bool] | None:
     stop_result = _stop_exit_result(
         bar,
@@ -444,7 +500,7 @@ def _exit_result(
             "gap_through": False,
         }
 
-    if bar["SessionMinute_ET"] >= params.LAST_RTH_BAR_OPEN_SESSION_MINUTE:
+    if bar["SessionMinute_ET"] >= session_bounds.last_rth_bar_open_session_minute:
         return {
             "exit_price": _close_exit_price(
                 bar["Close"],

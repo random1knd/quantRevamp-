@@ -46,29 +46,28 @@ valid completion.
       for NQ/ES.
 - [x] Cross-instrument Cycle B: explicit child-local NQ/ES/6E lookup, NQ
       lookup regression proof, and ES same-day RTH transfer report.
-- [ ] Cross-instrument Cycle C: 6E session-date model and mandatory sanity
+- [x] Cross-instrument Cycle C: 6E session-date model and mandatory sanity
       checks.
 - [ ] Final 20% test: not run. Do not touch final-test data without an explicit
       labeled decision.
 
 ## Current Slice
 
-Implemented Claude-approved cross-instrument Cycle B:
+Implemented Claude-approved cross-instrument Cycle C:
 
-- `docs/overfitting_tests/cross_instrument_validation.md`: rewritten from the
-  stale strategy-callable helper shape into a pure-report shared helper plus
-  child-local rerun design; now records the Cycle B artifact and result.
-- `shared/validation/cross_instrument.py`: pure report helper over
-  already-built per-instrument summaries. It does not import strategies, load
-  bars, or rerun trades.
+- `shared/data/bars.py`: default same-day behavior remains unchanged; added a
+  narrow explicit `offset_after_session_open` policy for overnight sessions and
+  an explicit mixed-contract mark mode for quarantine.
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/strategy.py`
+  and `indicators.py`: child-local session bounds can now be passed explicitly,
+  preserving NQ/ES defaults and allowing 6E to use the full `18:00 -> 16:55 ET`
+  session.
 - `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_run.py`:
-  child-local runner with explicit `NQ`, `ES`, and blocked `6E` lookup rows.
-- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/strategy.py`:
-  child generation now accepts optional accounting overrides while preserving
-  the existing NQ defaults.
-- The runner proves NQ lookup behavior is bit-identical before ES is run.
-- 6E remains blocked until the overnight session model and mandatory sanity
-  checks are implemented.
+  now gates NQ bit-identity, ES Cycle B unchanged numbers, 6E session sanity,
+  and hard no-tradeable-mixed-contract assertion before writing the 6E result.
+- Mixed-contract 6E sessions are quarantined as untradeable roll sessions; no
+  contract stitching was added.
+- The 6E report carries the literal-gate caveat alongside the numbers.
 
 Real Cycle B artifact:
 
@@ -95,6 +94,44 @@ ES same-day RTH transfer result:
 - interpretation: ES does not rescue the rejected workflow child; this remains
   coverage-only context and cannot select an instrument or promote an edge.
 
+Real Cycle C artifact:
+
+- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_6e_20260528T144737Z`
+
+Cycle C regression gates:
+
+- NQ lookup bit-identical: `true`
+- NQ trade-row SHA-256:
+  `d935f1a27b144054403860c53eafe12985250e49f365b83683c2949f8809d7a5`
+- ES Cycle B unchanged: `true`
+- ES mean R remains `-0.2708235375893883`
+
+6E sanity result:
+
+- status: `pass`
+- validation sessions: `1841`
+- bar-count highlights: `276` bars = `1529`, `228` bars = `30`,
+  `277` bars = `11`
+- `2018-05-14` is a `277`-bar anomaly:
+  `2018-05-13 18:00 ET -> 2018-05-14 17:00 ET`
+- mixed-contract sessions quarantined: `22`
+- mixed-contract excluded fraction: `0.011950027159152634`
+- tradeable mixed-contract sessions: `0`
+- VWAP reset canary: `1841` sessions checked, `0` failures
+- zero/negative initial-risk trades: `0`
+
+6E frozen-gate transfer result:
+
+- trade count: `1915`
+- completed_non_gap count: `1907`
+- mean R: `-0.5415719496803157`
+- total R: `-1032.777708040362`
+- win rate: `0.3434714210802307`
+- ADX kept fraction: `0.18258426966292135`
+- interpretation: 6E does not rescue the rejected workflow child. The number
+  reflects the arbitrary literal frozen-gate transfer, not EUR/USD thesis
+  evidence.
+
 6E data-grounded session findings:
 
 - file: `data/bars/5min/6E_all_5min.csv`
@@ -116,8 +153,6 @@ ES same-day RTH transfer result:
 
 Next sequence:
 
-- Cycle C: implement 6E session-date support and mandatory sanity checks, then
-  run 6E.
 - Cycle D: run final 20% capstone once, coverage-only, with predeclared
   partial-tail handling.
 
@@ -180,8 +215,8 @@ family and is kept only as workflow coverage.
   mean-reversion candidate must use a predeclared structure-preserving
   within-session block permutation before any market-permutation result can be
   treated as meaningful edge validation
-- no 6E cross-instrument run until its session-date model and sanity checks are
-  implemented
+- no further cross-instrument promotion logic; this remains coverage-only for a
+  rejected child
 - no promotion aggregator until a real positive candidate exists
 - no final-test access
 
@@ -205,12 +240,15 @@ family and is kept only as workflow coverage.
 
 - Focused cross-instrument tests:
   `python -m pytest tests\shared\validation\test_cross_instrument.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_child_strategy.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_cross_instrument_run.py`
-  -> 12 passed.
-- Real Cycle B runner completed and wrote
-  `cross_instrument_es_20260528T134418Z`.
-- Full suite: `python -m pytest` -> 344 passed.
+  -> included in focused Cycle C checks.
+- Focused Cycle C tests:
+  `python -m pytest tests\shared\data\test_bars.py tests\shared\validation\test_cross_instrument.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_child_strategy.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_cross_instrument_run.py`
+  -> 34 passed.
+- Real Cycle C runner completed and wrote
+  `cross_instrument_6e_20260528T144737Z`.
+- Full suite: `python -m pytest` -> 349 passed.
 - `git diff --check`: no whitespace errors; CRLF warnings only.
-- No final-test rows were passed to the strategy. Cross-instrument Cycle B uses
+- No final-test rows were passed to the strategy. Cross-instrument Cycle C uses
   validation splits only.
 
 Previous time-stability verification:

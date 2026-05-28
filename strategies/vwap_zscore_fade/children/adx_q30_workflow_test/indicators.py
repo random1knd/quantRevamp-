@@ -30,7 +30,12 @@ INDICATOR_COLUMNS = (
 )
 
 
-def add_child_indicators(bars: pd.DataFrame) -> pd.DataFrame:
+def add_child_indicators(
+    bars: pd.DataFrame,
+    *,
+    rth_start_session_minute: int | None = None,
+    last_rth_bar_open_session_minute: int | None = None,
+) -> pd.DataFrame:
     """Add demonstration-child trade-driving indicators."""
 
     _validate_required_columns(bars)
@@ -39,7 +44,26 @@ def add_child_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     for column in INDICATOR_COLUMNS:
         result[column] = pd.Series(index=result.index, dtype="float64")
 
-    rth_mask = _rth_rows(result)
+    rth_start = (
+        params.RTH_START_SESSION_MINUTE
+        if rth_start_session_minute is None
+        else int(rth_start_session_minute)
+    )
+    last_rth_bar_open = (
+        params.LAST_RTH_BAR_OPEN_SESSION_MINUTE
+        if last_rth_bar_open_session_minute is None
+        else int(last_rth_bar_open_session_minute)
+    )
+    _validate_session_bounds(
+        rth_start_session_minute=rth_start,
+        last_rth_bar_open_session_minute=last_rth_bar_open,
+    )
+
+    rth_mask = _rth_rows(
+        result,
+        rth_start_session_minute=rth_start,
+        last_rth_bar_open_session_minute=last_rth_bar_open,
+    )
     if not rth_mask.any():
         return result
 
@@ -89,10 +113,29 @@ def _validate_required_columns(bars: pd.DataFrame) -> None:
         raise ValueError(f"missing required columns: {missing}")
 
 
-def _rth_rows(bars: pd.DataFrame) -> pd.Series:
+def _validate_session_bounds(
+    *,
+    rth_start_session_minute: int,
+    last_rth_bar_open_session_minute: int,
+) -> None:
+    if rth_start_session_minute < 0:
+        raise ValueError("rth_start_session_minute must be non-negative")
+    if last_rth_bar_open_session_minute < rth_start_session_minute:
+        raise ValueError(
+            "last_rth_bar_open_session_minute must be >= "
+            "rth_start_session_minute"
+        )
+
+
+def _rth_rows(
+    bars: pd.DataFrame,
+    *,
+    rth_start_session_minute: int,
+    last_rth_bar_open_session_minute: int,
+) -> pd.Series:
     return bars["SessionMinute_ET"].between(
-        params.RTH_START_SESSION_MINUTE,
-        params.LAST_RTH_BAR_OPEN_SESSION_MINUTE,
+        rth_start_session_minute,
+        last_rth_bar_open_session_minute,
     )
 
 

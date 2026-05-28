@@ -5,8 +5,9 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import math
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 
 import pandas as pd
 
@@ -45,11 +46,41 @@ ROOT = Path(__file__).resolve().parents[4]
 REPORT_JSON = "cross_instrument_report.json"
 REPORT_CSV = "cross_instrument_report.csv"
 RUN_CONFIG_JSON = "run_config.json"
+SESSION_SANITY_JSON = "session_sanity_report.json"
+SESSION_SANITY_CSV = "session_sanity_report.csv"
 REPORT_LABEL = "coverage_only_validation_child_cross_instrument_no_edge_claim"
+SIX_E_LITERAL_GATE_CAVEAT = (
+    "6E uses the frozen NQ literal timing gates: no entries during the first "
+    "hour after the 18:00 ET session open, no entries at/after session minute "
+    "360 (00:00 ET), and practical force-flat around 00:25 ET for the latest "
+    "allowed entries. The 6E R number is a frozen-gate transfer stress test, "
+    "not EUR/USD thesis evidence."
+)
 COMMISSION_SOURCE = (
     "NinjaTrader futures commission PDF checked 2026-05-28; monthly all-in "
     "per-side convention"
 )
+ES_CYCLE_B_EXPECTED = {
+    "trade_count": 2375,
+    "completed_non_gap_trade_count": 2374,
+    "mean_realized_r": -0.2708235375893883,
+    "total_realized_r": -642.9350782372079,
+    "win_rate": 0.37573715248525696,
+}
+SESSION_SANITY_CSV_FIELDS = [
+    "row_type",
+    "session_date",
+    "row_count",
+    "first_et",
+    "last_et",
+    "first_minute",
+    "last_minute",
+    "contract_count",
+    "contracts",
+    "mixed_contract_session",
+    "tradeable_session",
+    "note",
+]
 CONTRACT_SPEC_SOURCES = {
     "NQ": (
         "https://www.cmegroup.com/markets/equities/nasdaq/"
@@ -68,6 +99,10 @@ class InstrumentConfig:
     instrument: str
     input_path: Path
     session_model: str
+    session_date_policy: Literal["same_day", "offset_after_session_open"]
+    session_date_offset_hours: float | None
+    mixed_contract_policy: Literal["reject", "mark"]
+    daily_break_expected: str | None
     source_timezone: str
     strategy_timezone: str
     session_open: str
@@ -88,6 +123,10 @@ INSTRUMENTS = {
         instrument="NQ",
         input_path=INPUT_DATA_PATH,
         session_model="same_day_rth",
+        session_date_policy="same_day",
+        session_date_offset_hours=None,
+        mixed_contract_policy="reject",
+        daily_break_expected=None,
         source_timezone=child_params.SOURCE_TIMEZONE,
         strategy_timezone=child_params.STRATEGY_TIMEZONE,
         session_open=child_params.SESSION_OPEN,
@@ -108,6 +147,10 @@ INSTRUMENTS = {
         instrument="ES",
         input_path=ROOT / "data" / "bars" / "5min" / "ES_all_5min.csv",
         session_model="same_day_rth",
+        session_date_policy="same_day",
+        session_date_offset_hours=None,
+        mixed_contract_policy="reject",
+        daily_break_expected=None,
         source_timezone=child_params.SOURCE_TIMEZONE,
         strategy_timezone=child_params.STRATEGY_TIMEZONE,
         session_open=child_params.SESSION_OPEN,
@@ -127,7 +170,11 @@ INSTRUMENTS = {
     "6E": InstrumentConfig(
         instrument="6E",
         input_path=ROOT / "data" / "bars" / "5min" / "6E_all_5min.csv",
-        session_model="overnight_18et_blocked_until_cycle_c",
+        session_model="overnight_18et_quarantine_mixed_contracts",
+        session_date_policy="offset_after_session_open",
+        session_date_offset_hours=6.0,
+        mixed_contract_policy="mark",
+        daily_break_expected="16:55 -> 18:00 ET",
         source_timezone=child_params.SOURCE_TIMEZONE,
         strategy_timezone=child_params.STRATEGY_TIMEZONE,
         session_open="18:00",
@@ -140,7 +187,7 @@ INSTRUMENTS = {
         slippage_ticks_per_side=child_params.SLIPPAGE_TICKS_PER_SIDE,
         commission_per_round_turn=5.60,
         commission_is_smoke_test=False,
-        implementation_status="blocked_until_cycle_c_session_model",
+        implementation_status="cycle_c_run",
     ),
 }
 
@@ -172,6 +219,32 @@ def run_cross_instrument_report(
 
     es_bars, es_splits = load_instrument_validation_bars(INSTRUMENTS["ES"])
     es_trades = _generate_config_trades(es_bars, INSTRUMENTS["ES"])
+    es_summary = _instrument_summary(
+        config=INSTRUMENTS["ES"],
+        validation_bars=es_bars,
+        splits=es_splits,
+        trades=es_trades,
+    )
+    es_regression_proof = _es_cycle_b_regression_proof(es_summary)
+    if not es_regression_proof["unchanged"]:
+        raise RuntimeError(f"ES Cycle B regression failed: {es_regression_proof}")
+
+    six_e_bars, six_e_splits = load_instrument_validation_bars(INSTRUMENTS["6E"])
+    _assert_no_tradeable_mixed_contract_sessions(six_e_bars)
+    six_e_trades = _generate_config_trades(six_e_bars, INSTRUMENTS["6E"])
+    six_e_summary = _instrument_summary(
+        config=INSTRUMENTS["6E"],
+        validation_bars=six_e_bars,
+        splits=six_e_splits,
+        trades=six_e_trades,
+    )
+    six_e_sanity_report = _build_6e_session_sanity_report(
+        config=INSTRUMENTS["6E"],
+        validation_bars=six_e_bars,
+        splits=six_e_splits,
+        trades=six_e_trades,
+    )
+    _assert_6e_sanity_passes(six_e_sanity_report)
 
     summaries = [
         _instrument_summary(
@@ -180,16 +253,14 @@ def run_cross_instrument_report(
             splits=nq_splits,
             trades=nq_trades,
         ),
-        _instrument_summary(
-            config=INSTRUMENTS["ES"],
-            validation_bars=es_bars,
-            splits=es_splits,
-            trades=es_trades,
-        ),
+        es_summary,
+        six_e_summary,
     ]
     report = build_cross_instrument_report(
         instrument_summaries=summaries,
         nq_proof=nq_proof,
+        es_regression_proof=es_regression_proof,
+        six_e_sanity_report=six_e_sanity_report,
     )
     destination = Path(output_dir) if output_dir is not None else _output_dir()
     destination.mkdir(parents=True, exist_ok=True)
@@ -197,9 +268,13 @@ def run_cross_instrument_report(
         output_dir=destination,
         instrument_summaries=summaries,
         nq_proof=nq_proof,
+        es_regression_proof=es_regression_proof,
+        six_e_sanity_report=six_e_sanity_report,
     )
     _write_json(destination / REPORT_JSON, report)
     _write_cross_instrument_csv(destination / REPORT_CSV, report["instruments"])
+    _write_json(destination / SESSION_SANITY_JSON, six_e_sanity_report)
+    _write_session_sanity_csv(destination / SESSION_SANITY_CSV, six_e_sanity_report)
     _write_json(destination / RUN_CONFIG_JSON, run_config)
     return destination
 
@@ -208,6 +283,8 @@ def build_cross_instrument_report(
     *,
     instrument_summaries: Sequence[dict[str, Any]],
     nq_proof: dict[str, Any],
+    es_regression_proof: dict[str, Any],
+    six_e_sanity_report: dict[str, Any],
 ) -> dict[str, Any]:
     report = cross_instrument_report(instrument_summaries)
     report.update(
@@ -228,18 +305,19 @@ def build_cross_instrument_report(
             "judgment_population": JUDGMENT_POPULATION,
             "final_test_status": FINAL_TEST_STATUS,
             "nq_lookup_regression_proof": nq_proof,
-            "instruments_run": ["NQ", "ES"],
-            "instruments_not_run": {
-                "6E": (
-                    "blocked until Cycle C session-date policy and mandatory "
-                    "6E sanity checks are implemented"
-                )
-            },
+            "es_cycle_b_regression_proof": es_regression_proof,
+            "six_e_session_sanity_status": six_e_sanity_report["status"],
+            "six_e_literal_gate_caveat": SIX_E_LITERAL_GATE_CAVEAT,
+            "instruments_run": ["NQ", "ES", "6E"],
+            "instruments_not_run": {},
             "interpretation": (
                 "Coverage-only blueprint demonstration on a rejected child. "
                 "NQ proves the explicit lookup did not change current behavior; "
-                "ES is a same-day RTH constants-swap transfer check. No "
-                "instrument may be selected from this report."
+                "ES proves the Cycle B same-day RTH transfer remained "
+                "unchanged after the Cycle C data-layer addition; 6E is an "
+                "overnight-session frozen-gate stress test with mixed-contract "
+                "sessions quarantined. No instrument may be selected from this "
+                "report."
             ),
         }
     )
@@ -251,8 +329,14 @@ def build_run_config(
     output_dir: str | Path,
     instrument_summaries: Sequence[dict[str, Any]],
     nq_proof: dict[str, Any],
+    es_regression_proof: dict[str, Any],
+    six_e_sanity_report: dict[str, Any],
 ) -> dict[str, Any]:
-    input_paths = [INSTRUMENTS["NQ"].input_path, INSTRUMENTS["ES"].input_path]
+    input_paths = [
+        INSTRUMENTS["NQ"].input_path,
+        INSTRUMENTS["ES"].input_path,
+        INSTRUMENTS["6E"].input_path,
+    ]
     input_data = input_data_metadata(input_paths, repo_root=ROOT)
     return {
         "run_type": "validation_child_cross_instrument",
@@ -273,9 +357,12 @@ def build_run_config(
         "instrument_lookup": {
             key: _config_payload(config) for key, config in INSTRUMENTS.items()
         },
-        "instruments_run": ["NQ", "ES"],
-        "instruments_not_run": ["6E"],
+        "instruments_run": ["NQ", "ES", "6E"],
+        "instruments_not_run": [],
         "nq_lookup_regression_proof": nq_proof,
+        "es_cycle_b_regression_proof": es_regression_proof,
+        "six_e_session_sanity_status": six_e_sanity_report["status"],
+        "six_e_literal_gate_caveat": SIX_E_LITERAL_GATE_CAVEAT,
         "instrument_splits": {
             summary["instrument"]: summary["splits"]
             for summary in instrument_summaries
@@ -289,25 +376,32 @@ def build_run_config(
 def load_instrument_validation_bars(
     config: InstrumentConfig,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    if config.session_model != "same_day_rth":
-        raise RuntimeError(
-            f"{config.instrument} session model is not implemented in Cycle B"
-        )
     raw_bars = pd.read_csv(config.input_path)
-    raw_bars = rth_only_raw_bars(
-        raw_bars,
-        source_timezone=config.source_timezone,
-        strategy_timezone=config.strategy_timezone,
-        session_open=config.session_open,
-        rth_start_session_minute=config.rth_start_session_minute,
-        last_rth_bar_open_session_minute=config.last_rth_bar_open_session_minute,
-    )
+
+    if config.session_model == "same_day_rth":
+        raw_bars = rth_only_raw_bars(
+            raw_bars,
+            source_timezone=config.source_timezone,
+            strategy_timezone=config.strategy_timezone,
+            session_open=config.session_open,
+            rth_start_session_minute=config.rth_start_session_minute,
+            last_rth_bar_open_session_minute=config.last_rth_bar_open_session_minute,
+            session_date_policy=config.session_date_policy,
+        )
+    elif config.session_model != "overnight_18et_quarantine_mixed_contracts":
+        raise RuntimeError(
+            f"{config.instrument} session model is not implemented in Cycle C"
+        )
+
     prepared = prepare_bars(
         raw_bars,
         source_timezone=config.source_timezone,
         strategy_timezone=config.strategy_timezone,
         session_open=config.session_open,
         expected_bar_interval_minutes=child_params.BAR_INTERVAL_MINUTES,
+        session_date_policy=config.session_date_policy,
+        session_date_offset_hours=config.session_date_offset_hours,
+        mixed_contract_policy=config.mixed_contract_policy,
     )
     splits = chronological_session_splits(prepared)
     validation_bars = validation_split_bars(prepared, splits=splits)
@@ -326,6 +420,8 @@ def _generate_config_trades(
         tick_size=config.tick_size,
         point_value=config.point_value,
         slippage_ticks_per_side=config.slippage_ticks_per_side,
+        rth_start_session_minute=config.rth_start_session_minute,
+        last_rth_bar_open_session_minute=config.last_rth_bar_open_session_minute,
     )
 
 
@@ -363,6 +459,8 @@ def _instrument_summary(
         **_adx_restrictiveness_summary(
             validation_bars,
             exclude_roll_sessions=EXCLUDE_ROLL_SESSIONS,
+            rth_start_session_minute=config.rth_start_session_minute,
+            last_rth_bar_open_session_minute=config.last_rth_bar_open_session_minute,
         ),
         "accounting_constants": _accounting_payload(config),
         "session_config": _session_payload(config),
@@ -419,6 +517,49 @@ def _nq_bit_identical_proof(
         "baseline_trade_rows_sha256": _rows_hash(baseline_rows),
         "lookup_trade_rows_sha256": _rows_hash(lookup_rows),
     }
+
+
+def _es_cycle_b_regression_proof(summary: dict[str, Any]) -> dict[str, Any]:
+    checks = {
+        "trade_count": summary["trade_count"] == ES_CYCLE_B_EXPECTED["trade_count"],
+        "completed_non_gap_trade_count": (
+            summary["completed_non_gap_trade_count"]
+            == ES_CYCLE_B_EXPECTED["completed_non_gap_trade_count"]
+        ),
+        "mean_realized_r": _close_enough(
+            summary["mean_realized_r"],
+            ES_CYCLE_B_EXPECTED["mean_realized_r"],
+        ),
+        "total_realized_r": _close_enough(
+            summary["total_realized_r"],
+            ES_CYCLE_B_EXPECTED["total_realized_r"],
+        ),
+        "win_rate": _close_enough(
+            summary["win_rate"],
+            ES_CYCLE_B_EXPECTED["win_rate"],
+        ),
+    }
+    return {
+        "unchanged": all(checks.values()),
+        "checks": checks,
+        "expected": ES_CYCLE_B_EXPECTED,
+        "observed": {
+            key: summary[key]
+            for key in (
+                "trade_count",
+                "completed_non_gap_trade_count",
+                "mean_realized_r",
+                "total_realized_r",
+                "win_rate",
+            )
+        },
+    }
+
+
+def _close_enough(value: Any, expected: float) -> bool:
+    if value is None:
+        return False
+    return math.isclose(float(value), expected, rel_tol=0.0, abs_tol=1e-12)
 
 
 def _trade_rows(trades: Sequence[Any]) -> list[dict[str, Any]]:
@@ -483,13 +624,292 @@ def _rows_hash(rows: Sequence[dict[str, Any]]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _build_6e_session_sanity_report(
+    *,
+    config: InstrumentConfig,
+    validation_bars: pd.DataFrame,
+    splits: dict[str, Any],
+    trades: Sequence[Any],
+) -> dict[str, Any]:
+    session_rows = _session_summary_rows(validation_bars)
+    mixed_contract_rows = [
+        row for row in session_rows if row["mixed_contract_session"]
+    ]
+    anomalous_rows = [row for row in session_rows if row["row_count"] != 276]
+    boundary_samples = _boundary_sample_rows(session_rows, anomalous_rows)
+    indicator_bars = add_child_indicators(
+        validation_bars,
+        rth_start_session_minute=config.rth_start_session_minute,
+        last_rth_bar_open_session_minute=config.last_rth_bar_open_session_minute,
+    )
+    vwap_reset = _vwap_reset_summary(
+        indicator_bars,
+        rth_start_session_minute=config.rth_start_session_minute,
+        last_rth_bar_open_session_minute=config.last_rth_bar_open_session_minute,
+    )
+    warmup = _warmup_summary(indicator_bars)
+    trade_r_range = _trade_r_range_summary(trades)
+    tradeable_mixed = _tradeable_mixed_contract_session_rows(session_rows)
+    bar_count_distribution = _bar_count_distribution(session_rows)
+    validation_session_count = len(session_rows)
+    mixed_fraction = (
+        None
+        if validation_session_count == 0
+        else len(mixed_contract_rows) / validation_session_count
+    )
+    status = (
+        "pass"
+        if (
+            not tradeable_mixed
+            and vwap_reset["passed"]
+            and trade_r_range["zero_or_negative_initial_risk_count"] == 0
+        )
+        else "fail"
+    )
+    return {
+        "report_type": "six_e_session_sanity_report",
+        "instrument": config.instrument,
+        "status": status,
+        "split": "validation",
+        "literal_gate_caveat": SIX_E_LITERAL_GATE_CAVEAT,
+        "session_policy": _session_payload(config),
+        "splits": _split_summary(splits),
+        "validation_session_count": validation_session_count,
+        "bar_count_distribution": bar_count_distribution,
+        "normal_276_bar_session_count": bar_count_distribution.get("276", 0),
+        "early_close_228_bar_session_count": bar_count_distribution.get("228", 0),
+        "anomalous_277_bar_session_count": bar_count_distribution.get("277", 0),
+        "mixed_contract_excluded_session_count": len(mixed_contract_rows),
+        "mixed_contract_excluded_fraction": mixed_fraction,
+        "mixed_contract_excluded_sessions": mixed_contract_rows,
+        "tradeable_mixed_contract_session_count": len(tradeable_mixed),
+        "tradeable_mixed_contract_sessions": tradeable_mixed,
+        "session_boundary_samples": boundary_samples,
+        "vwap_reset_verification": vwap_reset,
+        "adx_atr_warmup": warmup,
+        "trade_r_range": trade_r_range,
+        "adx_restrictiveness": _adx_restrictiveness_summary(
+            validation_bars,
+            exclude_roll_sessions=EXCLUDE_ROLL_SESSIONS,
+            rth_start_session_minute=config.rth_start_session_minute,
+            last_rth_bar_open_session_minute=config.last_rth_bar_open_session_minute,
+        ),
+    }
+
+
+def _session_summary_rows(validation_bars: pd.DataFrame) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for session_date, group in validation_bars.groupby("SessionDate_ET", sort=False):
+        contracts = list(dict.fromkeys(group["Contract"].astype(str).tolist()))
+        mixed_contract_session = bool(
+            group.get("MixedContractSession", pd.Series(False, index=group.index)).any()
+        )
+        tradeable_session = not bool(group["IsFirstSessionAfterContractChange"].any())
+        rows.append(
+            {
+                "session_date": session_date.isoformat(),
+                "row_count": int(len(group)),
+                "first_et": group["DateTime_ET"].iloc[0].isoformat(),
+                "last_et": group["DateTime_ET"].iloc[-1].isoformat(),
+                "first_minute": int(group["SessionMinute_ET"].iloc[0]),
+                "last_minute": int(group["SessionMinute_ET"].iloc[-1]),
+                "contract_count": len(contracts),
+                "contracts": contracts,
+                "mixed_contract_session": mixed_contract_session,
+                "tradeable_session": tradeable_session,
+            }
+        )
+    return rows
+
+
+def _boundary_sample_rows(
+    session_rows: Sequence[dict[str, Any]],
+    anomalous_rows: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    samples: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for note, rows in (
+        ("first_5", session_rows[:5]),
+        ("last_5", session_rows[-5:]),
+        ("anomalous_bar_count", anomalous_rows),
+    ):
+        for row in rows:
+            key = f"{note}:{row['session_date']}"
+            if key in seen:
+                continue
+            seen.add(key)
+            sample = dict(row)
+            sample["note"] = note
+            samples.append(sample)
+    return samples
+
+
+def _bar_count_distribution(
+    session_rows: Sequence[dict[str, Any]],
+) -> dict[str, int]:
+    distribution: dict[str, int] = {}
+    for row in session_rows:
+        key = str(row["row_count"])
+        distribution[key] = distribution.get(key, 0) + 1
+    return dict(sorted(distribution.items(), key=lambda item: int(item[0])))
+
+
+def _tradeable_mixed_contract_session_rows(
+    session_rows: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in session_rows
+        if row["tradeable_session"] and row["contract_count"] > 1
+    ]
+
+
+def _assert_no_tradeable_mixed_contract_sessions(validation_bars: pd.DataFrame) -> None:
+    rows = _tradeable_mixed_contract_session_rows(
+        _session_summary_rows(validation_bars)
+    )
+    if rows:
+        raise RuntimeError(f"tradeable 6E sessions contain multiple contracts: {rows}")
+
+
+def _vwap_reset_summary(
+    indicator_bars: pd.DataFrame,
+    *,
+    rth_start_session_minute: int,
+    last_rth_bar_open_session_minute: int,
+) -> dict[str, Any]:
+    eligible = indicator_bars[
+        indicator_bars["SessionMinute_ET"].between(
+            rth_start_session_minute,
+            last_rth_bar_open_session_minute,
+        )
+        & (indicator_bars["Volume"] > 0.0)
+    ].copy()
+    first_rows = eligible.groupby("SessionDate_ET", sort=False).head(1)
+    failures = []
+    for _, row in first_rows.iterrows():
+        if pd.isna(row["SessionVWAP"]) or pd.isna(row["TypicalPrice"]):
+            passed = False
+        else:
+            passed = math.isclose(
+                float(row["SessionVWAP"]),
+                float(row["TypicalPrice"]),
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+        if not passed:
+            failures.append(
+                {
+                    "session_date": row["SessionDate_ET"].isoformat(),
+                    "date_time_et": row["DateTime_ET"].isoformat(),
+                    "session_minute": int(row["SessionMinute_ET"]),
+                    "session_vwap": _json_value(row["SessionVWAP"]),
+                    "typical_price": _json_value(row["TypicalPrice"]),
+                }
+            )
+
+    return {
+        "passed": not failures,
+        "checked_session_count": int(len(first_rows)),
+        "failed_session_count": len(failures),
+        "failure_samples": failures[:10],
+        "canary": (
+            "first eligible bar SessionVWAP equals its own typical price; "
+            "this proves VWAP reset at session boundary and did not carry "
+            "across the daily break"
+        ),
+    }
+
+
+def _warmup_summary(indicator_bars: pd.DataFrame) -> dict[str, Any]:
+    rows = []
+    for session_date, group in indicator_bars.groupby("SessionDate_ET", sort=False):
+        eligible = group[group["SessionMinute_ET"] >= child_params.SIGNAL_MIN_BARS * 5]
+        rows.append(
+            {
+                "session_date": session_date.isoformat(),
+                "eligible_post_warmup_bar_count": int(len(eligible)),
+                "atr_non_null_count": int(group["ATR"].notna().sum()),
+                "adx_non_null_count": int(group["ADX"].notna().sum()),
+            }
+        )
+
+    return {
+        "sessions_with_no_post_warmup_bars": sum(
+            1 for row in rows if row["eligible_post_warmup_bar_count"] == 0
+        ),
+        "sessions_with_no_atr": sum(
+            1 for row in rows if row["atr_non_null_count"] == 0
+        ),
+        "sessions_with_no_adx": sum(
+            1 for row in rows if row["adx_non_null_count"] == 0
+        ),
+        "per_session_counts": rows,
+    }
+
+
+def _trade_r_range_summary(trades: Sequence[Any]) -> dict[str, Any]:
+    risks = [float(trade.initial_risk) for trade in trades]
+    gross = [float(trade.realized_r_gross) for trade in trades]
+    net = [float(trade.realized_r_net) for trade in trades]
+    realized = [float(trade.realized_r) for trade in trades]
+    return {
+        "trade_count": len(trades),
+        "zero_or_negative_initial_risk_count": sum(
+            1 for value in risks if value <= 0.0
+        ),
+        "initial_risk": _numeric_distribution(risks),
+        "gross_r": _numeric_distribution(gross),
+        "net_r": _numeric_distribution(net),
+        "realized_r": _numeric_distribution(realized),
+        "extreme_abs_realized_r_threshold": 10.0,
+        "extreme_abs_realized_r_count": sum(
+            1 for value in realized if abs(value) > 10.0
+        ),
+    }
+
+
+def _numeric_distribution(values: Sequence[float]) -> dict[str, Any]:
+    if not values:
+        return {
+            "min": None,
+            "p01": None,
+            "p50": None,
+            "p99": None,
+            "max": None,
+        }
+    series = pd.Series(values, dtype="float64")
+    return {
+        "min": float(series.min()),
+        "p01": float(series.quantile(0.01)),
+        "p50": float(series.quantile(0.50)),
+        "p99": float(series.quantile(0.99)),
+        "max": float(series.max()),
+    }
+
+
+def _assert_6e_sanity_passes(report: dict[str, Any]) -> None:
+    if report["status"] != "pass":
+        raise RuntimeError(f"6E session sanity failed: {report}")
+
+
 def _adx_restrictiveness_summary(
     bars: pd.DataFrame,
     *,
     exclude_roll_sessions: bool,
+    rth_start_session_minute: int,
+    last_rth_bar_open_session_minute: int,
 ) -> dict[str, int]:
-    prepared = add_child_indicators(bars)
-    rth_bar_number = _rth_bar_number(prepared)
+    prepared = add_child_indicators(
+        bars,
+        rth_start_session_minute=rth_start_session_minute,
+        last_rth_bar_open_session_minute=last_rth_bar_open_session_minute,
+    )
+    rth_bar_number = _rth_bar_number(
+        prepared,
+        rth_start_session_minute=rth_start_session_minute,
+        last_rth_bar_open_session_minute=last_rth_bar_open_session_minute,
+    )
     kept = 0
     rejected = 0
     missing = 0
@@ -545,10 +965,15 @@ def _has_entry_side(signal_bar: pd.Series) -> bool:
     )
 
 
-def _rth_bar_number(bars: pd.DataFrame) -> pd.Series:
+def _rth_bar_number(
+    bars: pd.DataFrame,
+    *,
+    rth_start_session_minute: int,
+    last_rth_bar_open_session_minute: int,
+) -> pd.Series:
     rth = bars["SessionMinute_ET"].between(
-        child_params.RTH_START_SESSION_MINUTE,
-        child_params.LAST_RTH_BAR_OPEN_SESSION_MINUTE,
+        rth_start_session_minute,
+        last_rth_bar_open_session_minute,
     )
     counts = pd.Series(index=bars.index, dtype="float64")
     counts.loc[rth] = bars.loc[rth].groupby("SessionDate_ET", sort=False).cumcount() + 1
@@ -557,7 +982,7 @@ def _rth_bar_number(bars: pd.DataFrame) -> pd.Series:
 
 def _output_dir() -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return OUTPUT_ROOT / f"cross_instrument_es_{timestamp}"
+    return OUTPUT_ROOT / f"cross_instrument_6e_{timestamp}"
 
 
 def _frozen_child_parameters() -> dict[str, Any]:
@@ -608,6 +1033,10 @@ def _accounting_payload(config: InstrumentConfig) -> dict[str, Any]:
 def _session_payload(config: InstrumentConfig) -> dict[str, Any]:
     return {
         "session_model": config.session_model,
+        "session_date_policy": config.session_date_policy,
+        "session_date_offset_hours": config.session_date_offset_hours,
+        "mixed_contract_policy": config.mixed_contract_policy,
+        "daily_break_expected": config.daily_break_expected,
         "source_timezone": config.source_timezone,
         "strategy_timezone": config.strategy_timezone,
         "session_open": config.session_open,
@@ -651,11 +1080,38 @@ def _write_cross_instrument_csv(
             )
 
 
+def _write_session_sanity_csv(path: Path, report: dict[str, Any]) -> None:
+    rows = []
+    for row in report["session_boundary_samples"]:
+        rows.append({"row_type": "boundary_sample", **row})
+    for row in report["mixed_contract_excluded_sessions"]:
+        rows.append({"row_type": "mixed_contract_exclusion", "note": "", **row})
+
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=SESSION_SANITY_CSV_FIELDS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    field: _csv_value(_session_sanity_csv_value(row.get(field)))
+                    for field in SESSION_SANITY_CSV_FIELDS
+                }
+            )
+
+
+def _session_sanity_csv_value(value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        return "|".join(str(item) for item in value)
+    return value
+
+
 def _json_value(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_json_value(item) for item in value]
+    if isinstance(value, float) and math.isnan(value):
+        return None
     if hasattr(value, "item"):
         return _json_value(value.item())
     if hasattr(value, "isoformat"):
