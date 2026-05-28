@@ -37,63 +37,70 @@ valid completion.
       validation windows. All eight windows are sufficient and all eight window
       means are negative.
 - [x] Stage D, market-data permutation: implemented as a coverage-only
-      within-session market tuple shuffle with a child-local rerun.
-- [ ] Time stability: next cycle. CSV-only concentration check from existing
-      validation trades; no rerun, no filter mining.
+      within-session market tuple shuffle with a child-local rerun. The result
+      shows single-bar permutation is invalid as an edge-validating null for
+      this VWAP-fade mean-reversion family.
+- [x] Time stability: implemented as one full-validation frozen-child trade
+      generation bucketed by entry calendar month, quarter, and year.
 - [ ] Cross-instrument: deferred; needs instrument-specific constants.
 - [ ] Final 20% test: not run. Do not touch final-test data without an explicit
       labeled decision.
 
 ## Current Slice
 
-Implemented Claude-approved market-data permutation chunk:
+Implemented Claude-approved time-stability chunk:
 
-- `docs/overfitting_tests/market_data_permutation.md`: corrected away from the
-  rejected strategy-callable shared helper shape and freezes n_iter `10`,
-  random seed `0`, statistic, permutation unit, p-value, and gap handling.
-- `shared/validation/market_permutation.py`: pure prepared-bar permuter and
-  pure report builder. No strategy imports and no trade generation.
-- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/market_permutation_run.py`:
-  child-local runner that loads validation bars via `load_validation_bars()`,
-  reruns the frozen child over 10 permuted validation paths, and writes
-  `market_permutation_report.json`, `market_permutation_report.csv`, and
-  `run_config.json`.
+- `docs/overfitting_tests/time_stability.md`: freezes the report-only spec,
+  judged population, granularities, sparse floor, no-period-selection rule, and
+  sign-safe concentration metrics.
+- `shared/validation/time_stability.py`: pure trade-result summary over
+  already-judged entry timestamps and RealizedR values. No strategy imports, no
+  bars, no reruns.
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/time_stability_run.py`:
+  child-local runner that generates the frozen child validation trades once,
+  filters to `completed_non_gap`, writes `time_stability_report.json`,
+  `time_stability_report.csv`, and `run_config.json`.
 
-Permutation spec:
+Time-stability spec:
 
-- statistic: mean RealizedR over `completed_non_gap`
-- unit: shuffle `Open`, `High`, `Low`, `Close`, `Volume`, `BidVolume`,
-  `AskVolume` as whole-row tuples within each `SessionDate_ET`
-- fixed skeleton: timestamps, session anchors, contract, and roll-session flag
-  stay in original sorted positions
-- gap fields: `BarGapMinutesFromPrevious` and `BarGapFromPrevious` are
-  recomputed from the preserved timestamp/session skeleton
-- p-value: one-sided positive, plus-one smoothed
-- interpretation: i.i.d.-style structure-destruction diagnostic,
-  coverage-only, not a promotion gate, and not a valid null for VWAP-fade
-  mean-reversion edge validation
+- judged population: `completed_non_gap`
+- grouping timestamp: trade `entry_time`
+- granularities: month, quarter, year
+- sparse bucket floor: fewer than 20 trades is `insufficient`
+- sign counts are across sufficient buckets only
+- concentration metrics do not divide by signed total R
+- selection policy: no period selection, no time-of-year filters
 
-Real market-data permutation output:
+Real time-stability output:
+
+- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/time_stability_20260528T121117Z`
+- completed_non_gap trades: `1810`
+- total R: `-252.69658546780727`
+- year sign counts: 6 negative, 0 positive, 0 zero, 0 missing
+- largest year by absolute total R: `2019`, total R
+  `-59.64036184588306`
+- largest-year absolute share: `0.23601570134188082`
+- leave-2019-out total R: `-193.0562236219242`
+
+Read together with walk-forward: the child is negative across every sufficient
+calendar year, not just in one bad year. This remains coverage-only context for
+a rejected workflow child, not edge evidence.
+
+## Prior Market-Permutation Result
 
 - `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/market_permutation_20260528T105820Z`
-- observed completed_non_gap trades: `1810`
 - observed mean R: `-0.13961137318663386`
 - permuted mean R summary: min `0.43475123285563155`, mean
   `0.45059695928204013`, max `0.4699887548216543`
-- permuted paths >= observed: `10 / 10`
 - one-sided positive p-value: `1.0`
 
-Read the result as the headline, not a footnote: single-bar within-session
-shuffling manufactures regression-to-the-mean toward the session center/VWAP and
-removes real adverse momentum after extreme deviations. That is exactly the
-mechanical setup a VWAP-fade wants. The +0.45R permuted result is therefore a
-warning that this v0 shuffle is invalid as an edge-validating null for
-mean-reversion strategies. It is kept only as honest workflow coverage for this
-negative child.
+Read that result as the headline: single-bar within-session shuffling
+manufactures regression-to-the-mean toward VWAP and removes adverse momentum.
+It is invalid as an edge-validating null for this mean-reversion strategy
+family and is kept only as workflow coverage.
 
 ## Deferred On Purpose
 
-- time-stability report is next
 - no block-bootstrap or block-permutation engine yet; a positive
   mean-reversion candidate must use a predeclared structure-preserving
   within-session block permutation before any market-permutation result can be
@@ -120,10 +127,10 @@ negative child.
 
 ## Verification
 
-- Focused market-permutation tests: 5 passed.
-- Full suite: 336 passed.
-- Real market-permutation runner completed and wrote
-  `market_permutation_20260528T104235Z`.
+- Focused time-stability tests: 4 passed.
+- Full suite: 340 passed.
+- Real time-stability runner completed and wrote
+  `time_stability_20260528T121117Z`.
 - No final-test rows were passed to the strategy. `load_validation_bars()` reads
   the source CSV to compute/assert frozen split boundaries, then slices to
   validation before the child rerun.

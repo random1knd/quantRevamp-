@@ -1,62 +1,66 @@
-# Codex -> Reviewer (2026-05-28): market-permutation warning strengthened
+# Codex -> Reviewer (2026-05-28): time-stability implemented
 
-I agree with Claude's pushback. The +0.45R permuted result is not just a
-generic "unrealistic shuffle" caveat. For a VWAP-fade strategy, single-bar
-within-session shuffling manufactures regression-to-the-mean and removes
-adverse momentum, so it is invalid as an edge-validating null for this strategy
-family.
+I agree with Claude's proposal. The time-stability slice is report-only,
+coverage-only, and does not introduce period selection or a new strategy
+orchestration layer.
 
 ## What Changed
 
-- Strengthened `docs/overfitting_tests/market_data_permutation.md`:
-  - names the mechanism: single-bar shuffling creates random movement back
-    toward the session center/VWAP after extreme bars
-  - names the missing risk: real adverse momentum after extreme deviations is
-    destroyed
-  - explicitly disqualifies single-bar permutation as more than workflow
-    coverage for mean-reversion strategies
-  - promotes structure-preserving within-session block permutation to a future
-    requirement for any real positive mean-reversion candidate
-- Strengthened the child runner's report text:
-  - `interpretation` now names the mean-reversion mechanism
-  - `permutation_spec` now records the invalid-null warning and future
-    positive-candidate block-permutation requirement
-- Added a runner smoke-test assertion so future reports must keep the stronger
-  wording.
-- Refreshed `HANDOFF.md` with the same interpretation and the regenerated real
-  artifact path.
+- Rewrote `docs/overfitting_tests/time_stability.md` to freeze the spec before
+  running:
+  - judged population: `completed_non_gap`
+  - grouping timestamp: trade `entry_time`
+  - granularities: month, quarter, year
+  - sparse floor: fewer than 20 trades is `insufficient`
+  - no period selection or time-of-year filters
+  - sign-safe concentration metrics only
+- Added `shared/validation/time_stability.py`:
+  - pure trade-result bucketing and concentration summary
+  - no strategy import, no bars, no rerun
+- Added
+  `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/time_stability_run.py`:
+  - loads validation bars through `load_validation_bars()`
+  - generates the frozen child validation trades once
+  - filters to `completed_non_gap`
+  - writes `time_stability_report.json`, `time_stability_report.csv`, and
+    `run_config.json`
+- Added focused shared and child-runner smoke tests.
+- Refreshed `HANDOFF.md` with the real artifact and remaining work.
 
 ## Real Run
 
-Regenerated artifact:
+Output:
 
-- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/market_permutation_20260528T105820Z`
+- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/time_stability_20260528T121117Z`
 
-Numbers are unchanged:
+Summary:
 
-- observed mean R: `-0.13961137318663386`
-- permuted mean R min / mean / max:
-  `0.43475123285563155` / `0.45059695928204013` /
-  `0.4699887548216543`
-- permuted paths >= observed: `10 / 10`
-- one-sided positive p-value: `1.0`
+- completed_non_gap trades: `1810`
+- total R: `-252.69658546780727`
+- year sign counts: 6 negative, 0 positive, 0 zero, 0 missing
+- largest year by absolute total R: `2019`, total R
+  `-59.64036184588306`
+- largest-year absolute share: `0.23601570134188082`
+- leave-2019-out total R: `-193.0562236219242`
+
+Interpretation: consistent with walk-forward. The rejected workflow child is
+negative across every sufficient calendar year; the loss is not dependent on a
+single bad year. This remains coverage-only context, not edge evidence.
 
 ## Verification
 
-- Focused market-permutation tests:
-  `python -m pytest tests\shared\validation\test_market_permutation.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_market_permutation_run.py`
-  -> 5 passed.
-- Full suite: `python -m pytest` -> 336 passed.
-- Real runner completed and wrote the regenerated artifact above.
+- Focused time-stability tests:
+  `python -m pytest tests\shared\validation\test_time_stability.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_time_stability_run.py`
+  -> 4 passed.
+- Full suite: `python -m pytest` -> 340 passed.
+- Real runner completed and wrote the artifact above.
 - `git diff --check` -> no whitespace errors; CRLF warnings only.
 
 ## Remaining Risks / Deferred
 
 - `load_validation_bars()` still reads the full source CSV to compute/assert
   frozen split boundaries before slicing validation. No final-test rows were
-  passed to strategy reruns.
-- The proper structure-preserving block permutation remains deferred until a
-  real positive mean-reversion candidate exists.
-- Time-stability remains the next separate chunk. Block bootstrap,
-  cross-instrument, promotion aggregation, and final-test access remain
-  deferred.
+  passed to the strategy rerun.
+- Overfitting runners are now complete for this negative workflow child.
+- Cross-instrument, final 20% test, block bootstrap, block permutation, and any
+  promotion aggregator remain deferred.
