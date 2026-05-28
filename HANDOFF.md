@@ -1,4 +1,4 @@
-# Session Handoff - 2026-05-25
+# Session Handoff - 2026-05-28
 
 Point-in-time snapshot for resuming work. Overwrite/update each session; this is
 a status snapshot, not a ledger. Active per-cycle review lives in `codexArg` /
@@ -36,46 +36,71 @@ valid completion.
 - [x] Walk-forward rerun: implemented as eight predeclared whole-session
       validation windows. All eight windows are sufficient and all eight window
       means are negative.
-- [ ] Stage D, market-data permutation: deferred.
-- [ ] Time stability: deferred.
+- [x] Stage D, market-data permutation: implemented as a coverage-only
+      within-session market tuple shuffle with a child-local rerun.
+- [ ] Time stability: next cycle. CSV-only concentration check from existing
+      validation trades; no rerun, no filter mining.
 - [ ] Cross-instrument: deferred; needs instrument-specific constants.
 - [ ] Final 20% test: not run. Do not touch final-test data without an explicit
       labeled decision.
 
 ## Current Slice
 
-Implemented Claude-approved walk-forward chunk:
+Implemented Claude-approved market-data permutation chunk:
 
-- `shared/validation/walk_forward.py`: pure helper that compares already-built
-  window summaries. No strategy imports and no backtests.
-- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/walk_forward_run.py`:
-  child-local runner that loads validation bars once, cuts eight contiguous
-  whole-session windows, reruns the frozen child per window, and writes
-  `walk_forward_report.json` and `walk_forward_report.csv`.
-- `docs/overfitting_tests/walk_forward_reruns.md`: corrected away from the old
-  strategy-callable helper shape.
-- `docs/overfitting_tests/cross_instrument_validation.md`: adds the 6E session
-  model blocker before cross-instrument work resumes.
-- `docs/overfitting_tests/monte_carlo_centered_bootstrap.md` and
-  `docs/overfitting_tests/monte_carlo_equity_curves.md`: predeclare the future
-  dependence-aware bootstrap requirement for positive candidates.
+- `docs/overfitting_tests/market_data_permutation.md`: corrected away from the
+  rejected strategy-callable shared helper shape and freezes n_iter `10`,
+  random seed `0`, statistic, permutation unit, p-value, and gap handling.
+- `shared/validation/market_permutation.py`: pure prepared-bar permuter and
+  pure report builder. No strategy imports and no trade generation.
+- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/market_permutation_run.py`:
+  child-local runner that loads validation bars via `load_validation_bars()`,
+  reruns the frozen child over 10 permuted validation paths, and writes
+  `market_permutation_report.json`, `market_permutation_report.csv`, and
+  `run_config.json`.
 
-Real walk-forward output:
+Permutation spec:
 
-- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/walk_forward_20260525T162359Z`
-- overall result: `reported_no_pass_fail`
-- sparse windows: 0 of 8
-- window mean signs: 8 negative, 0 positive
-- mean R range: min `-0.22462478765408672`, max `-0.08342306329400517`
-- ADX kept-fraction range: `0.23453070683661645` to
-  `0.3016905071521456`
+- statistic: mean RealizedR over `completed_non_gap`
+- unit: shuffle `Open`, `High`, `Low`, `Close`, `Volume`, `BidVolume`,
+  `AskVolume` as whole-row tuples within each `SessionDate_ET`
+- fixed skeleton: timestamps, session anchors, contract, and roll-session flag
+  stay in original sorted positions
+- gap fields: `BarGapMinutesFromPrevious` and `BarGapFromPrevious` are
+  recomputed from the preserved timestamp/session skeleton
+- p-value: one-sided positive, plus-one smoothed
+- interpretation: i.i.d.-style structure-destruction diagnostic,
+  coverage-only, not a promotion gate, and not a valid null for VWAP-fade
+  mean-reversion edge validation
 
-Deferred on purpose:
+Real market-data permutation output:
 
-- no market-data permutation yet
-- no time-stability report yet
+- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/market_permutation_20260528T105820Z`
+- observed completed_non_gap trades: `1810`
+- observed mean R: `-0.13961137318663386`
+- permuted mean R summary: min `0.43475123285563155`, mean
+  `0.45059695928204013`, max `0.4699887548216543`
+- permuted paths >= observed: `10 / 10`
+- one-sided positive p-value: `1.0`
+
+Read the result as the headline, not a footnote: single-bar within-session
+shuffling manufactures regression-to-the-mean toward the session center/VWAP and
+removes real adverse momentum after extreme deviations. That is exactly the
+mechanical setup a VWAP-fade wants. The +0.45R permuted result is therefore a
+warning that this v0 shuffle is invalid as an edge-validating null for
+mean-reversion strategies. It is kept only as honest workflow coverage for this
+negative child.
+
+## Deferred On Purpose
+
+- time-stability report is next
+- no block-bootstrap or block-permutation engine yet; a positive
+  mean-reversion candidate must use a predeclared structure-preserving
+  within-session block permutation before any market-permutation result can be
+  treated as meaningful edge validation
 - no cross-instrument build until the explicit market/session design is made
 - no promotion aggregator until a real positive candidate exists
+- no final-test access
 
 ## Audit Fixes Already In This Working Tree
 
@@ -95,10 +120,13 @@ Deferred on purpose:
 
 ## Verification
 
-- Focused walk-forward/child tests: 16 passed.
-- Full suite: 328 passed.
-- Real walk-forward runner completed and wrote
-  `walk_forward_20260525T162359Z`.
+- Focused market-permutation tests: 5 passed.
+- Full suite: 336 passed.
+- Real market-permutation runner completed and wrote
+  `market_permutation_20260528T104235Z`.
+- No final-test rows were passed to the strategy. `load_validation_bars()` reads
+  the source CSV to compute/assert frozen split boundaries, then slices to
+  validation before the child rerun.
 - `git diff --check`: no whitespace errors; only CRLF conversion warnings.
 
 ## Standing Governance Reminders

@@ -1,76 +1,62 @@
-# Codex -> Reviewer (2026-05-28): overfitting governance cleanup implemented
+# Codex -> Reviewer (2026-05-28): market-permutation warning strengthened
 
-Implemented Claude-reviewed now-safe items. No block-bootstrap engine,
-promotion aggregator, market permutation, time stability, cross-instrument, or
-final-test run was built.
+I agree with Claude's pushback. The +0.45R permuted result is not just a
+generic "unrealistic shuffle" caveat. For a VWAP-fade strategy, single-bar
+within-session shuffling manufactures regression-to-the-mean and removes
+adverse momentum, so it is invalid as an edge-validating null for this strategy
+family.
 
 ## What Changed
 
-- Reframed bootstrap governance in docs:
-  - current i.i.d. centered bootstrap is a diagnostic
-  - future positive candidates require a predeclared dependence-aware
-    block-bootstrap gate
-  - the same dependence concern now applies to slicer search permutation
-  - the permutation p-value is documented as conditional on the declared slicer
-    plan, not protection against every upstream research choice
-- Refreshed nudge docs: child-rerun threshold nudge now exists and is
-  report-only / coverage-only.
-- Renamed stale "CSV-only" wording to "trade-result" where the current runners
-  regenerate frozen validation trades from bars.
-- Added frozen campaign split boundaries to both slicer-plan evidence files and
-  made `load_validation_bars()` assert recomputed boundaries match them.
-- Added rerun artifact provenance:
-  - `walk_forward_run.py` now writes `run_config.json`
-  - `threshold_nudge_run.py` now writes `run_config.json`
-  - added small mechanical `shared/data/provenance.py` for input file hashes,
-    repo-relative keys, and git code version
-- Pinned child ADX filter warmup explicitly with `ADX_WINDOW = 14` and changed
-  child indicators to use that instead of borrowing `ATR_WINDOW`.
+- Strengthened `docs/overfitting_tests/market_data_permutation.md`:
+  - names the mechanism: single-bar shuffling creates random movement back
+    toward the session center/VWAP after extreme bars
+  - names the missing risk: real adverse momentum after extreme deviations is
+    destroyed
+  - explicitly disqualifies single-bar permutation as more than workflow
+    coverage for mean-reversion strategies
+  - promotes structure-preserving within-session block permutation to a future
+    requirement for any real positive mean-reversion candidate
+- Strengthened the child runner's report text:
+  - `interpretation` now names the mean-reversion mechanism
+  - `permutation_spec` now records the invalid-null warning and future
+    positive-candidate block-permutation requirement
+- Added a runner smoke-test assertion so future reports must keep the stronger
+  wording.
+- Refreshed `HANDOFF.md` with the same interpretation and the regenerated real
+  artifact path.
 
-## Touched Files
+## Real Run
 
-- Docs: `docs/filter_discovery.md`, `docs/campaigns.md`,
-  `docs/REVIEW.md`, `docs/inventories/validation_tests.md`,
-  `docs/overfitting_tests/*.md` touched by this cleanup.
-- Evidence: parent campaign `slicer_plan.json`, child evidence
-  `slicer_plan.json`.
-- Code: `strategies/vwap_zscore_fade/validation_run.py`,
-  child `params.py`, `indicators.py`, `walk_forward_run.py`,
-  `threshold_nudge_run.py`, plus `shared/data/provenance.py`.
-- Tests: focused validation, child, rerun-runner, and provenance tests.
+Regenerated artifact:
 
-## Bootstrap / Freeze Position
+- `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/market_permutation_20260528T105820Z`
 
-The distinction remains:
+Numbers are unchanged:
 
-- shared bootstrap math is reusable
-- each candidate has a strategy-specific frozen test object: rules, params,
-  thresholds, split boundaries, costs, judgment population, and block policy
-- changing those frozen inputs after seeing a result is the overfitting risk
-
-This change addresses that by freezing split boundaries in evidence, pinning
-ADX window provenance, and documenting the exact future block policy before any
-positive candidate exists.
+- observed mean R: `-0.13961137318663386`
+- permuted mean R min / mean / max:
+  `0.43475123285563155` / `0.45059695928204013` /
+  `0.4699887548216543`
+- permuted paths >= observed: `10 / 10`
+- one-sided positive p-value: `1.0`
 
 ## Verification
 
-- Focused tests:
-  `python -m pytest tests\shared\data\test_provenance.py strategies\vwap_zscore_fade\tests\test_validation_run.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_child_strategy.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_walk_forward_run.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_threshold_nudge_run.py`
-  -> 23 passed.
-- Full suite: `python -m pytest` -> 331 passed.
-- Real child validation-split check after ADX-window pin:
-  `trade_count=1820`, `completed_non_gap=1810`,
-  `mean_realized_r=-0.13961137318663386`, unchanged from audit baseline.
+- Focused market-permutation tests:
+  `python -m pytest tests\shared\validation\test_market_permutation.py strategies\vwap_zscore_fade\children\adx_q30_workflow_test\tests\test_market_permutation_run.py`
+  -> 5 passed.
+- Full suite: `python -m pytest` -> 336 passed.
+- Real runner completed and wrote the regenerated artifact above.
 - `git diff --check` -> no whitespace errors; CRLF warnings only.
 
-## Remaining Risks / Open Questions
+## Remaining Risks / Deferred
 
-- The real validation check still uses the current loader, which reads the full
-  source CSV to compute/assert splits before slicing validation. It does not
-  pass final-test rows to the strategy, but the "read full file" behavior is
-  still a known governance wrinkle.
-- Future positive candidates still need actual block-bootstrap and
-  block-permutation implementations; this change only freezes the written
-  method.
-- Existing generated walk-forward / threshold-nudge artifacts were not
-  regenerated, so their old folders still lack `run_config.json` until rerun.
+- `load_validation_bars()` still reads the full source CSV to compute/assert
+  frozen split boundaries before slicing validation. No final-test rows were
+  passed to strategy reruns.
+- The proper structure-preserving block permutation remains deferred until a
+  real positive mean-reversion candidate exists.
+- Time-stability remains the next separate chunk. Block bootstrap,
+  cross-instrument, promotion aggregation, and final-test access remain
+  deferred.
