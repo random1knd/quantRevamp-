@@ -82,6 +82,13 @@ search for each permutation, and compare the selected score to the distribution
 of maximum permuted scores. A Bonferroni report can remain as an informational
 secondary check when a raw p-value is available.
 
+This adjustment is conditional on the declared slicer plan. It covers the
+concrete searched grid, not every upstream research choice that led to the plan:
+which research columns existed, which columns were included, the quantile grid,
+the one-column rule form, and the selected input population. Those choices must
+stay controlled procedurally by predeclaration, the one-child-generation rule,
+and fresh data or a new campaign before a materially different search is run.
+
 Initial real-candidate gate:
 
 - selected mean `RealizedR` must be positive
@@ -182,7 +189,10 @@ review; it is not final promotion. The gate for that advance is:
 
 Final real-candidate promotion after validation also requires:
 
-- validation centered-bootstrap one-sided p-value `<= 0.10`
+- the i.i.d. centered-bootstrap validation p-value reported as a diagnostic
+- for a positive candidate, a predeclared dependence-aware block-bootstrap
+  validation p-value meeting the campaign threshold, currently `<= 0.10`
+  unless changed before discovery
 - no required overfitting report with a blocking failure
 - cross-instrument and final-test evidence reviewed under their declared labels
 
@@ -194,12 +204,15 @@ current ADX Q30 child is a workflow-test child and is not a real candidate.
 
 Run overfitting tests after validation and before cross-instrument checks.
 
-CSV-only tests use validation trade results:
+Trade-result tests use validation trade results. A helper may consume a frozen
+`trades.csv`, while current strategy-local runners may regenerate the frozen
+validation trades from bars to ensure the same strategy, costs, and judgment
+population are used:
 
 - realized-R summary
 - minimum trade count / low-sample warning
-- Monte Carlo centered-bootstrap significance
-- Monte Carlo equity curves
+- i.i.d. Monte Carlo centered-bootstrap diagnostic
+- Monte Carlo equity curves diagnostic
 
 Slicer-artifact tests use discovery artifacts and are train-side only:
 

@@ -9,6 +9,7 @@ from typing import Any, Sequence
 
 import pandas as pd
 
+from shared.data.provenance import code_version, input_data_metadata, repo_key
 from shared.validation.realized_r import summarize_realized_r
 from shared.validation.walk_forward import (
     SPARSE_TRADE_FLOOR,
@@ -31,6 +32,7 @@ from strategies.vwap_zscore_fade.validation_run import (
     COVERAGE_LABEL,
     EXCLUDE_ROLL_SESSIONS,
     FINAL_TEST_STATUS,
+    INPUT_DATA_PATH,
     JUDGMENT_POPULATION,
     OUTPUT_ROOT,
     judgment_population_trades,
@@ -38,6 +40,7 @@ from strategies.vwap_zscore_fade.validation_run import (
 )
 
 
+ROOT = Path(__file__).resolve().parents[4]
 WALK_FORWARD_WINDOW_COUNT = 8
 WINDOW_COUNT_RATIONALE = (
     "Predeclared before running: the validation span is 2018-04-18 through "
@@ -48,6 +51,7 @@ WINDOW_COUNT_RATIONALE = (
 )
 REPORT_JSON = "walk_forward_report.json"
 REPORT_CSV = "walk_forward_report.csv"
+RUN_CONFIG_JSON = "run_config.json"
 REPORT_LABEL = "coverage_only_validation_child_walk_forward_no_edge_claim"
 
 
@@ -97,8 +101,14 @@ def run_walk_forward_report(
     )
     destination = Path(output_dir) if output_dir is not None else _output_dir()
     destination.mkdir(parents=True, exist_ok=True)
+    run_config = build_run_config(
+        validation_bars=validation_bars,
+        splits=splits,
+        output_dir=destination,
+    )
     _write_json(destination / REPORT_JSON, report)
     _write_walk_forward_csv(destination / REPORT_CSV, report["windows"])
+    _write_json(destination / RUN_CONFIG_JSON, run_config)
     return destination
 
 
@@ -136,6 +146,7 @@ def build_walk_forward_report(
             ),
             "frozen_child_thresholds": {
                 "adx_filter_threshold": child_params.ADX_FILTER_THRESHOLD,
+                "adx_window": child_params.ADX_WINDOW,
                 "entry_z_threshold": child_params.ENTRY_Z_THRESHOLD,
                 "stop_atr_multiple": child_params.STOP_ATR_MULTIPLE,
                 "time_stop_minutes": child_params.TIME_STOP_MINUTES,
@@ -150,6 +161,80 @@ def build_walk_forward_report(
         }
     )
     return report
+
+
+def build_run_config(
+    *,
+    validation_bars: pd.DataFrame,
+    splits: dict[str, Any],
+    output_dir: str | Path,
+) -> dict[str, Any]:
+    input_data = input_data_metadata([INPUT_DATA_PATH], repo_root=ROOT)
+    return {
+        "run_type": "validation_child_walk_forward",
+        "split": "validation",
+        "report_label": REPORT_LABEL,
+        "coverage_label": COVERAGE_LABEL,
+        "child_workflow_label": child_params.WORKFLOW_TEST_LABEL,
+        "child_strategy_name": child_params.STRATEGY_NAME,
+        "child_id": CHILD_ID,
+        "instrument": child_params.INSTRUMENT,
+        "timeframe": child_params.TIMEFRAME,
+        "output_dir": repo_key(output_dir, repo_root=ROOT),
+        "final_test_status": FINAL_TEST_STATUS,
+        "data_start": validation_bars["DateTime_UTC"].min().isoformat(),
+        "data_end": validation_bars["DateTime_UTC"].max().isoformat(),
+        "session_start": validation_bars["SessionDate_ET"].min().isoformat(),
+        "session_end": validation_bars["SessionDate_ET"].max().isoformat(),
+        "splits": _split_summary(splits),
+        "code_version": code_version(ROOT),
+        "input_data_sha256": input_data["sha256"],
+        "input_data_bytes": input_data["bytes"],
+        "input_data_is_repo_relative": input_data["is_repo_relative"],
+        "non_reproducible_input_paths": input_data["non_reproducible_paths"],
+        "judgment_population": JUDGMENT_POPULATION,
+        "window_config": {
+            "predeclared_window_count": WALK_FORWARD_WINDOW_COUNT,
+            "sparse_trade_floor": SPARSE_TRADE_FLOOR,
+            "window_split_policy": (
+                "contiguous whole SessionDate_ET blocks inside the validation "
+                "split; sessions are never cut in half"
+            ),
+        },
+        "frozen_child_parameters": {
+            "adx_filter_threshold": child_params.ADX_FILTER_THRESHOLD,
+            "adx_window": child_params.ADX_WINDOW,
+            "entry_z_threshold": child_params.ENTRY_Z_THRESHOLD,
+            "z_window": child_params.Z_WINDOW,
+            "signal_min_bars": child_params.SIGNAL_MIN_BARS,
+            "atr_window": child_params.ATR_WINDOW,
+            "stop_atr_multiple": child_params.STOP_ATR_MULTIPLE,
+            "time_stop_minutes": child_params.TIME_STOP_MINUTES,
+            "no_entry_before_session_minute": (
+                child_params.NO_ENTRY_BEFORE_SESSION_MINUTE
+            ),
+            "no_entry_at_or_after_session_minute": (
+                child_params.NO_ENTRY_AT_OR_AFTER_SESSION_MINUTE
+            ),
+            "rth_start_session_minute": child_params.RTH_START_SESSION_MINUTE,
+            "last_rth_bar_open_session_minute": (
+                child_params.LAST_RTH_BAR_OPEN_SESSION_MINUTE
+            ),
+            "session_force_flat_minute": child_params.SESSION_FORCE_FLAT_MINUTE,
+        },
+        "exclude_roll_sessions": EXCLUDE_ROLL_SESSIONS,
+        "commission_model": {
+            "model": "round_turn_currency",
+            "commission_per_round_turn": COMMISSION_PER_ROUND_TURN,
+            "commission_is_smoke_test": COMMISSION_IS_SMOKE_TEST,
+        },
+        "slippage_model": {
+            "model": "fixed_ticks_per_side",
+            "ticks_per_side": child_params.SLIPPAGE_TICKS_PER_SIDE,
+            "tick_size": child_params.NQ_TICK_SIZE,
+        },
+        "point_value": child_params.NQ_POINT_VALUE,
+    }
 
 
 def _session_windows(

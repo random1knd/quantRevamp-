@@ -4,6 +4,11 @@
   "parent_strategy": "vwap_zscore_fade",
   "discovery_artifact": "data/results/vwap_zscore_fade/parent/discovery_20260524T050004Z",
   "context_trades_path": "data/results/vwap_zscore_fade/parent/discovery_20260524T050004Z/context_trades.csv",
+  "split_boundaries": {
+    "discovery_end": "2018-04-17",
+    "validation_end": "2023-12-01",
+    "test_end": "2026-03-06"
+  },
   "input_population": {
     "name": "completed_non_gap",
     "exit_reason_column": "ExitReason",

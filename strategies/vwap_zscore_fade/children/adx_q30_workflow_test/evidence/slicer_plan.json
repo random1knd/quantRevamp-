@@ -73,6 +73,11 @@
     80
   ],
   "realized_r_column": "RealizedR",
+  "split_boundaries": {
+    "discovery_end": "2018-04-17",
+    "validation_end": "2023-12-01",
+    "test_end": "2026-03-06"
+  },
   "required_rule_diagnostics": [
     "rule_id",
     "rule_index",

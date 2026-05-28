@@ -7,7 +7,7 @@ standard artifacts or rerun frozen strategies under controlled conditions.
 
 ## Test Groups
 
-CSV-only tests:
+Trade-result tests:
 
 - [realized_r_summary.md](realized_r_summary.md)
 - [monte_carlo_centered_bootstrap.md](monte_carlo_centered_bootstrap.md)
@@ -22,7 +22,7 @@ Backtest-rerun tests:
 
 - [walk_forward_reruns.md](walk_forward_reruns.md)
 - child-rerun threshold nudge from
-  [parameter_nudge_stability.md](parameter_nudge_stability.md) (deferred)
+  [parameter_nudge_stability.md](parameter_nudge_stability.md)
 - [market_data_permutation.md](market_data_permutation.md)
 - [cross_instrument_validation.md](cross_instrument_validation.md)
 
@@ -54,9 +54,12 @@ Deflated Sharpe is a secondary validation statistic. It is available only when
 the slicer persisted the candidate Sharpe or score distribution needed to
 estimate the expected best trial result.
 
-Monte Carlo centered bootstrap on validation trades is a single-hypothesis
-non-parametric check of the frozen child. It does not adjust for the discovery
-search.
+The current i.i.d. Monte Carlo centered bootstrap on validation trades is a
+single-hypothesis non-parametric diagnostic of the frozen child. It does not
+adjust for the discovery search, and it does not preserve trade-outcome
+dependence. For a future positive candidate, the promotion gate must use the
+predeclared dependence-aware block-bootstrap policy in
+`monte_carlo_centered_bootstrap.md`.
 
 ## Threshold-Type Policy
 

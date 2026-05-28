@@ -124,6 +124,9 @@ def test_threshold_nudge_runner_uses_literal_slicer_thresholds_and_writes_report
         "generate_child_trades",
         fake_generate_trades,
     )
+    input_path = scratch / "NQ_sample.csv"
+    input_path.write_text("sample", encoding="utf-8")
+    monkeypatch.setattr(threshold_nudge_run, "INPUT_DATA_PATH", input_path)
 
     result = threshold_nudge_run.run_threshold_nudge_report(
         slicer_dir=slicer_dir,
@@ -165,6 +168,22 @@ def test_threshold_nudge_runner_uses_literal_slicer_thresholds_and_writes_report
         rows = list(csv.DictReader(file))
     assert [row["threshold_label"] for row in rows] == ["q20", "q30", "q40"]
     assert rows[1]["is_baseline"] == "True"
+    run_config = json.loads(
+        (output_dir / threshold_nudge_run.RUN_CONFIG_JSON).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert run_config["run_type"] == "validation_child_threshold_nudge"
+    assert run_config["input_data_bytes"][
+        ".test_artifacts/child_threshold_nudge_tests/"
+        f"{scratch.name}/NQ_sample.csv"
+    ] == 6
+    assert run_config["frozen_child_parameters"]["adx_window"] == 14
+    assert [row["threshold_label"] for row in run_config["threshold_grid"]] == [
+        "q20",
+        "q30",
+        "q40",
+    ]
 
 
 def test_threshold_nudge_runner_requires_literal_q20_q30_q40_rows(scratch):

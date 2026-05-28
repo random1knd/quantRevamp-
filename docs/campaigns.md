@@ -64,8 +64,15 @@ The slicer plan must state:
 - minimum post-filter trade count
 - maximum searched rule count, if a cap is used
 - multiple-testing adjustment method
+- frozen split boundary dates: `discovery_end`, `validation_end`, and
+  `test_end`
 
 The slicer must not choose its search space after inspecting results.
+
+Validation and overfitting runners should assert that recomputed split
+boundaries match the frozen campaign evidence. If appending or editing a data
+file changes the chronological 30/50/20 boundaries, that is a different
+campaign unless explicitly reviewed before rerunning evidence.
 
 The current default input population is `completed_non_gap`: rows where
 `ExitReason != end_of_data` and `HoldCrossesGap == false`. A campaign may use a

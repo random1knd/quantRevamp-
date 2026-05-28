@@ -15,6 +15,7 @@ from strategies.vwap_zscore_fade.validation_artifacts import (
 )
 from strategies.vwap_zscore_fade.validation_run import (
     COVERAGE_LABEL,
+    _assert_splits_match_frozen_campaign,
     build_validation_report,
     validation_split_bars,
     _validate_validation_does_not_overlap_final_test,
@@ -140,6 +141,25 @@ def test_validation_overlap_guard_rejects_final_test_rows():
             validation_with_final_overlap,
             splits=splits,
         )
+
+
+def test_validation_split_assert_rejects_campaign_boundary_drift(monkeypatch):
+    import strategies.vwap_zscore_fade.validation_run as validation_run
+
+    sessions = [date(2026, 1, day) for day in range(1, 11)]
+    splits = chronological_session_splits(make_prepared_bars(sessions))
+    monkeypatch.setattr(
+        validation_run,
+        "_frozen_split_boundaries",
+        lambda: {
+            "discovery_end": splits["discovery_end"],
+            "validation_end": date(2026, 1, 7),
+            "test_end": splits["test_end"],
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="frozen campaign evidence"):
+        _assert_splits_match_frozen_campaign(splits)
 
 
 def test_validation_report_rejects_negative_demo_child_and_marks_dsr_unavailable():

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime
+import json
+from datetime import UTC, date, datetime
 from pathlib import Path
 import subprocess
 from typing import Any, Sequence
@@ -41,6 +42,15 @@ OUTPUT_ROOT = (
     / parent_params.STRATEGY_NAME
     / "children"
     / CHILD_ID
+)
+CHILD_EVIDENCE_SLICER_PLAN_PATH = (
+    ROOT
+    / "strategies"
+    / "vwap_zscore_fade"
+    / "children"
+    / CHILD_ID
+    / "evidence"
+    / "slicer_plan.json"
 )
 
 EXCLUDE_ROLL_SESSIONS = True
@@ -126,6 +136,7 @@ def load_validation_bars() -> tuple[pd.DataFrame, ChronologicalSessionSplits]:
         expected_bar_interval_minutes=parent_params.BAR_INTERVAL_MINUTES,
     )
     splits = chronological_session_splits(prepared)
+    _assert_splits_match_frozen_campaign(splits)
     validation_bars = validation_split_bars(prepared, splits=splits)
     return validation_bars, splits
 
@@ -217,6 +228,7 @@ def build_run_config(
         "session_start": validation_bars["SessionDate_ET"].min().isoformat(),
         "session_end": validation_bars["SessionDate_ET"].max().isoformat(),
         "splits": _split_summary(splits),
+        "frozen_campaign_split_boundaries": _frozen_split_boundaries_iso(),
         "final_test_status": FINAL_TEST_STATUS,
         "output_dir": _repo_key(output_dir),
         "random_seed": RANDOM_SEED,
@@ -259,6 +271,51 @@ def _validate_validation_does_not_overlap_final_test(
         raise RuntimeError("validation slice overlaps discovery split - aborting")
     if max_session > splits["validation_end"]:
         raise RuntimeError("validation slice overlaps final-test split - aborting")
+
+
+def _assert_splits_match_frozen_campaign(
+    splits: ChronologicalSessionSplits,
+) -> None:
+    frozen = _frozen_split_boundaries()
+    mismatches = {
+        key: {
+            "frozen": frozen[key].isoformat(),
+            "computed": splits[key].isoformat(),
+        }
+        for key in ("discovery_end", "validation_end", "test_end")
+        if splits[key] != frozen[key]
+    }
+    if mismatches:
+        raise RuntimeError(
+            "computed split boundaries do not match frozen campaign evidence: "
+            f"{mismatches}"
+        )
+
+
+def _frozen_split_boundaries() -> dict[str, date]:
+    plan = _read_child_evidence_slicer_plan()
+    raw = plan.get("split_boundaries")
+    if not isinstance(raw, dict):
+        raise RuntimeError("child evidence slicer_plan.json missing split_boundaries")
+
+    required = ("discovery_end", "validation_end", "test_end")
+    missing = [key for key in required if key not in raw]
+    if missing:
+        raise RuntimeError(f"child evidence split_boundaries missing: {missing}")
+
+    return {key: date.fromisoformat(str(raw[key])) for key in required}
+
+
+def _frozen_split_boundaries_iso() -> dict[str, str]:
+    return {
+        key: value.isoformat()
+        for key, value in _frozen_split_boundaries().items()
+    }
+
+
+def _read_child_evidence_slicer_plan() -> dict[str, Any]:
+    with CHILD_EVIDENCE_SLICER_PLAN_PATH.open(encoding="utf-8") as file:
+        return json.load(file)
 
 
 def _strategy_summary(trades: Sequence[Any]) -> dict[str, object]:
@@ -387,6 +444,7 @@ def _parameter_snapshot() -> dict[str, Any]:
         },
         "child": {
             "adx_filter_threshold": child_params.ADX_FILTER_THRESHOLD,
+            "adx_window": child_params.ADX_WINDOW,
             "entry_z_threshold": child_params.ENTRY_Z_THRESHOLD,
             "z_window": child_params.Z_WINDOW,
             "signal_min_bars": child_params.SIGNAL_MIN_BARS,

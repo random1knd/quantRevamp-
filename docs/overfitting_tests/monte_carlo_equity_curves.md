@@ -33,6 +33,9 @@ monte_carlo_equity_curves(realized_r, n_iter, random_seed)
   policy predeclared in
   `docs/overfitting_tests/monte_carlo_centered_bootstrap.md` before trusting
   equity-curve or drawdown bands
+- the same frozen block policy applies here: whole-session blocks first,
+  centered null for significance, and block-resampled equity/drawdown paths
+  before any positive candidate's result is trusted
 - the strategy filter does not remove trade-outcome dependence; it only selects
   which trades are included
 

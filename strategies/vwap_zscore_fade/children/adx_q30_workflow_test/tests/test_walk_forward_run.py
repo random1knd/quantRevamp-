@@ -91,6 +91,9 @@ def test_walk_forward_runner_uses_whole_session_windows_and_frozen_child(
             "adx_missing_count": 0,
         },
     )
+    input_path = scratch / "NQ_sample.csv"
+    input_path.write_text("sample", encoding="utf-8")
+    monkeypatch.setattr(walk_forward_run, "INPUT_DATA_PATH", input_path)
 
     output_dir = scratch / "walk_forward"
     result = walk_forward_run.run_walk_forward_report(output_dir=output_dir)
@@ -120,6 +123,15 @@ def test_walk_forward_runner_uses_whole_session_windows_and_frozen_child(
         rows = list(csv.DictReader(file))
     assert len(rows) == 8
     assert rows[0]["window_index"] == "1"
+    run_config = json.loads(
+        (output_dir / walk_forward_run.RUN_CONFIG_JSON).read_text(encoding="utf-8")
+    )
+    assert run_config["run_type"] == "validation_child_walk_forward"
+    assert run_config["input_data_bytes"][
+        ".test_artifacts/child_walk_forward_tests/"
+        f"{scratch.name}/NQ_sample.csv"
+    ] == 6
+    assert run_config["frozen_child_parameters"]["adx_window"] == 14
 
 
 def test_session_windows_do_not_split_sessions():

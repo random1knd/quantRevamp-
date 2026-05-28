@@ -76,7 +76,7 @@ def add_child_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     rth["ADX"] = _session_adx(
         rth,
         session=rth["SessionDate_ET"],
-        window=params.ATR_WINDOW,
+        window=params.ADX_WINDOW,
     )
 
     result.loc[rth.index, INDICATOR_COLUMNS] = rth.loc[:, INDICATOR_COLUMNS]

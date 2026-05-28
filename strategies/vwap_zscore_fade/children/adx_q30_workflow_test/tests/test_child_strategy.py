@@ -232,3 +232,4 @@ def test_child_generate_trades_none_threshold_matches_frozen_threshold(monkeypat
 
 def test_child_indicator_columns_include_trade_driving_adx():
     assert "ADX" in INDICATOR_COLUMNS
+    assert params.ADX_WINDOW == 14

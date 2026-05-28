@@ -52,6 +52,18 @@ Compare the real selected score to the distribution of permuted maximum scores.
 Use a predeclared random seed and iteration count. Report p-values with
 plus-one smoothing: `(1 + null_count_at_or_above_selected) / (1 + n_iter)`.
 
+The current full-row shuffle is an i.i.d. / exchangeability diagnostic. It
+adjusts for the declared rule grid, but it does not preserve session-level or
+regime-level dependence in trade outcomes.
+
+For a future positive candidate, the selection-adjusted p-value must use a
+predeclared dependence-aware version before it is trusted as a promotion gate.
+First policy: permute or resample at whole-session blocks while rerunning the
+same predeclared search. If whole-session blocks are unusable, a contiguous
+trade-block fallback must declare block length, circular versus non-circular
+sampling, replicate sizing, `n_iter`, and `random_seed` before the candidate's
+result is inspected.
+
 Out-of-sample validation remains the main proof.
 
 ## Rule Search Helper

@@ -36,7 +36,7 @@ Use validation trades and validation bars for overfitting tests. Discovery data
 is already used for slicing, so it should not be used to prove a discovered
 filter.
 
-CSV-only tests:
+Trade-result tests:
 
 - realized-R summary
 - minimum trade count / low-sample warning

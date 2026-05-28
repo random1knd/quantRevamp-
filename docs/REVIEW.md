@@ -163,7 +163,7 @@ Initial validation trade-count policy:
 
 Overfitting tests happen after validation and before cross-instrument checks.
 
-CSV-only tests use validation trade results:
+Trade-result tests use validation trade results:
 
 - realized-R summary
 - low-sample warning

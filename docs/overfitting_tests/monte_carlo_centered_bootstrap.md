@@ -52,10 +52,31 @@ filter does not remove this dependence risk: it selects which trades are
 included, but it does not make their outcomes time-independent.
 
 For a future positive candidate, significance must use a predeclared
-dependence-aware bootstrap before the result is trusted. Preferred block unit is
-whole sessions. If session-level trade counts make that unusable, use contiguous
-trade blocks instead, but the block-size policy must be declared and frozen
-before looking at the positive candidate's result.
+dependence-aware bootstrap before the result is trusted. The i.i.d. centered
+bootstrap remains a diagnostic; it is not the promotion gate for a positive
+candidate.
+
+Frozen first block policy:
+
+- statistic: mean `RealizedR`
+- sidedness: one-sided positive
+- block unit: one whole session, containing that session's ordered
+  `completed_non_gap` validation trades
+- resampling scheme: sample sessions with replacement until the resampled
+  session count equals the observed session count
+- replicate size: accept the variable total trade count produced by the drawn
+  sessions
+- replicate score: mean `RealizedR` over all trades in the drawn session blocks
+- null: subtract the observed mean `RealizedR` from each trade before
+  resampling, matching the current centered-bootstrap null family
+- p-value: plus-one smoothed, `(1 + null_count_at_or_above_observed) /
+  (1 + n_iter)`
+- `n_iter` and `random_seed`: fixed before the run and recorded in the artifact
+
+Fallback is allowed only if session-level trade counts make whole-session blocks
+unusable. The fallback must be declared before seeing the positive candidate's
+result and must specify contiguous trade-block length, circular versus
+non-circular sampling, replicate sizing, sidedness, `n_iter`, and `random_seed`.
 
 The dependence-aware method applies both to the significance p-value here and to
 the equity-curve / drawdown bands in

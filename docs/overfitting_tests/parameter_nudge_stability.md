@@ -6,8 +6,9 @@ Purpose:
 - later check whether the live child implementation is fragile to nearby
   literal threshold values
 
-This test is split into two reports. The first report is implemented now; the
-second is deferred until the next reviewable slice.
+This test is split into two reports. Both current reports are implemented for
+the ADX Q30 workflow child, and both are report-only. Neither report can select
+a new threshold or validate an edge.
 
 ## Report 1: Threshold-Neighborhood Report
 
@@ -53,16 +54,32 @@ only catches obvious threshold spikes.
 
 ## Report 2: Child-Rerun Threshold Nudge
 
-Status: deferred.
+Code:
 
-The future child-rerun nudge will rerun the frozen child strategy on validation
-bars using literal discovery-derived threshold values from the slicer rows. It
-will test implementation fidelity: causal indicator recomputation, warmup,
-fills, costs, roll exclusion, and validation population.
+```text
+shared/validation/threshold_nudge.py
+strategies/vwap_zscore_fade/children/adx_q30_workflow_test/threshold_nudge_run.py
+```
+
+Artifacts:
+
+```text
+threshold_nudge_report.json
+threshold_nudge_report.csv
+```
+
+The child-rerun nudge reruns the frozen child strategy on validation bars using
+literal discovery-derived threshold values from the slicer rows. It tests
+implementation fidelity: causal indicator recomputation, warmup, fills, costs,
+roll exclusion, and validation population.
 
 For distribution-derived raw thresholds, the primary nudge grid must use
 literal discovery-derived values. Re-derived validation quantiles may be
 reported only as diagnostics and must not reset the approved child threshold.
+
+For the current ADX Q30 workflow child, the implemented grid uses literal q20,
+q30, and q40 `SignalADX <=` slicer-row thresholds. The q30 row remains the
+baseline frozen child; q20 and q40 are diagnostics only.
 
 ## Rules
 
