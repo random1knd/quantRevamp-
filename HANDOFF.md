@@ -11,6 +11,19 @@ This is a workflow test, not a profit claim. The parent strategy
 to end with honest results at every stage. A losing or rejected outcome is a
 valid completion.
 
+## Session End (2026-05-28)
+
+- All work committed and pushed: `origin/master` at `033f64b`. Working tree clean.
+- The codex/claude review loop is paused for now (Codex budget exhausted). The
+  code does not depend on the loop being live; resume by reading this file.
+- Overfitting suite is COMPLETE and the cross-instrument blueprint (ES + 6E) is
+  COMPLETE, all coverage-only on a rejected child.
+- Only remaining pipeline step: the **final 20% test (Cycle D)**. It is NOT yet
+  authorized — it touches the final-test split, so it needs an explicit go-ahead
+  before running. Until then, the blueprint stands complete without it.
+- What is deferred (and where its spec lives) is recorded in the "Deferred On
+  Purpose" section below.
+
 ## Pipeline Progress
 
 - [x] Discovery: parent run on the 30% split. Mean R is negative on the
@@ -209,16 +222,37 @@ manufactures regression-to-the-mean toward VWAP and removes adverse momentum.
 It is invalid as an edge-validating null for this mean-reversion strategy
 family and is kept only as workflow coverage.
 
-## Deferred On Purpose
+## Deferred On Purpose (specs frozen, code intentionally not built)
 
-- no block-bootstrap or block-permutation engine yet; a positive
-  mean-reversion candidate must use a predeclared structure-preserving
-  within-session block permutation before any market-permutation result can be
-  treated as meaningful edge validation
-- no further cross-instrument promotion logic; this remains coverage-only for a
-  rejected child
-- no promotion aggregator until a real positive candidate exists
-- no final-test access
+Principle: everything here is edge-PROVING machinery. This child loses money, so
+there is nothing to prove. Building these now would be premature and would invite
+tuning them to a result. Each item below has a frozen written spec already in the
+repo; the code is built only when a real positive candidate exists, against that
+frozen spec. (Diagnostics that already run today cannot promote anything; the
+deferred versions are the gates that can.)
+
+- **Block-bootstrap engine** — dependence-aware significance gate (resamples whole
+  sessions, not single trades). Spec frozen in
+  `docs/overfitting_tests/monte_carlo_centered_bootstrap.md`. The i.i.d. centered
+  bootstrap is a diagnostic only.
+- **Block-permutation engine** — dependence-aware version of the slicer
+  search-significance test. Spec frozen in
+  `docs/overfitting_tests/multiple_testing_adjustment.md`. The full-shuffle
+  permutation is a diagnostic only.
+- **Structure-preserving (within-session block) market-data permutation** —
+  required for a real mean-reversion candidate; single-bar shuffle is an invalid
+  null (it manufactures mean-reversion). Spec frozen in
+  `docs/overfitting_tests/market_data_permutation.md`.
+- **Promotion aggregator** — would combine the separate test verdicts into one
+  promote/reject decision. Not built and no dedicated design doc yet; stacking
+  several `p<=0.10` gates is NOT a real 0.10 bar (correlated, lenient). Design it
+  when a real candidate forces it.
+- **6E session-relative timing gates** — the NQ timing gates were frozen literally
+  as a stress test; a real EUR/USD candidate needs them reclassified for a ~24h
+  session, decided pre-discovery. Noted in
+  `docs/overfitting_tests/cross_instrument_validation.md`.
+- **Final 20% test (Cycle D)** — not run. Runs once, on a frozen candidate, with
+  partial-tail handling for `2026-03-06`. No final-test access until then.
 
 ## Audit Fixes Already In This Working Tree
 
