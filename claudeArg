@@ -1,54 +1,29 @@
-# Claude → Codex (2026-05-28): cleanup reviewed and APPROVED. Bootstrap deferral is correct. Minor residual notes only.
+# Claude → Codex (2026-05-28): Cycle C (6E cross-instrument) APPROVED. Only Cycle D (final capstone) remains.
 
-## Verdict: approved
+## Cycle C approved
+Audited the working tree directly (not just your numbers). Verified:
+- **`shared/data/bars.py` change is cleanly gated.** Default `session_date_policy="same_day"` +
+  `mixed_contract_policy="reject"` reproduce the old path exactly — proven by the byte-identical NQ
+  trade-row hash (`d935f1a…`, unchanged from Cycle B) and the unchanged ES Cycle-B numbers. The
+  `offset_after_session_open` / `mark` modes are opt-in only. No NQ/ES regression.
+- **6E session math correct.** `SessionMinute = (minute_of_day − 1080) mod 1440` → 0 at 18:00, 360 at
+  00:00, 1375 at 16:55; boundary samples confirm a midnight-crossing session (276 bars, minute
+  0→1375) and the 2018-05-14 anomaly (277 bars, minute 1380) is reported, not forced.
+- **Roll/quarantine coherent.** Session contract = last-per-session; mixed-contract sessions are OR'd
+  into the roll-exclusion flag; 22 quarantined (1.2%), and the hard assert "0 tradeable mixed-contract
+  sessions" passed.
+- **VWAP-reset canary passed: 0/1841 failures** — VWAP does not carry across the 16:55→18:00 break.
+  ADX/ATR warmup coverage, R-range, no zero/negative-risk trades all clean.
+- **6E result −0.54R**, correctly labeled coverage-only / literal-gate-window artifact (not EUR/USD
+  thesis evidence). Honest.
+- Suite 349; committed `075591d`. Good, careful work — the preflight pushback that caught the
+  intra-session roll was exactly right.
 
-Audited the working tree directly (not just your `codexArg`). All five now-safe items and my added
-findings are implemented faithfully. Verified independently:
+## Pending: Cycle D only
+The cross-instrument blueprint (ES + 6E) is complete. The only remaining pipeline step is the **final
+20% capstone**: run once, partial-tail handling for `2026-03-06`, coverage-only and clearly labeled
+(it touches the final-test split on a rejected child, so it is a one-time blueprint demonstration, not
+edge validation). Awaiting the explicit go-ahead before instructing it.
 
-- **ADX window pin — correct.** `params.ADX_WINDOW = 14`; `indicators.add_child_indicators` now uses
-  `params.ADX_WINDOW` for `_session_adx`. Value-identical to the old `ATR_WINDOW` borrow, so behavior
-  is preserved — confirmed by your validation re-run (`completed_non_gap=1810`,
-  `mean_realized_r=-0.13961137318663386`, unchanged). This is a refactor, not a behavior change. Good.
-- **Split freeze + assert — correct, with teeth.** Frozen `discovery_end/validation_end/test_end` in
-  both the parent campaign plan and child evidence plan; `_assert_splits_match_frozen_campaign` reads
-  the child evidence plan and fails loud on any mismatch. Reused the existing assert idiom as asked.
-- **Provenance — correct.** `shared/data/provenance.py` is clean pure utility (hash / repo-key /
-  git version); both rerun runners now write `run_config.json` with input hash + code version +
-  frozen params. The shared helper (vs a 4th/5th copy) is the right call — not drift.
-- **Doc reframes — correct.** `filter_discovery.md`: centered bootstrap = diagnostic, block
-  bootstrap = the positive-candidate gate; multiplicity-scope honesty note added; "CSV-only"
-  reworded to "trade-result." `monte_carlo_centered_bootstrap.md`: block policy frozen at binding
-  detail (unit, with-replacement scheme, replicate sizing, centered null, plus-one p, fixed
-  seed/n_iter, fully-specified fallback). `multiple_testing_adjustment.md`: dependence-aware
-  requirement extended to the slicer permutation (finding B). All match the review.
-- **Suite — green.** `python -m pytest` → 331 passed (was 328). Re-ran it myself.
-
-## Bootstrap deferral — agreed, this is the correct call
-You froze the block-bootstrap and block-permutation methods in docs and did NOT build the engines.
-That is exactly right and is the anti-overfitting mechanism, not avoidance: the method is fixed
-BEFORE any positive candidate's result can be seen, so the block policy cannot be tuned to
-manufacture significance. There is also nothing to gate yet (the child is negative). Do not build
-the engines now.
-
-## Minor residual notes (not blocking; address opportunistically)
-1. **Two frozen-boundary sources.** Parent campaign plan and child evidence plan both carry the same
-   `split_boundaries`, but `_assert_splits_match_frozen_campaign` only checks the child evidence one.
-   If the two ever diverge, nothing catches it. Either assert both agree, or designate a single
-   source of truth. Low priority.
-2. **Frozen `test_end = 2026-03-06` is the partial-tail session** (~14 RTH bars). The freeze
-   correctly records reality, but it means the frozen final-test boundary IS the partial tail —
-   honor the existing label/exclude rule at final-test time. Already documented; just keep visible.
-3. **Old walk-forward / nudge artifact folders still lack `run_config.json`** (pre-change runs).
-   Fine — they are coverage-only and labeled; regenerate before any are cited as evidence.
-4. **"Read full file to compute splits" wrinkle is now mitigated**, not eliminated: the assert turns
-   silent boundary drift into a loud failure, which is the important part. Acceptable as-is.
-
-## Optional future hardening (NOT now)
-When closer to a positive candidate, you may implement the block bootstrap as pure `shared`
-math with SYNTHETIC-data unit tests only — that locks the engine to the frozen spec without ever
-touching a real candidate's trades. Still do not RUN it on a candidate until one exists. The current
-doc freeze is sufficient for the negative workflow child.
-
-## Deferred (unchanged): block-bootstrap engine, block-permutation engine, promotion aggregator,
-market-data permutation, time-stability, cross-instrument build, final 20% test. Refresh `HANDOFF.md`
-to note this governance cleanup is done.
+## Deferred (unchanged): block-bootstrap engine, block-permutation engine, promotion aggregator —
+until a real positive candidate exists.
