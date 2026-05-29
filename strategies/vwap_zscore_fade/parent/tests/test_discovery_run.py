@@ -99,10 +99,43 @@ def test_discovery_run_rejects_final_test_overlap():
         prepared["SessionDate_ET"] <= date(2026, 1, 9)
     ].copy()
 
-    with pytest.raises(RuntimeError, match="discovery slice overlaps final-test split"):
+    with pytest.raises(
+        RuntimeError,
+        match="discovery slice overlaps validation/final-test splits",
+    ):
         _validate_discovery_does_not_overlap_final_test(
             partial_final_test_overlap, splits=splits
         )
+
+
+def test_discovery_run_rejects_validation_region_overlap():
+    sessions = [date(2026, 1, day) for day in range(1, 11)]
+    prepared = make_prepared_bars(sessions)
+    splits = chronological_session_splits(prepared)
+    partial_validation_overlap = prepared.loc[
+        prepared["SessionDate_ET"] <= date(2026, 1, 5)
+    ].copy()
+
+    assert splits["discovery_end"] == date(2026, 1, 3)
+    assert splits["validation_end"] == date(2026, 1, 8)
+    with pytest.raises(
+        RuntimeError,
+        match="discovery slice overlaps validation/final-test splits",
+    ):
+        _validate_discovery_does_not_overlap_final_test(
+            partial_validation_overlap, splits=splits
+        )
+
+
+def test_discovery_run_accepts_discovery_only_slice():
+    sessions = [date(2026, 1, day) for day in range(1, 11)]
+    prepared = make_prepared_bars(sessions)
+    splits = chronological_session_splits(prepared)
+    discovery_only = prepared.loc[
+        prepared["SessionDate_ET"] <= splits["discovery_end"]
+    ].copy()
+
+    _validate_discovery_does_not_overlap_final_test(discovery_only, splits=splits)
 
 
 def test_discovery_run_uses_date_bound_campaign_id_and_real_commission():

@@ -154,8 +154,11 @@ def _validate_discovery_does_not_overlap_final_test(
     *,
     splits: dict,
 ) -> None:
-    if discovery_bars["SessionDate_ET"].max() > splits["validation_end"]:
-        raise RuntimeError("discovery slice overlaps final-test split - aborting")
+    # Mirror validation_run's explicit split-bound guard for accidental slice widening.
+    if discovery_bars["SessionDate_ET"].max() > splits["discovery_end"]:
+        raise RuntimeError(
+            "discovery slice overlaps validation/final-test splits - aborting"
+        )
 
 
 def _write_context_trades_csv(

@@ -17,6 +17,7 @@ Trade-result tests:
 - [multiple_testing_adjustment.md](multiple_testing_adjustment.md)
 - threshold-neighborhood report from
   [parameter_nudge_stability.md](parameter_nudge_stability.md)
+- [time_stability.md](time_stability.md)
 
 Backtest-rerun tests:
 
@@ -29,7 +30,6 @@ Backtest-rerun tests:
 Later / optional:
 
 - [sweep_parameter_stability.md](sweep_parameter_stability.md)
-- [time_stability.md](time_stability.md)
 
 ## Split Rule
 

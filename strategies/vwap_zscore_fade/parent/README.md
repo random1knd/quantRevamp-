@@ -238,11 +238,15 @@ a target before the raw signal-bar VWAP has reached a valid exchange tick.
 
 Acknowledged side effect: because stops always round toward entry, `InitialRisk`
 is rounded down by up to one tick (0.25 pt). Since `RealizedR` divides by
-`InitialRisk`, this slightly inflates the magnitude of every R (winners and
-losers alike) by at most ~1-2% of risk. The effect is one-directional but
-sub-tick, applies to both tails, and is accepted for v0; the fill-realism
-benefit of never modeling a stop wider than intended is judged to outweigh it.
-This is documented so the rounding is not mistaken for R-neutral.
+`InitialRisk`, this inflates the magnitude of every R (winners and losers
+alike). The mean effect is small, but the tail is larger when ATR/risk is small:
+measured on `completed_non_gap`, discovery mean/p95/max denominator inflation is
+2.06% / 5.36% / 17.86%, and validation-parent is 0.72% / 2.32% / 8.21%.
+An unrounded-denominator estimate does not rescue the edge: discovery mean R
+moves from -0.17771 to -0.17363, and validation-parent from -0.11476 to
+-0.11365. Any future positive edge claim should report this full distribution
+rather than a flat 1-2% shorthand. The fill-realism benefit of never modeling a
+stop wider than intended is judged to outweigh it for v0.
 
 Current v0 implementation note:
 

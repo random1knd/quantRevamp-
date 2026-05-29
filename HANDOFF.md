@@ -13,7 +13,23 @@ valid completion.
 
 ## Session End (2026-05-29)
 
-- Committed resume pointer: `origin/master` / `HEAD` at `a259792`.
+- Committed resume pointer: `origin/master` / `HEAD` is this session's
+  audit + hardening commit (supersedes `a259792`).
+- This session: deep two-reviewer read-only audit (Claude + Codex). Verdict:
+  no logic/math/look-ahead bugs. The whole pipeline (discovery -> slicer ->
+  validation -> cross-instrument NQ/ES/6E) reproduces bit-exactly from source;
+  suite green at 366.
+- Hardening shipped this session (no strategy behavior or result change):
+  - A2: `discovery_run` overlap guard tightened to a two-sided
+    `<= discovery_end` bound (was only `> validation_end`), with 3 focused
+    tests. Defense-in-depth; current behavior unchanged.
+  - A3: `time_stability` moved out of "Later / optional" into the implemented
+    trade-result tests in `docs/overfitting_tests/README.md`.
+  - Doc accuracy: stop-rounding |R| inflation restated with the measured
+    distribution (discovery mean/p95/max 2.06/5.36/17.86%) in
+    `KNOWN_LIMITATIONS.md` + parent README; `KNOWN_LIMITATIONS` #7 reframed (the
+    five research columns ARE session-grouped now); ADX first-valid-bar note
+    (zero-based index 26 / RTH bar 27) added to the child README.
 - Overfitting suite is COMPLETE and the cross-instrument blueprint (ES + 6E) is
   COMPLETE, all coverage-only on a rejected child.
 - Buildable-without-a-positive-edge validation engine work is COMPLETE: block
@@ -312,7 +328,7 @@ test access stays deferred until a real positive candidate exists.
   -> 34 passed.
 - Real Cycle C runner completed and wrote
   `cross_instrument_6e_20260528T144737Z`.
-- Full suite: `python -m pytest` -> 364 passed.
+- Full suite: `python -m pytest` -> 366 passed.
 - `git diff --check`: no whitespace errors; CRLF warnings only.
 - No final-test rows were passed to the strategy. Cross-instrument Cycle C uses
   validation splits only.

@@ -39,6 +39,10 @@ this non-edge workflow child. Any future ADX-based edge claim must explicitly
 accept this ADX definition and warmup interaction, or replace it before
 discovery.
 
+Current shared ADX seeding yields the first non-NaN ADX at zero-based index 26
+(RTH bar 27); a stricter 14-full-movement/TR-interval reference would land one
+bar later.
+
 ## Governance
 
 - This child does not import or wrap the parent strategy.

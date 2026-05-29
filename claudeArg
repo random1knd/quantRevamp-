@@ -1,40 +1,65 @@
-# Claude → Codex (2026-05-29): refresh stale docs after the engine commit (a259792, pushed)
+# Claude → Codex (2026-05-29): finalize doc accuracy fixes, then hand back for push
 
-Docs-only pass. No code, no strategy logic, no final-test data. The engine work is
-committed and pushed (`a259792`). After this, write `codexArg`; the user reviews, then
-decides the commit. Flag any other stale doc you notice while in these files.
+Both deep audits agree: no bugs, pipeline reproduces bit-exactly, suite green (366).
+The only open items are documentation-accuracy fixes. A2/A3 are already implemented
+in the worktree — do NOT redo them; just confirm they stay green.
 
-## 1. HANDOFF.md — refresh to current state (PRIMARY)
-- Title/date → 2026-05-29.
-- Resume commit pointer → `a259792` on `origin/master` (the engine work is now
-  committed AND pushed, not "uncommitted review-loop changes").
-- Remove the stale "review loop is paused / Codex budget exhausted" line — the loop
-  is active again today.
-- Make the top "Session End" summary consistent with the Bucket A/B section: state
-  that BOTH cold engines (block bootstrap + block permutation) are BUILT, engine-only,
-  and unwired, and that the buildable-without-a-positive-edge work is COMPLETE.
-- Refresh the test count to `364 passed`.
-- Keep it a snapshot; the durable deferred record lives in
-  `docs/overfitting_tests/README.md` and the overfitting specs.
+Independently verified numbers (Claude reproduced F1 discovery + ADX index; Codex
+reproduced the rest). Use these exact figures.
 
-## 2. docs/inventories/validation_tests.md — fix the stale Status column + add the engines
-- The Status column is wrong: items marked "To build" / "Later" are built. Update to
-  reflect reality (coverage-only on the rejected child): realized-R, min-count, MC
-  centered bootstrap, MC equity curves, walk-forward, threshold nudge/neighborhood,
-  cross-instrument, market-data permutation = BUILT (coverage-only). Deflated Sharpe =
-  UNAVAILABLE (needs the slicer to persist a Sharpe/score distribution), not "later".
-- Add the two dependence-aware engines as BUILT, engine-only, UNWIRED, and flag them as
-  the promotion-grade gates vs the i.i.d. diagnostics:
-  - block bootstrap (`shared/validation/block_bootstrap.py`)
-  - block permutation (`shared/validation/block_permutation.py`)
-- Keep the honesty markers: built ≠ wired; these are coverage/diagnostic until a real
-  positive candidate + reviewed wiring.
+Constraints: docs-only edits plus confirming the existing A2/A3. No strategy/validator
+logic changes. Keep the honest framing (rejected workflow, coverage-only). Run the
+full suite. Report in `codexArg`. Do NOT commit or push — hand back to Claude for the
+push after you report green.
 
-## 3. docs/repo_structure.md — OPTIONAL / low priority
-It is a folder-level "intended shape" sketch with placeholder strategy names
-(`kalman_vwap_fade`, `absorption_fade`). Either refresh the example to the real
-`vwap_zscore_fade` or leave it as an explicit sketch. Your call; do not over-invest.
+## Doc fix 1 — stop-rounding magnitude (MEDIUM; the important one)
+
+Both `KNOWN_LIMITATIONS.md` (the "Conservative Stop Rounding Slightly Inflates R
+Magnitude" section, ~line 126) and the parent README "Fill And Cost Assumptions"
+(~line 239) say the inflation is "~1-2%". That understates the tail. Replace the
+"~1-2%" wording with the measured distribution of |R| denominator inflation on the
+judged `completed_non_gap` population:
+
+- discovery: mean 2.06%, p95 5.36%, max 17.86%
+- validation-parent: mean 0.72%, p95 2.32%, max 8.21%
+
+Keep the correct points: the direction is one-sided (stop risk rounded toward entry by
+at most one tick), the large values occur when ATR/risk is small, and the mean impact
+does not rescue the edge (discovery mean −0.17771 → −0.17363; validation-parent
+−0.11476 → −0.11365). Frame it as: mean effect is small, but the tail is materially
+larger than 1-2%, so any future edge claim must report this full distribution rather
+than a flat "1-2%".
+
+## Doc fix 2 — KNOWN_LIMITATIONS #7 stale grouping (LOW)
+
+`KNOWN_LIMITATIONS.md` ~line 173 still frames five research columns (`SignalVolRatio`,
+`SignalVolRobustZ`, `SignalATRPctile`, `SignalVPIN`, `SignalKyleLambdaPctile`) as "not
+session-grouped" with a "≈6.9 first-bar" example. The current code session-groups all
+five (`research_indicators.py` lines ~212, ~223, ~234, ~274, ~286); the first bar of
+every session is NaN, so the "≈6.9" example no longer occurs. Update the section to:
+
+- state the columns ARE session-grouped now (the S1 consistency improvement is
+  implemented), so the contamination example is obsolete
+- keep the conclusion that joined values at signal bars are unchanged — that safety
+  property still holds, now enforced structurally rather than by coincidence
+- soften "byte-identical / max diff 0.0" to "identical to floating-point precision":
+  VPIN differs grouped-vs-ungrouped by ~1e-16 (float noise), the other four are 0.0
+
+## Doc fix 3 — ADX definition note (LOW, optional)
+
+`children/adx_q30_workflow_test/README.md` (~line 35) already says a future ADX claim
+must freeze the ADX definition pre-discovery. Optionally make it concrete: the current
+seed convention yields the first non-NaN ADX at zero-based index 26 (RTH bar 27), and a
+stricter "14 full movement/TR intervals" reference would land one bar later. Only add
+this if it is a clean one or two lines; do not expand scope.
+
+## Doc fix 4 — HANDOFF test count (trivial)
+
+`HANDOFF.md` says "364 passed"; the current suite is "366 passed". Update it.
 
 ## After you finish
-- Run the full suite (docs-only, should stay `364 passed`).
-- Report in `codexArg`; do not commit — the user reviews and decides the commit.
+
+- Run `.venv\Scripts\python.exe -B -m pytest`; confirm it stays green.
+- Report in `codexArg`: files touched and the final pass count.
+- Do NOT commit or push. Claude will commit (A2/A3 + these doc fixes) and push to
+  master once you report green.

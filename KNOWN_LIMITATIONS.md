@@ -118,27 +118,39 @@ What would justify a different approach:
 What it looks like:
 
 - Stops are rounded toward entry (long stops up, short stops down), so the
-  realized R magnitudes can look marginally larger than an unrounded model would
-  produce.
+  realized R magnitudes can look larger than an unrounded model would produce.
 
 What it actually is:
 
 - A sub-tick consequence of the documented conservative rounding policy (see the
   strategy README "Fill And Cost Assumptions"). Because the stop always rounds
   toward entry, `InitialRisk` is rounded down by up to one tick, and `RealizedR`
-  divides by `InitialRisk`, so |R| is inflated by at most ~1-2% of risk.
+  divides by `InitialRisk`, so |R| magnitude is inflated. The mean effect is
+  small, but the tail is materially larger than a flat 1-2% because the
+  percentage impact is largest when ATR/risk is small.
+
+Measured on the judged `completed_non_gap` population:
+
+- discovery: mean 2.06%, p95 5.36%, max 17.86%
+- validation-parent: mean 0.72%, p95 2.32%, max 8.21%
+
+Using an unrounded denominator estimate does not rescue the edge: discovery
+mean R moves from -0.17771 to -0.17363, and validation-parent mean R moves from
+-0.11476 to -0.11365.
 
 Why the current behavior is accepted:
 
-- The bias is one-directional but sub-tick and applies to both winning and losing
-  tails, so its effect on headline mean R is negligible and not systematically
-  favorable. The fill-realism benefit (never modeling a stop wider than intended)
-  is judged to outweigh it for v0.
+- The bias is one-directional but sub-tick and applies to both winning and
+  losing tails, so its effect on headline mean R is small and not systematically
+  favorable. The fill-realism benefit (never modeling a stop wider than
+  intended) is judged to outweigh it for v0.
 
 What would justify a different approach:
 
 - A move to a tick-accurate execution model, or evidence that the R-denominator
   bias materially changes a slicing or validation decision.
+- Any future positive edge claim should report the full measured rounding-impact
+  distribution, not a flat 1-2% shorthand.
 
 ## Same-Session Gaps Leave Session VWAP Based On Observed Bars
 
@@ -170,34 +182,33 @@ What would justify a different approach:
   either exclude post-gap same-session signals or define an explicit session
   split/reset policy before accepting the result.
 
-## Some Research Columns Are Not Session-Grouped But Are Clean At Every Signal Bar
+## Research Columns Are Session-Grouped And Clean At Every Signal Bar
 
 What it looks like:
 
-- An audit can show that five research columns — `SignalVolRatio`,
-  `SignalVolRobustZ`, `SignalATRPctile`, `SignalVPIN`, `SignalKyleLambdaPctile` —
-  are not session-grouped, so on the first bars of a session they compute values
-  whose rolling window spans the overnight boundary (e.g. `SignalVolRatio` ≈ 6.9
-  on the first bar of a high-volume session, dividing today's open volume by a
-  mean that is mostly yesterday's bars). This looks like the same cross-session
-  contamination that was a real bug in `SignalEfficiencyRatio` (fixed under audit
-  finding F1).
+- Older audit notes described five research columns - `SignalVolRatio`,
+  `SignalVolRobustZ`, `SignalATRPctile`, `SignalVPIN`, and
+  `SignalKyleLambdaPctile` - as having early-session cross-boundary
+  rolling-window contamination.
 
 What it actually is:
 
-- It is NOT the same, and it does not reach the data. Research columns are joined
-  to trades by `SignalTime`, and a signal can only occur at RTH bar
-  >= `SIGNAL_MIN_BARS` (the first ~20 bars of every session produce no signal).
-  So the contaminated early-session values are never joined to any trade — they
-  are dropped before `context_trades.csv` is written.
-- The reason these specific columns are safe is the operation type. They use a
-  rolling WINDOW of length <= `SIGNAL_MIN_BARS`; the window ending at the first
-  eligible signal bar (cumcount 19) spans exactly that session's first 20 bars —
-  fully in-session. Verified by recomputing grouped vs. ungrouped on the real
-  discovery data: byte-identical at every signal-eligible bar (max |diff| = 0.0),
-  with zero signal bars where ungrouped produced a value and grouped would be NaN.
+- The S1 consistency improvement is implemented. These columns are now
+  session-grouped in `research_indicators.py`, so the old first-bar
+  cross-boundary example is obsolete; the first bar of each session is now NaN
+  for these rolling columns.
+- Research columns are still joined to trades by `SignalTime`, and a signal can
+  only occur at RTH bar >= `SIGNAL_MIN_BARS` (the first ~20 bars of every
+  session produce no signal). The previous signal-row safety property still
+  holds, but it is now enforced structurally by session grouping rather than by
+  a window-vs-entry-gate coincidence.
+- Recomputing grouped vs. ungrouped values on the real discovery data confirmed
+  that joined signal-row values are identical to floating-point precision:
+  `SignalVolRatio`, `SignalVolRobustZ`, `SignalATRPctile`, and
+  `SignalKyleLambdaPctile` had max |diff| = 0.0; `SignalVPIN` differed only by
+  floating noise around 1e-16.
 - Contrast with `SignalEfficiencyRatio` (F1): it used a LOOKBACK DIFF,
-  `diff(SIGNAL_MIN_BARS)`, which AT cumcount 19 reaches cumcount -1 (the prior
+  `diff(SIGNAL_MIN_BARS)`, which at cumcount 19 reaches cumcount -1 (the prior
   session). That is why it was a genuine bug and the rolling-window columns are
   not. The rule: a rolling window of length <= `SIGNAL_MIN_BARS` is clean at the
   signal bar; a lookback/diff of length == `SIGNAL_MIN_BARS` is not.
@@ -205,28 +216,21 @@ What it actually is:
 Why the current behavior is correct:
 
 - Every value that actually enters `context_trades.csv` (the signal-bar value) is
-  in-session-clean. The contamination is confined to bars that are never evaluated
-  as signals, so no slice and no research result is affected.
+  in-session-clean. Current code also keeps these rolling research columns
+  session-scoped before the join, so no slice and no research result is affected.
 
-Related — gap-masking:
+Related - gap-masking:
 
 - Only `EntryZ` and `SignalVolumeZ` apply `gap_free_rolling_window`; the other
   research columns can compute across an intra-session data gap. The same join
   gate mitigates this: a valid signal already requires a gap-free 20-bar `EntryZ`
-  window, which structurally protects every research column whose window <= 20 AT
-  the signal bar. The only residual is `SignalADX`, whose Wilder memory exceeds 20
-  bars (open decision; see the review loop / claudeArg S7).
+  window, which structurally protects every research column whose window <= 20
+  at the signal bar. The only residual is `SignalADX`, whose Wilder memory
+  exceeds 20 bars (open decision; see the review loop / claudeArg S7).
 
-What would justify a different approach (and the one assumption to watch):
+What would justify a different approach:
 
-- This safety holds ONLY while every research window is <= `SIGNAL_MIN_BARS`. If a
-  research window is ever set larger than `SIGNAL_MIN_BARS`, its rolling window
-  WOULD reach into the prior session at the signal bar and the column would need
-  session-grouping. Re-verify this property whenever `SIGNAL_MIN_BARS` or any
-  research window changes.
-- A consistency/defensiveness improvement — session-group all research columns and
-  add one parametrized "every research column resets at the session boundary"
-  test — is proposed in the review loop (claudeArg S1). It would change zero joined
-  values but make the invariant uniform and self-enforcing rather than dependent on
-  the window-vs-gate coincidence above. That is an open decision, not a required
-  correction.
+- The session-grouping invariant should stay covered if `SIGNAL_MIN_BARS` or any
+  research window changes. A future research column with longer memory should
+  declare whether it is session-scoped or intentionally cross-session before it
+  enters slicer context.
