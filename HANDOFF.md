@@ -13,7 +13,8 @@ valid completion.
 
 ## Session End (2026-05-28)
 
-- All work committed and pushed: `origin/master` at `033f64b`. Working tree clean.
+- Committed resume pointer: `origin/master` / `HEAD` at `0a22635` before the
+  current uncommitted review-loop changes.
 - The codex/claude review loop is paused for now (Codex budget exhausted). The
   code does not depend on the loop being live; resume by reading this file.
 - Overfitting suite is COMPLETE and the cross-instrument blueprint (ES + 6E) is
@@ -85,6 +86,8 @@ Implemented Claude-approved cross-instrument Cycle C:
 Real Cycle B artifact:
 
 - `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_es_20260528T134418Z`
+- split limitation: native per-instrument validation splits; blueprint/coverage
+  artifact only, not common-calendar transfer evidence.
 
 NQ lookup proof:
 
@@ -110,6 +113,8 @@ ES same-day RTH transfer result:
 Real Cycle C artifact:
 
 - `data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_6e_20260528T144737Z`
+- split limitation: native per-instrument validation splits; blueprint/coverage
+  artifact only, not common-calendar transfer evidence.
 
 Cycle C regression gates:
 
@@ -167,7 +172,8 @@ Cycle C regression gates:
 Next sequence:
 
 - Cycle D: run final 20% capstone once, coverage-only, with predeclared
-  partial-tail handling.
+  partial-tail handling. Frozen rule: exclude the `2026-03-06` partial tail
+  from headline/capstone statistics and label it separately if rows exist.
 
 ## Previous Slice
 
@@ -222,37 +228,57 @@ manufactures regression-to-the-mean toward VWAP and removes adverse momentum.
 It is invalid as an edge-validating null for this mean-reversion strategy
 family and is kept only as workflow coverage.
 
-## Deferred On Purpose (specs frozen, code intentionally not built)
+## Deferred On Purpose (specs frozen; build state explicit)
 
-Principle: everything here is edge-PROVING machinery. This child loses money, so
-there is nothing to prove. Building these now would be premature and would invite
-tuning them to a result. Each item below has a frozen written spec already in the
-repo; the code is built only when a real positive candidate exists, against that
-frozen spec. (Diagnostics that already run today cannot promote anything; the
-deferred versions are the gates that can.)
+Principle: edge-proving machinery must not be tuned to this losing workflow
+child. Pure engines may be built from frozen specs when they are isolated and
+unwired, but anything that depends on a real edge, promotion policy, or final
+test access stays deferred until a real positive candidate exists.
 
-- **Block-bootstrap engine** — dependence-aware significance gate (resamples whole
-  sessions, not single trades). Spec frozen in
-  `docs/overfitting_tests/monte_carlo_centered_bootstrap.md`. The i.i.d. centered
-  bootstrap is a diagnostic only.
-- **Block-permutation engine** — dependence-aware version of the slicer
-  search-significance test. Spec frozen in
-  `docs/overfitting_tests/multiple_testing_adjustment.md`. The full-shuffle
-  permutation is a diagnostic only.
-- **Structure-preserving (within-session block) market-data permutation** —
+### Bucket A: Buildable Now
+
+- **Block-bootstrap engine** - BUILT as pure engine-only code in
+  `shared/validation/block_bootstrap.py`. It resamples whole sessions from the
+  frozen spec in `docs/overfitting_tests/monte_carlo_centered_bootstrap.md` and
+  reports `wiring_status=engine_only_not_wired_to_strategy_or_promotion`. It is
+  not wired to the ADX child, any runner, any artifact writer, or any promotion
+  decision. The existing i.i.d. centered bootstrap remains diagnostic only.
+- **Block-permutation engine** - BUILT as pure engine-only code in
+  `shared/validation/block_permutation.py`. It implements the frozen
+  whole-session outcome-block permutation spec in
+  `docs/overfitting_tests/multiple_testing_adjustment.md` and reports
+  `wiring_status=engine_only_not_wired_to_slicer_or_promotion`. It is not wired
+  to the slicer, any runner, any artifact writer, or any promotion decision. It
+  CANNOT run on the current real discovery artifact because `context_trades.csv`
+  lacks a session key such as `SessionDate_ET`; running it on real data requires
+  a separate reviewed artifact-schema change and wiring step. The current
+  full-shuffle permutation remains diagnostic only.
+
+### Bucket B: Requires Real Positive Candidate
+
+- **Structure-preserving (within-session block) market-data permutation** -
   required for a real mean-reversion candidate; single-bar shuffle is an invalid
-  null (it manufactures mean-reversion). Spec frozen in
+  null because it manufactures mean-reversion. Spec frozen in
   `docs/overfitting_tests/market_data_permutation.md`.
-- **Promotion aggregator** — would combine the separate test verdicts into one
+- **Promotion aggregator** - would combine the separate test verdicts into one
   promote/reject decision. Not built and no dedicated design doc yet; stacking
-  several `p<=0.10` gates is NOT a real 0.10 bar (correlated, lenient). Design it
-  when a real candidate forces it.
-- **6E session-relative timing gates** — the NQ timing gates were frozen literally
-  as a stress test; a real EUR/USD candidate needs them reclassified for a ~24h
-  session, decided pre-discovery. Noted in
+  several `p<=0.10` gates is NOT a real 0.10 bar because the gates are correlated
+  and individually lenient. Design it when a real candidate forces it. Add a
+  typed `test_role` field to new reports only; do not retrofit old artifacts.
+  Build the promotion-input guard together with this aggregator, not as a
+  standalone framework.
+- **ADX warmup rule for future ADX candidates** - current `SIGNAL_MIN_BARS = 20`
+  can allow about seven bars per session where 14-period ADX is not ready yet.
+  This is a selection-effect risk, not a retroactive bug fix for the rejected
+  child. A future ADX-filter candidate must predeclare whether entry eligibility
+  starts at `SIGNAL_MIN_BARS` or at the stricter ADX-ready bar.
+- **6E session-relative timing gates** - the NQ timing gates were frozen
+  literally as a stress test; a real EUR/USD candidate needs them reclassified
+  for a ~24h session, decided pre-discovery. Noted in
   `docs/overfitting_tests/cross_instrument_validation.md`.
-- **Final 20% test (Cycle D)** — not run. Runs once, on a frozen candidate, with
-  partial-tail handling for `2026-03-06`. No final-test access until then.
+- **Final 20% test (Cycle D)** - not run. Runs once, on a frozen candidate, with
+  the frozen `2026-03-06` partial-tail exclude/label rule. No final-test access
+  until then.
 
 ## Audit Fixes Already In This Working Tree
 
@@ -280,7 +306,7 @@ deferred versions are the gates that can.)
   -> 34 passed.
 - Real Cycle C runner completed and wrote
   `cross_instrument_6e_20260528T144737Z`.
-- Full suite: `python -m pytest` -> 349 passed.
+- Full suite: `python -m pytest` -> 357 passed.
 - `git diff --check`: no whitespace errors; CRLF warnings only.
 - No final-test rows were passed to the strategy. Cross-instrument Cycle C uses
   validation splits only.

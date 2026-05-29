@@ -52,7 +52,7 @@ REPORT_LABEL = "coverage_only_validation_child_cross_instrument_no_edge_claim"
 SIX_E_LITERAL_GATE_CAVEAT = (
     "6E uses the frozen NQ literal timing gates: no entries during the first "
     "hour after the 18:00 ET session open, no entries at/after session minute "
-    "360 (00:00 ET), and practical force-flat around 00:25 ET for the latest "
+    "360 (00:00 ET), and practical force-flat around 00:55 ET for the latest "
     "allowed entries. The 6E R number is a frozen-gate transfer stress test, "
     "not EUR/USD thesis evidence."
 )

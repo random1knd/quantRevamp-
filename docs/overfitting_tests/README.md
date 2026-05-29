@@ -61,6 +61,54 @@ dependence. For a future positive candidate, the promotion gate must use the
 predeclared dependence-aware block-bootstrap policy in
 `monte_carlo_centered_bootstrap.md`.
 
+## Deferred Until A Real Positive Candidate
+
+Bucket A engine status:
+
+- Block bootstrap is built as pure engine-only code. It is not wired to a
+  strategy runner, artifact writer, or promotion decision. Spec:
+  [monte_carlo_centered_bootstrap.md](monte_carlo_centered_bootstrap.md).
+- Block permutation is built as pure engine-only code. It is not wired to the
+  slicer, artifact writer, or promotion decision. Spec:
+  [multiple_testing_adjustment.md](multiple_testing_adjustment.md).
+
+Deferred items:
+
+- **Block-permutation real-data use.** The engine exists, but the current real
+  discovery `context_trades.csv` has no session key such as `SessionDate_ET`.
+  It is deferred because running the engine without a real session key would
+  either derive hidden sessions or use the wrong block unit. It is unblocked by a
+  reviewed artifact-schema change that persists the session key, followed by a
+  separate wiring step. Frozen spec:
+  [multiple_testing_adjustment.md](multiple_testing_adjustment.md).
+- **Structure-preserving within-session block market-data permutation.** The
+  current single-bar shuffle is invalid as an edge-validating null for this
+  mean-reversion family because it manufactures regression-to-the-mean. It is
+  deferred until a real positive mean-reversion candidate needs market-sequence
+  evidence. It is unblocked by freezing the within-session block policy before
+  inspecting that candidate's result. Frozen spec:
+  [market_data_permutation.md](market_data_permutation.md).
+- **Promotion aggregator and typed `test_role` guard.** New reports should carry
+  `test_role` when they are created, but old artifacts are not retrofitted. The
+  guard is deferred because it belongs with the aggregator; building it alone
+  would create framework surface without a promotion design. It is unblocked by
+  a real positive candidate that needs one combined promote/reject decision.
+  Stacking several `p <= 0.10` checks is not itself a real 0.10 error bar.
+  Relevant specs:
+  [monte_carlo_centered_bootstrap.md](monte_carlo_centered_bootstrap.md) and
+  [multiple_testing_adjustment.md](multiple_testing_adjustment.md).
+- **6E session-relative timing gates.** Current 6E checks use frozen literal NQ
+  timing gates as a transfer stress test, not as an FX timing thesis. They are
+  deferred until a real EUR/USD candidate exists. They are unblocked by a
+  pre-discovery decision on whether timing gates are session-relative for that
+  candidate. Spec:
+  [cross_instrument_validation.md](cross_instrument_validation.md).
+- **Final 20% test (Cycle D).** This one-shot capstone touches the final-test
+  split and is unauthorized. It is deferred until the user explicitly approves a
+  frozen candidate for final-test access. Frozen partial-tail handling for
+  `2026-03-06` is documented in
+  [cross_instrument_validation.md](cross_instrument_validation.md).
+
 ## Threshold-Type Policy
 
 Rerun tests must distinguish threshold types:

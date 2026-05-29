@@ -73,6 +73,18 @@ Frozen first block policy:
   (1 + n_iter)`
 - `n_iter` and `random_seed`: fixed before the run and recorded in the artifact
 
+Minimum session-count caveat:
+
+- a block-bootstrap p-value needs enough independent session blocks to be
+  trustable
+- with one non-empty session, centering produces an all-zero null and the
+  p-value is only a sign check
+- with only a handful of sessions, the null is coarse and highly sensitive to
+  which sessions are drawn
+- whoever wires the engine must enforce a predeclared session-count floor before
+  reading significance, mirroring the intent of
+  `minimum_trade_count_policy.md`
+
 Fallback is allowed only if session-level trade counts make whole-session blocks
 unusable. The fallback must be declared before seeing the positive candidate's
 result and must specify contiguous trade-block length, circular versus
@@ -82,7 +94,7 @@ The dependence-aware method applies both to the significance p-value here and to
 the equity-curve / drawdown bands in
 `docs/overfitting_tests/monte_carlo_equity_curves.md`.
 
-Do not implement this for the current negative workflow child. Its existing
+Do not wire or run this for the current negative workflow child. Its existing
 i.i.d. reports remain coverage-only and already carry the workflow-test label.
 
 ## Output

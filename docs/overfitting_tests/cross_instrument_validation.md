@@ -5,6 +5,8 @@ Status:
 - Cycle B implemented for NQ/ES
 - Cycle C implemented for 6E with mixed-contract session quarantine
 - coverage-only blueprint demonstration on a rejected workflow child
+- current artifacts use native per-instrument validation splits; real transfer
+  tests require a common calendar validation window
 
 Purpose:
 
@@ -12,6 +14,19 @@ Purpose:
 - produce a reusable blueprint for future positive candidates
 - keep cross-instrument logic explicit enough to avoid a new framework or
   hidden registry
+
+## Split Policy
+
+The current Cycle B/C artifacts use each instrument's own chronological
+30/50/20 split. That is acceptable only as a coverage-only blueprint on this
+rejected workflow child; it compares different market eras across NQ, ES, and
+6E.
+
+A real positive candidate's cross-instrument transfer test must use a common
+calendar validation window anchored to the primary candidate's frozen
+validation span. If a target instrument lacks enough data inside that common
+window, report it as insufficient coverage instead of silently expanding to an
+instrument-native window.
 
 ## BLOCKER History: 6E Session Model
 
@@ -140,12 +155,23 @@ after the 18:00 ET session open, and no entries at/after session minute 360
 6E artifact caveat:
 
 - the literal frozen gates make 6E trade only an arbitrary early-session window:
-  roughly `19:00 ET` through `00:00 ET`, with force-flat around `00:25 ET`
+  roughly `19:00 ET` through `00:00 ET`, with practical time-stop exits around
+  `00:55 ET` for the latest allowed entries
 - any 6E result from this workflow child primarily reflects that frozen
   literal-gate transfer, not whether the VWAP-fade thesis transfers to EUR/USD
 - the 6E R number is therefore not FX-thesis evidence
 - a real FX candidate must decide whether timing gates are session-relative
   before discovery; changing them after seeing 6E results would be tuning
+
+ADX warmup caveat:
+
+- `SIGNAL_MIN_BARS = 20` allows entry checks before a 14-period ADX is fully
+  available on some sessions, because ADX warmup is roughly 27 bars
+- those early post-`SIGNAL_MIN_BARS` signals can become missing-ADX decisions,
+  creating a selection-effect risk of about seven bars per session
+- do not change this retroactively for the rejected workflow child
+- a future ADX-filter candidate must predeclare whether signal eligibility
+  starts at `SIGNAL_MIN_BARS` or at the stricter ADX-ready bar
 
 ## Data-Grounded 6E Session Decision
 
@@ -309,6 +335,7 @@ Each instrument summary should include:
 - data start/end
 - session start/end
 - split boundaries and session counts
+- split policy used (`native_instrument_split` or `common_calendar_window`)
 - trade count
 - all completed count
 - completed_non_gap count
@@ -361,11 +388,13 @@ Cycle D:
 
 - run final 20% capstone once
 - label coverage-only because this child is rejected
-- predeclare partial-tail handling for `2026-03-06`
+- use this frozen partial-tail rule for `2026-03-06`: exclude the partial tail
+  from headline/capstone statistics and label it separately if rows exist
 
 Deferred until a real positive candidate:
 
-- block bootstrap engine
+- block-bootstrap wiring as a promotion gate, with a predeclared session-count
+  floor
 - block permutation engine
 - promotion aggregator
 
@@ -376,6 +405,9 @@ Artifact:
 ```text
 data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_es_20260528T134418Z
 ```
+
+Split limitation: this artifact uses native per-instrument validation splits.
+It is blueprint/coverage evidence, not a common-calendar transfer test.
 
 NQ lookup proof:
 
@@ -410,6 +442,9 @@ Artifact:
 ```text
 data/results/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_6e_20260528T144737Z
 ```
+
+Split limitation: this artifact uses native per-instrument validation splits.
+It is blueprint/coverage evidence, not a common-calendar transfer test.
 
 NQ and ES regression gates:
 

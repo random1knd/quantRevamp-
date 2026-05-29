@@ -58,11 +58,74 @@ regime-level dependence in trade outcomes.
 
 For a future positive candidate, the selection-adjusted p-value must use a
 predeclared dependence-aware version before it is trusted as a promotion gate.
-First policy: permute or resample at whole-session blocks while rerunning the
-same predeclared search. If whole-session blocks are unusable, a contiguous
-trade-block fallback must declare block length, circular versus non-circular
-sampling, replicate sizing, `n_iter`, and `random_seed` before the candidate's
-result is inspected.
+The frozen first policy is a whole-session outcome-block permutation:
+
+```text
+shared/validation/block_permutation.py
+```
+
+Expected function:
+
+```text
+whole_session_outcome_block_permutation_report(
+    frame,
+    spec,
+    *,
+    session_column,
+    n_iter,
+    random_seed
+)
+```
+
+This engine is pure and unwired. It reuses `build_threshold_rules` and
+`score_rules` from `shared.validation.rule_search`. It does not import a
+strategy, run the slicer, write artifacts, derive sessions, or decide promotion.
+
+Frozen block-permutation policy:
+
+- method: `whole_session_outcome_block_permutation`
+- null type: permute outcome blocks without replacement; do not use paired
+  session resampling for the search-significance null
+- input: discovery feature frame, slicer spec, and a required `session_column`
+- session handling: group by the provided session key only; do not derive
+  sessions from timestamps inside the engine
+- rule grid: build once from the unchanged feature frame
+- null iteration: split `RealizedR` into contiguous per-session outcome blocks,
+  permute block order without replacement, concatenate the permuted outcomes
+  back over the fixed feature frame, re-score every predeclared rule, and store
+  the maximum eligible mean `RealizedR`
+- unequal lengths: `unequal_length_policy =
+  permute_blocks_then_concatenate`; accept that block seams can cross feature
+  session seams when session trade counts differ
+- observed statistic: max eligible mean `RealizedR`; eligibility is
+  `kept_count >= min_kept_count`
+- tie-break: higher mean first, then lower `rule_index`
+- no-candidate path: if the observed search has no positive selected rule,
+  return `candidate_status = no_candidate` and no p-value
+- selection metric: `mean_realized_r`; `winsorize_fraction` remains diagnostic
+  parity from `score_rules`, not the selection statistic
+- sidedness: one-sided positive
+- p-value: plus-one smoothed,
+  `(1 + null_count_at_or_above_observed) / (1 + n_iter)`
+- validation: reject missing `session_column`, empty session blocks,
+  non-contiguous/interleaved sessions, non-finite `RealizedR`, and
+  non-positive `n_iter`
+- report: method, unequal-length policy, statistic, sidedness, `n_iter`,
+  `random_seed`, session count, block-length summary, seam-crossing count/flag,
+  observed selected rule and mean, null distribution summary, adjusted p-value,
+  candidate status, and `wiring_status`
+
+The engine reports low session count but does not enforce a session-count floor.
+Promotion wiring must enforce the floor later, before reading significance.
+
+The current real discovery `context_trades.csv` does not carry a session key
+such as `SessionDate_ET`. Running the block-permutation engine on real slicer
+data therefore requires a separate reviewed artifact-schema change and wiring
+step.
+
+If whole-session outcome blocks are unusable, a contiguous trade-block fallback
+must declare block length, circular versus non-circular sampling, replicate
+sizing, `n_iter`, and `random_seed` before the candidate's result is inspected.
 
 Out-of-sample validation remains the main proof.
 

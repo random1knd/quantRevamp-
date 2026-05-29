@@ -40,7 +40,8 @@ RANDOM_SEED = 0
 IID_ASSUMPTION = (
     "The equity-curve bootstrap resamples the child validation "
     "completed_non_gap trade-R series as i.i.d. draws with replacement. "
-    "Block bootstrap remains deferred unless trade-outcome dependence is shown."
+    "A dependence-aware block bootstrap is required before a future positive "
+    "candidate's equity and drawdown bands are trusted."
 )
 
 

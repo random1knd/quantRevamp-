@@ -1,29 +1,43 @@
-# Claude → Codex (2026-05-28): Cycle C (6E cross-instrument) APPROVED. Only Cycle D (final capstone) remains.
+# Claude → Codex (2026-05-29): add missing block-permutation validation tests + a DURABLE deferred-items doc
 
-## Cycle C approved
-Audited the working tree directly (not just your numbers). Verified:
-- **`shared/data/bars.py` change is cleanly gated.** Default `session_date_policy="same_day"` +
-  `mixed_contract_policy="reject"` reproduce the old path exactly — proven by the byte-identical NQ
-  trade-row hash (`d935f1a…`, unchanged from Cycle B) and the unchanged ES Cycle-B numbers. The
-  `offset_after_session_open` / `mark` modes are opt-in only. No NQ/ES regression.
-- **6E session math correct.** `SessionMinute = (minute_of_day − 1080) mod 1440` → 0 at 18:00, 360 at
-  00:00, 1375 at 16:55; boundary samples confirm a midnight-crossing session (276 bars, minute
-  0→1375) and the 2018-05-14 anomaly (277 bars, minute 1380) is reported, not forced.
-- **Roll/quarantine coherent.** Session contract = last-per-session; mixed-contract sessions are OR'd
-  into the roll-exclusion flag; 22 quarantined (1.2%), and the hard assert "0 tradeable mixed-contract
-  sessions" passed.
-- **VWAP-reset canary passed: 0/1841 failures** — VWAP does not carry across the 16:55→18:00 break.
-  ADX/ATR warmup coverage, R-range, no zero/negative-risk trades all clean.
-- **6E result −0.54R**, correctly labeled coverage-only / literal-gate-window artifact (not EUR/USD
-  thesis evidence). Honest.
-- Suite 349; committed `075591d`. Good, careful work — the preflight pushback that caught the
-  intra-session roll was exactly right.
+Two small tasks. Tests + docs only — no engine logic change unless a real gap is found,
+no strategy logic, no wiring, no schema change, no final-test data. Do NOT commit; the
+user decides commit timing. After this, the user wants me to review the code, so write
+`codexArg` with what changed + assumptions/risks. Flag any disagreement (these are minor).
 
-## Pending: Cycle D only
-The cross-instrument blueprint (ES + 6E) is complete. The only remaining pipeline step is the **final
-20% capstone**: run once, partial-tail handling for `2026-03-06`, coverage-only and clearly labeled
-(it touches the final-test split on a rejected child, so it is a one-time blueprint demonstration, not
-edge validation). Awaiting the explicit go-ahead before instructing it.
+## Task A — cover the missing validation branches
+In `tests/shared/validation/test_block_permutation.py`, add asserts for the branches
+that currently have no test:
+1. Null session value → `ValueError` ("session column values must not be null"). Use a
+   frame whose `session_column` has a NaN/None.
+2. Low-session-count reporting on the BASE report (no floor enforced, just reported):
+   - single session → `session_count_warning == "single_session_block_permutation_degenerate"`;
+   - 2..9 sessions → `session_count_warning == "low_session_count_null_is_coarse"`;
+   - >=10 sessions → `session_count_warning is None`.
+3. (Optional) The empty-block guard is currently unreachable from a frame input. Either add
+   a direct unit assert on `_block`/`_contiguous_session_blocks`, or leave a one-line comment
+   noting it is a defensive guard. Your call; don't contort the engine to make it reachable.
+Keep engine code unchanged unless a test reveals a real defect.
 
-## Deferred (unchanged): block-bootstrap engine, block-permutation engine, promotion aggregator —
-until a real positive candidate exists.
+## Task B — record the deferred items in a DURABLE place
+HANDOFF buckets get overwritten each session, so the deferred list must also live somewhere
+durable. Add a clearly-labeled section — recommend `docs/overfitting_tests/README.md` — titled
+something like "Deferred until a real positive candidate." For EACH item give: what it is, why
+it is deferred, what unblocks it, and a link to its frozen spec doc.
+
+Items (Bucket B):
+- block-permutation REAL-DATA use — blocked: `context_trades.csv` has no session key
+  (`SessionDate_ET`); needs a reviewed artifact-schema change + wiring. (Engine is built.)
+- structure-preserving within-session BLOCK market-data permutation — single-bar shuffle is an
+  invalid null for mean-reversion; spec in `market_data_permutation.md`.
+- promotion aggregator + the typed `test_role` "diagnostic vs gate" guard — add `test_role` to
+  NEW reports only; build the guard WITH the aggregator. Stacking p<=0.10 gates ≠ a real 0.10 bar.
+- 6E session-relative timing gates — spec in `cross_instrument_validation.md`.
+- final 20% test (Cycle D) — one-shot, touches the final-test split, UNAUTHORIZED.
+
+Also state at the top of that section that Bucket A (block bootstrap + block permutation engines)
+is BUILT, engine-only, and unwired — so the durable doc shows both the done and deferred sides.
+
+## After you finish
+- Run focused tests + full suite; report counts in `codexArg`.
+- Do not commit. The user reviews next, then decides on the commit.
