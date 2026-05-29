@@ -1,6 +1,8 @@
 # Repo Structure
 
-This is the intended shape for the new repo once code is added.
+This is the intended shape for the repo. The concrete strategy currently in the
+tree is `vwap_zscore_fade`; future strategies should follow this shape without
+adding registries or hidden orchestration.
 
 ```text
 data/
@@ -26,40 +28,43 @@ docs/
   research/
 
 strategies/
-  kalman_vwap_fade/
+  vwap_zscore_fade/
+    validation_run.py
+    validation_monte_carlo_run.py
+    validation_equity_curves_run.py
     parent/
       README.md
       strategy.py
       indicators.py
       research_indicators.py
       params.py
+      discovery_run.py
+      slicer_run.py
+      threshold_neighborhood_run.py
+      campaigns/
       tests/
     children/
-      low_vpin_filter/
+      adx_q30_workflow_test/
         README.md
         strategy.py
         indicators.py
         params.py
         evidence/
+        walk_forward_run.py
+        threshold_nudge_run.py
+        market_permutation_run.py
+        time_stability_run.py
+        cross_instrument_run.py
         tests/
-  absorption_fade/
-    parent/
-    children/
 
 shared/
   data/
   indicators/
-  execution/
-  context/
-  slicing/
   validation/
-  reporting/
 
 tests/
   boundaries/
-  fixtures/
   shared/
-  validation/
 ```
 
 ## Strategy Folders

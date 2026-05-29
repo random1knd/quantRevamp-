@@ -9,16 +9,24 @@ Detailed test plans live in `../overfitting_tests/`.
 
 | Order | Test | Purpose | Input | Status |
 |---|---|---|---|---|
-| 1 | Realized-R summary | Establish basic expectancy, drawdown, and trade count. | `trades.csv` | To build |
-| 2 | Minimum sample check | Reject tiny samples before deeper validation. | Realized R series | To build |
-| 3 | Monte Carlo permutation | Test whether returns beat a zero-edge null. | Realized R series | To build |
-| 4 | Monte Carlo equity curves | Estimate distribution of possible equity paths. | Realized R series | To build |
-| 5 | Walk-forward reruns | Check chronological generalization. | Bars plus strategy | To build |
-| 6 | Deflated Sharpe | Correct for non-normality and campaign size. | Realized R, number of tried variants | Later |
-| 7 | Parameter nudge stability | Check that small parameter changes do not destroy the edge. | Strategy, bars, explicit params | Later |
-| 8 | Cross-instrument validation | Check transfer to other instruments. | Strategy, bars for source and targets | Later |
-| 9 | Market-data permutation | Test whether market sequence structure matters. | Strategy and bars | Later |
-| 10 | BH-FDR / CSCV / White Reality Check | Correct broad campaign data-snooping. | Aligned campaign matrix | Much later |
+| 1 | Realized-R summary | Establish basic expectancy, drawdown, and trade count. | `trades.csv` | BUILT; coverage-only on rejected child |
+| 2 | Minimum sample check | Reject tiny samples before deeper validation. | Realized R series | BUILT; coverage-only on rejected child |
+| 3 | Monte Carlo centered bootstrap | Test whether returns beat a zero-edge i.i.d. diagnostic null. | Realized R series | BUILT; diagnostic only |
+| 4 | Monte Carlo equity curves | Estimate i.i.d. distribution of possible equity paths. | Realized R series | BUILT; diagnostic only |
+| 5 | Block bootstrap engine | Dependence-aware promotion-grade mean-R gate. | Session-grouped Realized R series | BUILT engine-only; UNWIRED |
+| 6 | Full-search i.i.d. permutation | Adjust slicer search for the declared rule grid. | Discovery slicer frame | BUILT; diagnostic/current slicer path |
+| 7 | Block permutation engine | Dependence-aware promotion-grade search-significance gate. | Discovery slicer frame with session key | BUILT engine-only; UNWIRED |
+| 8 | Walk-forward reruns | Check chronological generalization. | Bars plus strategy | BUILT; coverage-only on rejected child |
+| 9 | Deflated Sharpe | Correct for non-normality and campaign size. | Realized R, score distribution, number of tried variants | UNAVAILABLE; slicer did not persist Sharpe/score distribution |
+| 10 | Parameter nudge stability | Check that small parameter changes do not destroy the edge. | Strategy, bars, explicit params | BUILT; threshold-neighborhood and child-rerun nudge are coverage-only |
+| 11 | Cross-instrument validation | Check transfer to other instruments. | Strategy, bars for source and targets | BUILT; coverage-only blueprint |
+| 12 | Market-data permutation | Test whether market sequence structure matters. | Strategy and bars | BUILT; single-bar shuffle is coverage-only and invalid as a mean-reversion edge null |
+| 13 | BH-FDR / CSCV / White Reality Check | Correct broad campaign data-snooping. | Aligned campaign matrix | Not planned for this explicit-strategy workflow |
+
+Built does not mean wired for promotion. The dependence-aware block bootstrap
+and block permutation engines are built cold so their math can be reviewed, but
+they remain unwired until a real positive candidate and reviewed promotion
+design exist.
 
 ## First Validator Contract
 

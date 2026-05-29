@@ -1,4 +1,4 @@
-# Session Handoff - 2026-05-28
+# Session Handoff - 2026-05-29
 
 Point-in-time snapshot for resuming work. Overwrite/update each session; this is
 a status snapshot, not a ledger. Active per-cycle review lives in `codexArg` /
@@ -11,19 +11,19 @@ This is a workflow test, not a profit claim. The parent strategy
 to end with honest results at every stage. A losing or rejected outcome is a
 valid completion.
 
-## Session End (2026-05-28)
+## Session End (2026-05-29)
 
-- Committed resume pointer: `origin/master` / `HEAD` at `0a22635` before the
-  current uncommitted review-loop changes.
-- The codex/claude review loop is paused for now (Codex budget exhausted). The
-  code does not depend on the loop being live; resume by reading this file.
+- Committed resume pointer: `origin/master` / `HEAD` at `a259792`.
 - Overfitting suite is COMPLETE and the cross-instrument blueprint (ES + 6E) is
   COMPLETE, all coverage-only on a rejected child.
+- Buildable-without-a-positive-edge validation engine work is COMPLETE: block
+  bootstrap and block permutation are built as pure engine-only code and remain
+  unwired.
 - Only remaining pipeline step: the **final 20% test (Cycle D)**. It is NOT yet
   authorized — it touches the final-test split, so it needs an explicit go-ahead
   before running. Until then, the blueprint stands complete without it.
-- What is deferred (and where its spec lives) is recorded in the "Deferred On
-  Purpose" section below.
+- The durable deferred record lives in `docs/overfitting_tests/README.md`; this
+  handoff keeps the current snapshot.
 
 ## Pipeline Progress
 
@@ -41,6 +41,9 @@ valid completion.
 - [x] Overfitting Stage B, CSV-based: realized-R summary, minimum trade count,
       centered bootstrap, and equity-curve bootstrap were run coverage-only on
       the child.
+- [x] Cold dependence-aware engines: block bootstrap and block permutation are
+      built as pure, unwired engines. They do not run on the rejected child and
+      cannot promote anything.
 - [x] Stage C, slicer-side threshold-neighborhood report: implemented as a
       train-side, discovery-contaminated artifact check. It is coverage-only for
       the current `no_candidate` child and cannot validate an edge.
@@ -67,21 +70,24 @@ valid completion.
 
 ## Current Slice
 
-Implemented Claude-approved cross-instrument Cycle C:
+Committed engine/docs state at `a259792`:
 
-- `shared/data/bars.py`: default same-day behavior remains unchanged; added a
-  narrow explicit `offset_after_session_open` policy for overnight sessions and
-  an explicit mixed-contract mark mode for quarantine.
-- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/strategy.py`
-  and `indicators.py`: child-local session bounds can now be passed explicitly,
-  preserving NQ/ES defaults and allowing 6E to use the full `18:00 -> 16:55 ET`
-  session.
-- `strategies/vwap_zscore_fade/children/adx_q30_workflow_test/cross_instrument_run.py`:
-  now gates NQ bit-identity, ES Cycle B unchanged numbers, 6E session sanity,
-  and hard no-tradeable-mixed-contract assertion before writing the 6E result.
-- Mixed-contract 6E sessions are quarantined as untradeable roll sessions; no
-  contract stitching was added.
-- The 6E report carries the literal-gate caveat alongside the numbers.
+- `shared/validation/block_bootstrap.py`: pure whole-session block bootstrap for
+  mean `RealizedR`, engine-only and unwired.
+- `shared/validation/block_permutation.py`: pure whole-session outcome-block
+  permutation for search-significance max statistic, engine-only and unwired.
+- `tests/shared/validation/test_block_bootstrap.py` and
+  `tests/shared/validation/test_block_permutation.py`: focused coverage for the
+  cold engines.
+- Durable deferred items are recorded in `docs/overfitting_tests/README.md`.
+- Block permutation cannot run on the current real discovery artifact because
+  `context_trades.csv` lacks a session key such as `SessionDate_ET`; real-data
+  use needs a separate reviewed schema/wiring step.
+
+Buildable-without-a-positive-edge work is complete. Remaining work is Bucket B
+candidate-dependent work or unauthorized Cycle D final-test access.
+
+## Cross-Instrument Snapshot
 
 Real Cycle B artifact:
 
@@ -306,7 +312,7 @@ test access stays deferred until a real positive candidate exists.
   -> 34 passed.
 - Real Cycle C runner completed and wrote
   `cross_instrument_6e_20260528T144737Z`.
-- Full suite: `python -m pytest` -> 357 passed.
+- Full suite: `python -m pytest` -> 364 passed.
 - `git diff --check`: no whitespace errors; CRLF warnings only.
 - No final-test rows were passed to the strategy. Cross-instrument Cycle C uses
   validation splits only.
