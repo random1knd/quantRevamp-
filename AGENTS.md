@@ -18,6 +18,9 @@ When working in this repo:
 - convert slicer discoveries into explicit child strategies before they affect
   trades
 - validate frozen children out of sample before promotion
+- the VWAP z-score fade on master is a worked structural reference, not a
+  strategy template; strategy logic and assumptions must be restated fresh on
+  each new strategy branch (see `docs/workflow.md` section 7)
 
 If a requested change would introduce broad abstraction or hidden behavior, stop
 and make that tradeoff explicit before implementing it.

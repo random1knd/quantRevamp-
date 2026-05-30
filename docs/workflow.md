@@ -125,3 +125,71 @@ requires:
 
 Use the run-config mechanism in `data_and_results.md`: decision evidence must
 include either a git commit/tag or a source snapshot/hash.
+
+## 7. Branch-Per-Strategy Scaling
+
+Each new strategy campaign lives on its own branch off `master`. Master holds
+shared infrastructure and the VWAP z-score fade as a completed worked example.
+
+Branch naming is descriptive and outcome-neutral:
+
+- `strategy/momentum-breakout-nq`
+- `strategy/microstructure-imbalance-es`
+
+Do not rename branches after outcomes. Record verdicts via annotated git tags
+and a status line in the strategy README:
+
+- `vwap-zscore-fade/rejected-2026-05-29`
+- `momentum-breakout-nq/advanced-final-2026-07-15`
+
+Each branch carries exactly one strategy family (parent + child if applicable).
+
+### What to reference from the VWAP fade
+
+The VWAP z-score fade on master is a structural reference, not a strategy
+template. A new branch may reference:
+
+- file organization and child-folder layout
+- runner patterns (how validation_run.py loads data, enforces splits, writes
+  artifacts)
+- test structure (causality tests, boundary tests, monkeypatched runners)
+- artifact format (provenance, hashes, frozen config)
+- the codexArg/claudeArg review loop
+
+A new branch must NOT silently inherit from the VWAP fade:
+
+- session gates, cost/slippage assumptions, input populations
+- validation thresholds, timing labels, threshold types
+- instrument transfer assumptions, research columns
+- any thesis-specific entry/exit logic or indicator choices
+
+These must be explicitly adopted or changed in the new strategy README and
+slicer plan before discovery.
+
+### Starting a new strategy branch
+
+1. Branch from current `master`.
+2. Write a fresh thesis README with instrument, timeframe, entry/exit logic,
+   session assumptions, cost assumptions, and invalidation criteria.
+3. Write fresh `params.py` — do not copy VWAP params and edit values.
+4. Predeclare the slicer plan and campaign identity before running discovery.
+5. Reference the VWAP fade's runner/test patterns for pipeline wiring.
+
+### Before-verdict sync
+
+Before any branch reaches a verdict, merge or rebase current `master` so
+shared validators and indicators do not silently diverge across campaigns.
+
+### Deferred items
+
+When a branch produces a positive candidate, the deferred items (block engine
+wiring, promotion aggregator, Cycle D final test) get completed on that branch.
+Any genuinely pure shared engine fix or validator improvement should be merged
+back to `master` so future branches benefit. Strategy-local wiring stays on the
+strategy branch.
+
+### Campaign index
+
+Maintain `CAMPAIGN_INDEX.md` at repo root as a lightweight directory of every
+strategy branch, its thesis, instrument, verdict, and verdict tag. This is a
+human-maintained list, not generated state.
